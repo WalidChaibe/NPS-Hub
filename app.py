@@ -61,7 +61,7 @@ with col2:
                 st.switch_page("pages/1_Home.py")
 
             except Exception as e:
-                st.error("Invalid email or password. Please try again.")
+                st.error(f"Error: {str(e)}")
 
     st.divider()
     st.caption("Access issues? Contact your NPS Administrator.")
