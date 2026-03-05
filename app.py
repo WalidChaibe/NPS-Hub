@@ -58,7 +58,7 @@ with col2:
                 st.session_state["pillar"]   = user_profile["pillar"]
                 st.session_state["name"]     = user_profile["full_name"]
 
-                st.success(f"Welcome back, {profile.data['full_name']}!")
+                st.success(f"Welcome back, {user_profile['full_name']}!")
                 st.switch_page("pages/1_Home.py")
 
             except Exception as e:
