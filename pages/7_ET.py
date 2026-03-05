@@ -447,6 +447,7 @@ with tab3:
 
                         # Get public URL
                         file_url = f"https://sjcwzbftzpfylwdqiknh.supabase.co/storage/v1/object/public/asset/{file_path}"
+                        st.caption(f"Debug URL: {file_url}")
 
                         col1, col2, col3 = st.columns([4, 2, 1])
                         with col1:
