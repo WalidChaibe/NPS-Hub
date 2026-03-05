@@ -13,12 +13,12 @@ if "user" not in st.session_state:
 
 # ── Pillar definitions ──
 PILLARS = [
-    {"id": "AM",  "name": "Autonomous Maintenance",     "color": "#E67E22", "icon": "🔧"},
-    {"id": "PM",  "name": "Planned Maintenance",         "color": "#3498DB", "icon": "📅"},
-    {"id": "QM",  "name": "Quality Maintenance",         "color": "#E74C3C", "icon": "✅"},
-    {"id": "HSE", "name": "Health, Safety & Environment","color": "#27AE60", "icon": "🦺"},
-    {"id": "FI",  "name": "Focused Improvement",         "color": "#9B59B6", "icon": "💡"},
-    {"id": "ET",  "name": "Education & Training",        "color": "#1ABC9C", "icon": "🎓"},
+    {"id": "AM",  "name": "Autonomous Maintenance",     "color": "#E67E22", "icon": "🔧", "image": "https://sjcwzbftzpfylwdqiknh.supabase.co/storage/v1/object/public/asset/AM%20Pillar%20Image.jpg"},
+    {"id": "PM",  "name": "Planned Maintenance",         "color": "#3498DB", "icon": "📅", "image": "https://sjcwzbftzpfylwdqiknh.supabase.co/storage/v1/object/public/asset/PM%20Pillar%20Image.png"},
+    {"id": "QM",  "name": "Quality Maintenance",         "color": "#E74C3C", "icon": "✅", "image": "https://sjcwzbftzpfylwdqiknh.supabase.co/storage/v1/object/public/asset/QM%20Pillar%20Image.jpg"},
+    {"id": "HSE", "name": "Health, Safety & Environment","color": "#27AE60", "icon": "🦺", "image": "https://sjcwzbftzpfylwdqiknh.supabase.co/storage/v1/object/public/asset/HSE%20Pillar%20Image.jpg"},
+    {"id": "FI",  "name": "Focused Improvement",         "color": "#9B59B6", "icon": "💡", "image": "https://sjcwzbftzpfylwdqiknh.supabase.co/storage/v1/object/public/asset/FI%20Pillar%20Image.jpg"},
+    {"id": "ET",  "name": "Education & Training",        "color": "#1ABC9C", "icon": "🎓", "image": "https://sjcwzbftzpfylwdqiknh.supabase.co/storage/v1/object/public/asset/E%26T%20Pillar%20Image.png"},
 ]
 
 role   = st.session_state.get("role", "member")
@@ -49,12 +49,23 @@ for i, p in enumerate(PILLARS):
             <div style="
                 border: 1px solid {p['color']}55;
                 border-radius: 10px;
-                padding: 20px;
+                padding: 16px;
                 margin-bottom: 12px;
                 background: {p['color']}11;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
             ">
-                <div style="font-size: 28px">{p['icon']}</div>
-                <div style="font-weight: 700; font-size: 15px; margin: 8px 0 4px">{p['name']}</div>
+                <div>
+                    <div style="font-size: 28px">{p['icon']}</div>
+                    <div style="font-weight: 700; font-size: 15px; margin: 8px 0 4px">{p['name']}</div>
+                </div>
+                <img src="{p['image']}" style="
+                    height: 80px;
+                    width: 80px;
+                    object-fit: contain;
+                    background: transparent;
+                ">
             </div>
         """, unsafe_allow_html=True)
         if st.button(f"Open {p['id']}", key=f"btn_{p['id']}", use_container_width=True):
