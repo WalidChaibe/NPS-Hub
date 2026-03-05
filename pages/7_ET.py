@@ -332,15 +332,12 @@ with tab2:
                         )
 
                         # Save to Supabase
-                        try:
-                            supabase.table("et_analysis_runs").insert({
-                                "run_by": name,
-                                "total_failures": total_failures,
-                                "notes": notes or "",
-                            }).execute()
-                            st.success("✅ Run saved to history!")
-                        except Exception as save_err:
-                            st.error(f"Failed to save to history: {str(save_err)}")
+                        supabase.table("et_analysis_runs").insert({
+                            "run_by": name,
+                            "total_failures": total_failures,
+                            "notes": notes or "",
+                        }).execute()
+
                     else:
                         st.success("🎉 No failures detected — all employees meet requirements!")
                         supabase.table("et_analysis_runs").insert({
@@ -356,68 +353,143 @@ with tab2:
 # TAB 3 — DOCUMENTS
 # ════════════════════════════════════════
 with tab3:
-    st.markdown("### 📁 E&T Required Documents")
+    st.markdown("### 📁 Required Documents")
 
-    doc_types = [
-        "Flexibility Chart",
-        "Training Schedule",
-        "Training Records",
-        "Employee Improvement Log",
-        "OPL Documents",
-        "Competency Matrix",
-    ]
-
+    # ── Load required docs list ──
     try:
-        docs = supabase.table("et_documents").select("*").order("created_at", desc=True).execute()
-        if docs.data:
-            docs_df = pd.DataFrame(docs.data)
-            docs_df["created_at"] = pd.to_datetime(docs_df["created_at"]).dt.strftime("%d %b %Y %H:%M")
-            st.dataframe(
-                docs_df[["doc_type", "file_name", "uploaded_by", "created_at"]].rename(columns={
-                    "doc_type": "Document Type", "file_name": "File Name",
-                    "uploaded_by": "Uploaded By", "created_at": "Date Uploaded"
-                }),
-                use_container_width=True
-            )
-            # Delete document
-            if can_edit:
-                st.markdown("#### 🗑️ Delete Document")
-                doc_map = {f"{r['file_name']} — {r['doc_type']} ({r['created_at']})": r['id'] for r in docs.data}
-                selected_doc = st.selectbox("Select document to delete", list(doc_map.keys()), key="del_doc")
-                if st.button("🗑️ Delete Document", key="btn_del_doc"):
-                    supabase.table("et_documents").delete().eq("id", doc_map[selected_doc]).execute()
-                    st.success("Document deleted!")
-                    st.rerun()
-        else:
-            st.info("No documents uploaded yet.")
+        req_docs = supabase.table("et_required_docs").select("*").order("created_at").execute()
+        all_uploads = supabase.table("et_documents").select("*").order("created_at", desc=True).execute()
     except Exception as e:
         st.error(f"Could not load documents: {str(e)}")
+        st.stop()
+
+    # ── Add new requirement (plant manager / pillar leader only) ──
+    if can_edit:
+        with st.expander("➕ Add / Remove Required Document", expanded=False):
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                new_doc_name = st.text_input("Document Name", placeholder="e.g. NPS Test Results")
+                new_doc_desc = st.text_input("Description (optional)", placeholder="Brief description of what this document is")
+            with col2:
+                st.markdown("<br>", unsafe_allow_html=True)
+                if st.button("➕ Add Requirement", use_container_width=True):
+                    if not new_doc_name:
+                        st.error("Please enter a document name.")
+                    else:
+                        supabase.table("et_required_docs").insert({
+                            "doc_name": new_doc_name,
+                            "description": new_doc_desc or "",
+                            "added_by": name,
+                        }).execute()
+                        st.success(f"✅ '{new_doc_name}' added to requirements!")
+                        st.rerun()
+
+            if req_docs.data:
+                st.divider()
+                st.markdown("**Remove a requirement:**")
+                del_doc_map = {f"{r['doc_name']}": r['id'] for r in req_docs.data}
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    selected_req_del = st.selectbox("Select requirement to remove", list(del_doc_map.keys()), key="del_req_doc")
+                with col2:
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    if st.button("🗑️ Remove", use_container_width=True, key="btn_del_req_doc"):
+                        supabase.table("et_required_docs").delete().eq("id", del_doc_map[selected_req_del]).execute()
+                        st.success(f"Removed '{selected_req_del}' from requirements.")
+                        st.rerun()
 
     st.divider()
 
-    if not can_edit:
-        st.warning("👁️ View Only — you do not have permission to upload documents.")
+    # ── Document cards — one per requirement ──
+    if not req_docs.data:
+        st.info("No required documents defined yet. Add some using the button above.")
     else:
-        st.markdown("#### ⬆️ Upload New Document")
-        doc_type = st.selectbox("Document Type", doc_types)
-        doc_file = st.file_uploader("Choose file", type=["xlsx", "pdf", "png", "jpg", "docx"])
+        for req in req_docs.data:
+            doc_name = req['doc_name']
+            doc_desc = req.get('description', '')
 
-        if doc_file and st.button("⬆️ Upload Document", type="primary"):
-            with st.spinner("Uploading..."):
-                try:
-                    file_bytes = doc_file.read()
-                    file_path  = f"ET/{datetime.now().strftime('%Y%m%d_%H%M%S')}_{doc_file.name}"
-                    supabase.storage.from_("asset").upload(file_path, file_bytes)
-                    supabase.table("et_documents").insert({
-                        "doc_type": doc_type,
-                        "file_name": doc_file.name,
-                        "file_path": file_path,
-                        "uploaded_by": name,
-                    }).execute()
-                    st.success(f"✅ {doc_file.name} uploaded successfully!")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Upload failed: {str(e)}")
+            # Get all uploads for this doc type
+            uploads = [u for u in (all_uploads.data or []) if u['doc_type'] == doc_name]
+            has_uploads = len(uploads) > 0
+
+            # Status indicator
+            status_icon = "✅" if has_uploads else "❌"
+            status_color = "#2ea043" if has_uploads else "#f85149"
+
+            with st.container():
+                st.markdown(f"""
+                    <div style="
+                        border: 1px solid {'#2ea04355' if has_uploads else '#f8514955'};
+                        border-radius: 10px;
+                        padding: 16px 20px;
+                        margin-bottom: 14px;
+                        background: {'#2ea04308' if has_uploads else '#f8514908'};
+                    ">
+                        <div style="display:flex; align-items:center; gap:10px; margin-bottom:4px;">
+                            <span style="font-size:18px">{status_icon}</span>
+                            <span style="font-weight:700; font-size:16px;">{doc_name}</span>
+                            <span style="font-size:11px; color:{status_color}; margin-left:auto;">
+                                {len(uploads)} file{'s' if len(uploads) != 1 else ''} uploaded
+                            </span>
+                        </div>
+                        {f'<div style="font-size:12px; color:#8B949E; margin-bottom:8px;">{doc_desc}</div>' if doc_desc else ''}
+                    </div>
+                """, unsafe_allow_html=True)
+
+                # Show uploaded files
+                if has_uploads:
+                    for upload in uploads:
+                        file_name = upload['file_name']
+                        file_path = upload['file_path']
+                        uploaded_by = upload['uploaded_by']
+                        uploaded_at = pd.to_datetime(upload['created_at']).strftime("%d %b %Y %H:%M")
+                        ext = file_name.split('.')[-1].lower()
+
+                        # Get public URL
+                        file_url = f"https://sjcwzbftzpfylwdqiknh.supabase.co/storage/v1/object/public/asset/{file_path}"
+
+                        col1, col2, col3 = st.columns([4, 2, 1])
+                        with col1:
+                            if ext in ['png', 'jpg', 'jpeg']:
+                                st.image(file_url, width=200)
+                            else:
+                                st.markdown(f"📄 [{file_name}]({file_url})")
+                            st.caption(f"Uploaded by {uploaded_by} · {uploaded_at}")
+                        with col2:
+                            st.markdown(f"")
+                        with col3:
+                            if can_edit:
+                                if st.button("🗑️", key=f"del_file_{upload['id']}", help="Delete this file"):
+                                    supabase.table("et_documents").delete().eq("id", upload['id']).execute()
+                                    st.success("Deleted!")
+                                    st.rerun()
+
+                # Upload new file for this requirement
+                if can_edit:
+                    with st.expander(f"⬆️ Upload file for '{doc_name}'", expanded=False):
+                        doc_file = st.file_uploader(
+                            "Choose file",
+                            type=["xlsx", "pdf", "png", "jpg", "docx"],
+                            key=f"upload_{req['id']}"
+                        )
+                        if doc_file and st.button("Upload", key=f"btn_upload_{req['id']}", type="primary"):
+                            with st.spinner("Uploading..."):
+                                try:
+                                    file_bytes = doc_file.read()
+                                    file_path  = f"ET/{datetime.now().strftime('%Y%m%d_%H%M%S')}_{doc_file.name}"
+                                    supabase.storage.from_("asset").upload(file_path, file_bytes)
+                                    supabase.table("et_documents").insert({
+                                        "doc_type": doc_name,
+                                        "file_name": doc_file.name,
+                                        "file_path": file_path,
+                                        "uploaded_by": name,
+                                    }).execute()
+                                    st.success(f"✅ Uploaded successfully!")
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Upload failed: {str(e)}")
+
+                st.markdown("---")
 
 # ════════════════════════════════════════
 # TAB 4 — REQUEST TRAINING
