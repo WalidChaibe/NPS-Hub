@@ -323,7 +323,7 @@ with tab2:
                             tmp_files.append(tmp.name)
                             pdf.image(tmp.name, w=180)
 
-                        pdf_bytes = pdf.output(dest='S').encode('latin-1')
+                        pdf_bytes = bytes(pdf.output())
                         for f in tmp_files:
                             os.unlink(f)
 
