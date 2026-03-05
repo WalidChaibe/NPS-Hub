@@ -174,6 +174,7 @@ with tab2:
                     _d["Year"]  = _d["Year"].astype(int)
                     _d["Month"] = _d["Month"].astype(int)
 
+            st.write("FINAL columns:", list(df_final_loaded.columns))
             st.success("✅ Files loaded successfully!")
 
             # ── Period selector ──
