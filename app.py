@@ -51,11 +51,12 @@ with col2:
                     st.stop()
 
                 # Save to session
-                st.session_state["user"]     = res.user
-                st.session_state["profile"]  = profile.data[0]
-                st.session_state["role"]     = profile.data[0]["role"]
-                st.session_state["pillar"]   = profile.data[0]["pillar"]
-                st.session_state["name"]     = profile.data[0]["full_name"]
+                user_profile = profile.data[0]
+                st.session_state["user"]     = res.user.id
+                st.session_state["profile"]  = user_profile
+                st.session_state["role"]     = user_profile["role"]
+                st.session_state["pillar"]   = user_profile["pillar"]
+                st.session_state["name"]     = user_profile["full_name"]
 
                 st.success(f"Welcome back, {profile.data['full_name']}!")
                 st.switch_page("pages/1_Home.py")
