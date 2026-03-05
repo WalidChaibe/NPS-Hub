@@ -3,4 +3,7 @@ supabase
 pandas
 openpyxl
 plotly
-fpdf
+matplotlib
+seaborn
+fpdf2
+numpy
