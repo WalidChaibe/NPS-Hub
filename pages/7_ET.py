@@ -1,4 +1,4 @@
-# pages/6_ET.py - Education & Training Pillar
+# pages/7_ET.py - Education & Training Pillar
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -6,7 +6,8 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from datetime import datetime
 import io
-import base64
+import tempfile
+import os
 from fpdf import FPDF
 from utils.supabase_client import get_supabase
 
@@ -20,7 +21,6 @@ supabase = get_supabase()
 role     = st.session_state.get("role", "member")
 pillar   = st.session_state.get("pillar", "ALL")
 name     = st.session_state.get("name", "User")
-user_id  = st.session_state.get("user", "")
 
 can_edit = (role == "plant_manager") or (role == "pillar_leader" and pillar == "ET")
 
@@ -54,7 +54,7 @@ with tab1:
 
     levels = [
         {
-            "name": "Entry", "color": "#888888", "icon": "⚪",
+            "name": "Entry", "icon": "⚪",
             "focus": "E&T by the basic methods and tools.",
             "criteria": [
                 "Shop floor employees assessed based on competency matrix",
@@ -67,7 +67,7 @@ with tab1:
             ]
         },
         {
-            "name": "Bronze", "color": "#CD7F32", "icon": "🥉",
+            "name": "Bronze", "icon": "🥉",
             "focus": "Focus E&T on NPS Gaps.",
             "criteria": [
                 "10% increase in overall competency scores",
@@ -80,7 +80,7 @@ with tab1:
             ]
         },
         {
-            "name": "Silver", "color": "#C0C0C0", "icon": "🥈",
+            "name": "Silver", "icon": "🥈",
             "focus": "Continuous E&T — Training culture spreading.",
             "criteria": [
                 "10% increase in overall competency scores vs last year",
@@ -93,7 +93,7 @@ with tab1:
             ]
         },
         {
-            "name": "Gold", "color": "#FFD700", "icon": "🥇",
+            "name": "Gold", "icon": "🥇",
             "focus": "Continuous Improvement — Kaizen Culture evident.",
             "criteria": [
                 "10% increase in overall competency scores vs last year",
@@ -111,7 +111,7 @@ with tab1:
             if is_current:
                 st.success("✅ Current Level")
             for criterion in level["criteria"]:
-                st.checkbox(criterion, value=is_current, key=f"lvl_{level['name']}_{criterion[:20]}")
+                st.checkbox(criterion, value=is_current, key=f"lvl_{level['name']}_{criterion[:30]}")
 
 # ════════════════════════════════════════
 # TAB 2 — COMPETENCY ANALYSIS
@@ -119,7 +119,7 @@ with tab1:
 with tab2:
     st.markdown("### Competency Matrix Analysis")
 
-    # ── Past runs ──
+    # ── History ──
     st.markdown("#### 📅 Analysis History")
     try:
         history = supabase.table("et_analysis_runs").select("*").order("created_at", desc=True).execute()
@@ -133,10 +133,18 @@ with tab2:
                 }),
                 use_container_width=True
             )
+            # Delete run
+            if can_edit:
+                run_map = {f"{r['created_at']} — {r['notes'] or 'No notes'} ({r['total_failures']} failures)": r['id'] for r in history.data}
+                selected_run = st.selectbox("Select run to delete", list(run_map.keys()), key="del_run")
+                if st.button("🗑️ Delete Run", key="btn_del_run"):
+                    supabase.table("et_analysis_runs").delete().eq("id", run_map[selected_run]).execute()
+                    st.success("Run deleted!")
+                    st.rerun()
         else:
             st.info("No analysis runs yet. Upload a file below to run the first analysis.")
-    except:
-        st.info("Analysis history table not set up yet. Run the SQL setup first.")
+    except Exception as e:
+        st.error(f"Could not load history: {str(e)}")
 
     st.divider()
 
@@ -152,19 +160,16 @@ with tab2:
                 try:
                     xls = pd.ExcelFile(uploaded_file)
 
-                    # Read requirements
                     requirement_df = pd.read_excel(xls, sheet_name='Requirement', dtype=str)
                     requirement_df.columns = requirement_df.columns.str.strip()
                     requirement_df['Grade'] = requirement_df['Grade'].astype(str).str.strip()
                     topics = list(requirement_df.columns[1:])
                     requirement_dict = requirement_df.set_index('Grade')[topics].to_dict(orient='index')
 
-                    # Read employee list
                     employee_list_df = pd.read_excel(xls, sheet_name='Employee List', dtype=str)
                     employee_list_df.columns = employee_list_df.columns.str.strip()
                     employee_list_df['Grade'] = employee_list_df['Grade'].astype(str).str.strip()
 
-                    # Department sheets
                     skill_sheets = [s for s in xls.sheet_names if s not in ['Requirement', 'Employee List']]
 
                     failures = []
@@ -213,11 +218,10 @@ with tab2:
                         failures_df['Section'] = failures_df['Department'].str.replace(" Employees", "", regex=False)
                         failures_df['Remarks'] = "Needs Training"
 
-                        # Charts
-                        topic_counts = failures_df['Topic'].value_counts()
-                        section_counts = failures_df['Section'].value_counts()
+                        topic_counts       = failures_df['Topic'].value_counts()
+                        section_counts     = failures_df['Section'].value_counts()
                         topic_grade_counts = failures_df.groupby(['Topic', 'Grade']).size().reset_index(name='Count')
-                        heatmap_data = failures_df.groupby(['Grade', 'Topic']).size().unstack(fill_value=0)
+                        heatmap_data       = failures_df.groupby(['Grade', 'Topic']).size().unstack(fill_value=0)
 
                         sns.set(style="whitegrid")
 
@@ -252,7 +256,6 @@ with tab2:
                         ax4.set_title("Failure Matrix (Grade vs Topic)")
                         plt.tight_layout()
 
-                        # Display charts
                         st.markdown("#### 📊 Results")
                         st.dataframe(failures_df, use_container_width=True)
                         c1, c2 = st.columns(2)
@@ -263,17 +266,17 @@ with tab2:
                             st.pyplot(fig2)
                             st.pyplot(fig4)
 
-                        # Save charts to bytes for PDF
-                        def fig_to_bytes(fig):
-                            buf = io.BytesIO()
-                            fig.savefig(buf, format='png', dpi=100)
-                            buf.seek(0)
-                            return buf
+                        # Save charts to temp files for PDF
+                        def fig_to_tmp(fig):
+                            tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.png')
+                            fig.savefig(tmp.name, format='png', dpi=100)
+                            tmp.close()
+                            return tmp.name
 
-                        buf1 = fig_to_bytes(fig1)
-                        buf2 = fig_to_bytes(fig2)
-                        buf3 = fig_to_bytes(fig3)
-                        buf4 = fig_to_bytes(fig4)
+                        tmp1 = fig_to_tmp(fig1)
+                        tmp2 = fig_to_tmp(fig2)
+                        tmp3 = fig_to_tmp(fig3)
+                        tmp4 = fig_to_tmp(fig4)
 
                         # Generate PDF
                         pdf = FPDF()
@@ -309,22 +312,16 @@ with tab2:
                                 pdf.cell(0, 5, f"- {emp} (Needs Training)", ln=True)
                             pdf.ln(2)
 
-                        # Save chart images temporarily and add to PDF
-                        import tempfile, os
-                        tmp_files = []
-                        for buf, label in [(buf4, "Failure Matrix"), (buf1, "Failures per Topic"), (buf2, "Failures by Grade"), (buf3, "Failures by Section")]:
+                        for tmp_path, label in [(tmp4, "Failure Matrix"), (tmp1, "Failures per Topic"), (tmp2, "Failures by Grade"), (tmp3, "Failures by Section")]:
                             pdf.add_page()
                             pdf.set_font("Arial", "B", 14)
                             pdf.set_text_color(13, 104, 163)
                             pdf.cell(0, 10, label, ln=True)
-                            tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.png')
-                            tmp.write(buf.read())
-                            tmp.close()
-                            tmp_files.append(tmp.name)
-                            pdf.image(tmp.name, w=180)
+                            pdf.image(tmp_path, w=180)
 
                         pdf_bytes = bytes(pdf.output())
-                        for f in tmp_files:
+
+                        for f in [tmp1, tmp2, tmp3, tmp4]:
                             os.unlink(f)
 
                         st.download_button(
@@ -334,7 +331,7 @@ with tab2:
                             mime="application/pdf"
                         )
 
-                        # Save run to Supabase
+                        # Save to Supabase
                         supabase.table("et_analysis_runs").insert({
                             "run_by": name,
                             "total_failures": total_failures,
@@ -343,6 +340,11 @@ with tab2:
 
                     else:
                         st.success("🎉 No failures detected — all employees meet requirements!")
+                        supabase.table("et_analysis_runs").insert({
+                            "run_by": name,
+                            "total_failures": 0,
+                            "notes": notes or "",
+                        }).execute()
 
                 except Exception as e:
                     st.error(f"Error during analysis: {str(e)}")
@@ -359,25 +361,34 @@ with tab3:
         "Training Records",
         "Employee Improvement Log",
         "OPL Documents",
+        "Competency Matrix",
     ]
 
-    # Show existing uploads
     try:
         docs = supabase.table("et_documents").select("*").order("created_at", desc=True).execute()
         if docs.data:
             docs_df = pd.DataFrame(docs.data)
-            docs_df["created_at"] = pd.to_datetime(docs_df["created_at"]).dt.strftime("%d %b %Y")
+            docs_df["created_at"] = pd.to_datetime(docs_df["created_at"]).dt.strftime("%d %b %Y %H:%M")
             st.dataframe(
                 docs_df[["doc_type", "file_name", "uploaded_by", "created_at"]].rename(columns={
                     "doc_type": "Document Type", "file_name": "File Name",
-                    "uploaded_by": "Uploaded By", "created_at": "Date"
+                    "uploaded_by": "Uploaded By", "created_at": "Date Uploaded"
                 }),
                 use_container_width=True
             )
+            # Delete document
+            if can_edit:
+                st.markdown("#### 🗑️ Delete Document")
+                doc_map = {f"{r['file_name']} — {r['doc_type']} ({r['created_at']})": r['id'] for r in docs.data}
+                selected_doc = st.selectbox("Select document to delete", list(doc_map.keys()), key="del_doc")
+                if st.button("🗑️ Delete Document", key="btn_del_doc"):
+                    supabase.table("et_documents").delete().eq("id", doc_map[selected_doc]).execute()
+                    st.success("Document deleted!")
+                    st.rerun()
         else:
             st.info("No documents uploaded yet.")
-    except:
-        st.info("Documents table not set up yet.")
+    except Exception as e:
+        st.error(f"Could not load documents: {str(e)}")
 
     st.divider()
 
@@ -388,12 +399,12 @@ with tab3:
         doc_type = st.selectbox("Document Type", doc_types)
         doc_file = st.file_uploader("Choose file", type=["xlsx", "pdf", "png", "jpg", "docx"])
 
-        if doc_file and st.button("Upload Document", type="primary"):
+        if doc_file and st.button("⬆️ Upload Document", type="primary"):
             with st.spinner("Uploading..."):
                 try:
                     file_bytes = doc_file.read()
                     file_path  = f"ET/{datetime.now().strftime('%Y%m%d_%H%M%S')}_{doc_file.name}"
-                    supabase.storage.from_("assets").upload(file_path, file_bytes)
+                    supabase.storage.from_("asset").upload(file_path, file_bytes)
                     supabase.table("et_documents").insert({
                         "doc_type": doc_type,
                         "file_name": doc_file.name,
@@ -410,20 +421,13 @@ with tab3:
 # ════════════════════════════════════════
 with tab4:
     st.markdown("### 📋 Training Requests")
+    st.caption("Any pillar leader or coordinator can submit a training request. E&T leader manages the status.")
 
-    # Show all requests
     try:
         requests = supabase.table("et_training_requests").select("*").order("created_at", desc=True).execute()
         if requests.data:
             req_df = pd.DataFrame(requests.data)
             req_df["created_at"] = pd.to_datetime(req_df["created_at"]).dt.strftime("%d %b %Y")
-
-            # Color status
-            def status_color(s):
-                if s == "Done": return "background-color: #d4edda"
-                if s == "Scheduled": return "background-color: #fff3cd"
-                return "background-color: #f8d7da"
-
             st.dataframe(
                 req_df[["created_at", "requested_by", "employee_name", "topic", "reason", "urgency", "status"]].rename(columns={
                     "created_at": "Date", "requested_by": "Requested By",
@@ -433,29 +437,40 @@ with tab4:
                 use_container_width=True
             )
 
-            # ET pillar leader can update status
+            # Update + delete for ET leader
             if can_edit:
-                st.markdown("#### Update Request Status")
-                req_ids = {f"{r['employee_name']} — {r['topic']} ({r['created_at']})": r['id'] for r in requests.data}
-                selected_req = st.selectbox("Select request", list(req_ids.keys()))
-                new_status = st.selectbox("New Status", ["Pending", "Scheduled", "Done"])
-                if st.button("Update Status"):
-                    supabase.table("et_training_requests").update({"status": new_status}).eq("id", req_ids[selected_req]).execute()
+                st.markdown("#### ✏️ Update Request Status")
+                req_map = {f"{r['employee_name']} — {r['topic']} ({r['created_at']})": r['id'] for r in requests.data}
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    selected_req = st.selectbox("Select request", list(req_map.keys()))
+                with col2:
+                    new_status = st.selectbox("Status", ["Pending", "Scheduled", "Done"])
+                if st.button("✅ Update Status"):
+                    supabase.table("et_training_requests").update({"status": new_status}).eq("id", req_map[selected_req]).execute()
                     st.success("Status updated!")
+                    st.rerun()
+
+                st.markdown("#### 🗑️ Delete Request")
+                del_req_map = {f"{r['employee_name']} — {r['topic']} ({r['created_at']})": r['id'] for r in requests.data}
+                selected_del_req = st.selectbox("Select request to delete", list(del_req_map.keys()), key="del_req")
+                if st.button("🗑️ Delete Request", key="btn_del_req"):
+                    supabase.table("et_training_requests").delete().eq("id", del_req_map[selected_del_req]).execute()
+                    st.success("Request deleted!")
                     st.rerun()
         else:
             st.info("No training requests yet.")
-    except:
-        st.info("Training requests table not set up yet.")
+    except Exception as e:
+        st.error(f"Could not load requests: {str(e)}")
 
     st.divider()
     st.markdown("#### ➕ Submit Training Request")
-    emp_name_req  = st.text_input("Employee Name")
-    topic_req     = st.text_input("Training Topic")
-    reason_req    = st.text_area("Reason / Justification", placeholder="Why does this employee need this training?")
-    urgency_req   = st.selectbox("Urgency", ["Low", "Medium", "High"])
+    emp_name_req = st.text_input("Employee Name")
+    topic_req    = st.text_input("Training Topic")
+    reason_req   = st.text_area("Reason / Justification", placeholder="Why does this employee need this training?")
+    urgency_req  = st.selectbox("Urgency", ["Low", "Medium", "High"])
 
-    if st.button("Submit Request", type="primary"):
+    if st.button("📨 Submit Request", type="primary"):
         if not emp_name_req or not topic_req:
             st.error("Please fill in employee name and topic.")
         else:
@@ -491,10 +506,33 @@ with tab5:
                 }),
                 use_container_width=True
             )
+
+            if can_edit:
+                # Update status
+                st.markdown("#### ✏️ Update Action Status")
+                act_map = {f"{r['action'][:40]} — {r['owner']}": r['id'] for r in actions.data}
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    selected_act = st.selectbox("Select action", list(act_map.keys()))
+                with col2:
+                    new_act_status = st.selectbox("Status", ["Open", "In Progress", "Done"])
+                if st.button("✅ Update Action Status"):
+                    supabase.table("et_action_plans").update({"status": new_act_status}).eq("id", act_map[selected_act]).execute()
+                    st.success("Status updated!")
+                    st.rerun()
+
+                # Delete
+                st.markdown("#### 🗑️ Delete Action Plan")
+                del_act_map = {f"{r['action'][:40]} — {r['owner']}": r['id'] for r in actions.data}
+                selected_del_act = st.selectbox("Select action to delete", list(del_act_map.keys()), key="del_act")
+                if st.button("🗑️ Delete Action Plan", key="btn_del_act"):
+                    supabase.table("et_action_plans").delete().eq("id", del_act_map[selected_del_act]).execute()
+                    st.success("Action plan deleted!")
+                    st.rerun()
         else:
             st.info("No action plans yet.")
-    except:
-        st.info("Action plans table not set up yet.")
+    except Exception as e:
+        st.error(f"Could not load action plans: {str(e)}")
 
     if can_edit:
         st.divider()
@@ -505,7 +543,7 @@ with tab5:
         status_ap   = st.selectbox("Status", ["Open", "In Progress", "Done"])
         notes_ap    = st.text_area("Notes", placeholder="Additional context...")
 
-        if st.button("Add Action Plan", type="primary"):
+        if st.button("➕ Add Action Plan", type="primary"):
             if not action_text or not owner_text:
                 st.error("Please fill in action and owner.")
             else:
