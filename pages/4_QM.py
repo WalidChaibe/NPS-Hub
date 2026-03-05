@@ -619,6 +619,100 @@ with tab2:
                 except Exception as e:
                     st.warning(f"Customer slide skipped: {e}")
 
+                st.divider()
+
+                # ── CC RATIO CHARTS ──
+                st.header("CC Ratio")
+
+                # Load FG Invoiced from Supabase
+                try:
+                    fg_rows = supabase.table("qm_fg_invoiced").select("*").execute()
+                    fg_data = {(r["year"], r["month"]): r["fg_invoiced"] for r in (fg_rows.data or [])}
+                except Exception:
+                    fg_data = {}
+
+                # Check which months in selected year are missing FG Invoiced
+                missing_months = [m for m in months_range if fg_data.get((selected_year, m)) is None]
+
+                if missing_months:
+                    st.warning(f"FG Invoiced data missing for: {', '.join([MONTH_LABELS[m-1]+'-'+str(selected_year)[-2:] for m in missing_months])}")
+                    with st.form("qm_fg_form"):
+                        st.markdown("**Enter missing FG Invoiced values:**")
+                        fg_inputs = {}
+                        cols = st.columns(min(len(missing_months), 6))
+                        for i, m in enumerate(missing_months):
+                            fg_inputs[m] = cols[i % 6].number_input(
+                                f"{MONTH_LABELS[m-1]}-{str(selected_year)[-2:]}",
+                                min_value=0, value=0, step=1, key=f"fg_{selected_year}_{m}"
+                            )
+                        submitted = st.form_submit_button("Save FG Invoiced", type="primary")
+                        if submitted:
+                            for m, val in fg_inputs.items():
+                                if val > 0:
+                                    try:
+                                        supabase.table("qm_fg_invoiced").upsert({
+                                            "year": selected_year, "month": m,
+                                            "fg_invoiced": val, "updated_by": name
+                                        }, on_conflict="year,month").execute()
+                                        fg_data[(selected_year, m)] = val
+                                    except Exception as e:
+                                        st.error(f"Could not save {MONTH_LABELS[m-1]}: {e}")
+                            st.success("Saved! Regenerating charts...")
+                            st.rerun()
+
+                months_with_fg = [m for m in months_range if fg_data.get((selected_year, m)) is not None]
+
+                if months_with_fg:
+                    def slide_cc_ratio_fig(selected_year, selected_month, category_filter=None, title_label="Total CC Ratio"):
+                        base = df[df["Is_Valid"] == True].copy()
+                        if category_filter:
+                            base = base[base["Complaint_Category"] == category_filter]
+                        else:
+                            base = base[base["Complaint_Category"].isin(["Quality", "Service"])]
+                        ratios, cc_counts, fg_vals, labels = [], [], [], []
+                        for m in months_with_fg:
+                            cc = int(base[(base["Year"] == selected_year) & (base["Month"] == m)].shape[0])
+                            fg = float(fg_data.get((selected_year, m), 0))
+                            ratio = (cc / fg * 100) if fg > 0 else 0.0
+                            ratios.append(ratio)
+                            cc_counts.append(cc)
+                            fg_vals.append(fg)
+                            labels.append(MONTH_LABELS[m-1])
+                        x = np.arange(len(labels))
+                        color = "#006394" if category_filter == "Quality" else "#C1A02E"
+                        fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=300)
+                        bars = ax.bar(x, ratios, color=color, width=0.55, alpha=0.85, label=title_label)
+                        for bar, ratio, cc, fg in zip(bars, ratios, cc_counts, fg_vals):
+                            ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.05,
+                                    f"{ratio:.2f}%", ha="center", va="bottom", fontsize=10,
+                                    color="#333333", fontweight="bold")
+                        if len(ratios) >= 2:
+                            xf = np.arange(len(ratios), dtype=float)
+                            coeff = np.polyfit(xf, ratios, 1)
+                            ax.plot(x, np.polyval(coeff, xf), linestyle="--", linewidth=2,
+                                    color="#D8C37D" if category_filter == "Quality" else "#0F68B9", label="Trend")
+                        ax.set_xticks(x)
+                        ax.set_xticklabels(labels, fontsize=11)
+                        ax.set_ylabel("CC Ratio (%)")
+                        ax.set_ylim(0, max(ratios + [1]) * 1.25)
+                        ax.spines["top"].set_visible(False)
+                        ax.spines["right"].set_visible(False)
+                        ax.grid(False)
+                        ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.10), ncol=2, frameon=False, fontsize=11)
+                        plt.tight_layout(rect=[0, 0.08, 1, 1])
+                        return fig
+
+                    st.subheader("Total Customer Complaints Ratio (Quality + Service)")
+                    show_fig(slide_cc_ratio_fig(selected_year, selected_month, category_filter=None, title_label="Total CC Ratio"))
+                    slides_for_pdf.append({"title": "Total CC Ratio", "fig": slide_cc_ratio_fig(selected_year, selected_month, category_filter=None, title_label="Total CC Ratio")})
+
+                    st.subheader("Quality Customer Complaints Ratio")
+                    show_fig(slide_cc_ratio_fig(selected_year, selected_month, category_filter="Quality", title_label="Quality CC Ratio"))
+                    slides_for_pdf.append({"title": "Quality CC Ratio", "fig": slide_cc_ratio_fig(selected_year, selected_month, category_filter="Quality", title_label="Quality CC Ratio")})
+
+                else:
+                    st.info("Enter FG Invoiced values above to generate CC Ratio charts.")
+
                 # PDF Export
                 st.divider()
                 st.header("Export")
