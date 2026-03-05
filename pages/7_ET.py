@@ -10,6 +10,7 @@ import tempfile
 import os
 from fpdf import FPDF
 from utils.supabase_client import get_supabase
+from urllib.parse import quote
 
 st.set_page_config(page_title="E&T Pillar", page_icon="🎓", layout="wide")
 
@@ -446,7 +447,8 @@ with tab3:
                         ext = file_name.split('.')[-1].lower()
 
                         # Get public URL
-                        file_url = f"https://sjcwzbftzpfylwdqiknh.supabase.co/storage/v1/object/public/asset/{file_path}"
+                        from urllib.parse import quote
+                        file_url = f"https://sjcwzbftzpfylwdqiknh.supabase.co/storage/v1/object/public/asset/{quote(file_path, safe='/')}"
                         st.caption(f"Debug URL: {file_url}")
 
                         col1, col2, col3 = st.columns([4, 2, 1])
