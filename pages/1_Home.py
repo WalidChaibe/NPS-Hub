@@ -44,25 +44,34 @@ cols = st.columns(3)
 for i, p in enumerate(PILLARS):
     can_edit = (role == "plant_manager") or (role == "pillar_leader" and pillar == p["id"])
     access_label = "✏️ Full Access" if can_edit else "👁️ View Only"
-    access_color = p["color"] if can_edit else "#888888"
+    access_color = "#0d68a3" if can_edit else "#888888"
 
     with cols[i % 3]:
         st.markdown(f"""
             <div style="
-                border: 1px solid {p['color']}55;
+                border: 1px solid #30363D;
                 border-radius: 10px;
                 overflow: hidden;
                 margin-bottom: 12px;
                 background: #1a1a1a;
             ">
-                <img src="{p['image']}" style="width:100%; height:160px; object-fit:cover;">
-                <div style="padding: 14px 16px;">
-                    <div style="font-weight: 700; font-size: 15px; margin-bottom: 6px; color: #F0EBE3;">{p['name']}</div>
+                <div style="
+                    width: 100%;
+                    height: 180px;
+                    overflow: hidden;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    background: #111;
+                ">
+                    <img src="{p['image']}" style="width:100%; height:100%; object-fit:contain;">
+                </div>
+                <div style="padding: 10px 14px;">
                     <div style="font-size: 11px; color: {access_color}; font-weight: 600;">{access_label}</div>
                 </div>
             </div>
         """, unsafe_allow_html=True)
-        if st.button(f"Open {p['id']}", key=f"btn_{p['id']}", use_container_width=True):
+        if st.button(f"Open", key=f"btn_{p['id']}", use_container_width=True):
             st.session_state["active_pillar"] = p["id"]
             st.switch_page(f"pages/{i+2}_{p['id']}.py")
 
