@@ -45,7 +45,7 @@ for i, p in enumerate(PILLARS):
     can_edit = (role == "plant_manager") or (role == "pillar_leader" and pillar == p["id"])
 
     with cols[i % 3]:
-        badge = "✏️ Edit" if can_edit else "👁️ View only"
+        
         st.markdown(f"""
             <div style="
                 border: 1px solid {p['color']}55;
@@ -56,7 +56,7 @@ for i, p in enumerate(PILLARS):
             ">
                 <div style="font-size: 28px">{p['icon']}</div>
                 <div style="font-weight: 700; font-size: 15px; margin: 8px 0 4px">{p['name']}</div>
-                <div style="font-size: 11px; color: {p['color']}; font-weight: 600">{badge}</div>
+                <div style="font-size: 11px; color: {p['color']}; font-weight: 600"></div>
             </div>
         """, unsafe_allow_html=True)
         if st.button(f"Open {p['id']}", key=f"btn_{p['id']}", use_container_width=True):
