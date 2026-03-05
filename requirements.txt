@@ -8,3 +8,4 @@ seaborn
 fpdf2
 numpy
 reportlab
+xlrd
