@@ -44,18 +44,21 @@ with col2:
                 })
 
                 # Fetch the user's profile (role + pillar)
-                profile = supabase.table("profiles") \
-                    .select("*") \
-                    .eq("id", res.user.id) \
-                    .single() \
+                profile = supabase.table("profiles") \\
+                    .select("*") \\
+                    .eq("id", res.user.id) \\
                     .execute()
+
+                if not profile.data:
+                    st.error(f"Profile not found for UID: {res.user.id}")
+                    st.stop()
 
                 # Save to session
                 st.session_state["user"]     = res.user
-                st.session_state["profile"]  = profile.data
-                st.session_state["role"]     = profile.data["role"]
-                st.session_state["pillar"]   = profile.data["pillar"]
-                st.session_state["name"]     = profile.data["full_name"]
+                st.session_state["profile"]  = profile.data[0]
+                st.session_state["role"]     = profile.data[0]["role"]
+                st.session_state["pillar"]   = profile.data[0]["pillar"]
+                st.session_state["name"]     = profile.data[0]["full_name"]
 
                 st.success(f"Welcome back, {profile.data['full_name']}!")
                 st.switch_page("pages/1_Home.py")
