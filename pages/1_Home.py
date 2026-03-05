@@ -7,18 +7,18 @@ st.set_page_config(
     layout="wide"
 )
 
-# ── Auth guard - redirect to login if not logged in ──
+# ── Auth guard ──
 if "user" not in st.session_state:
     st.switch_page("app.py")
 
 # ── Pillar definitions ──
 PILLARS = [
-    {"id": "AM",  "name": "Autonomous Maintenance",     "icon": "🔧", "color": "#E67E22"},
-    {"id": "PM",  "name": "Planned Maintenance",         "icon": "📅", "color": "#3498DB"},
-    {"id": "QM",  "name": "Quality Maintenance",         "icon": "✅", "color": "#E74C3C"},
-    {"id": "HSE", "name": "Health, Safety & Environment","icon": "🦺", "color": "#27AE60"},
-    {"id": "FI",  "name": "Focused Improvement",         "icon": "💡", "color": "#9B59B6"},
-    {"id": "ET",  "name": "Education & Training",        "icon": "🎓", "color": "#1ABC9C"},
+    {"id": "AM",  "name": "Autonomous Maintenance",     "color": "#E67E22", "image": "https://sjcwzbftzpfylwdqiknh.supabase.co/storage/v1/object/public/asset/AM%20Pillar%20Image.jpg"},
+    {"id": "PM",  "name": "Planned Maintenance",         "color": "#3498DB", "image": "https://sjcwzbftzpfylwdqiknh.supabase.co/storage/v1/object/public/asset/PM%20Pillar%20Image.png"},
+    {"id": "QM",  "name": "Quality Maintenance",         "color": "#E74C3C", "image": "https://sjcwzbftzpfylwdqiknh.supabase.co/storage/v1/object/public/asset/QM%20Pillar%20Image.jpg"},
+    {"id": "HSE", "name": "Health, Safety & Environment","color": "#27AE60", "image": "https://sjcwzbftzpfylwdqiknh.supabase.co/storage/v1/object/public/asset/HSE%20Pillar%20Image.jpg"},
+    {"id": "FI",  "name": "Focused Improvement",         "color": "#9B59B6", "image": "https://sjcwzbftzpfylwdqiknh.supabase.co/storage/v1/object/public/asset/FI%20Pillar%20Image.jpg"},
+    {"id": "ET",  "name": "Education & Training",        "color": "#1ABC9C", "image": "https://sjcwzbftzpfylwdqiknh.supabase.co/storage/v1/object/public/asset/E%26T%20Pillar%20Image.png"},
 ]
 
 role   = st.session_state.get("role", "member")
@@ -43,20 +43,23 @@ st.markdown("### Select a Pillar")
 cols = st.columns(3)
 for i, p in enumerate(PILLARS):
     can_edit = (role == "plant_manager") or (role == "pillar_leader" and pillar == p["id"])
+    access_label = "✏️ Full Access" if can_edit else "👁️ View Only"
+    access_color = p["color"] if can_edit else "#888888"
 
     with cols[i % 3]:
-        
         st.markdown(f"""
             <div style="
                 border: 1px solid {p['color']}55;
                 border-radius: 10px;
-                padding: 20px;
+                overflow: hidden;
                 margin-bottom: 12px;
-                background: {p['color']}11;
+                background: #1a1a1a;
             ">
-                <div style="font-size: 28px">{p['icon']}</div>
-                <div style="font-weight: 700; font-size: 15px; margin: 8px 0 4px">{p['name']}</div>
-                <div style="font-size: 11px; color: {p['color']}; font-weight: 600"></div>
+                <img src="{p['image']}" style="width:100%; height:160px; object-fit:cover;">
+                <div style="padding: 14px 16px;">
+                    <div style="font-weight: 700; font-size: 15px; margin-bottom: 6px; color: #F0EBE3;">{p['name']}</div>
+                    <div style="font-size: 11px; color: {access_color}; font-weight: 600;">{access_label}</div>
+                </div>
             </div>
         """, unsafe_allow_html=True)
         if st.button(f"Open {p['id']}", key=f"btn_{p['id']}", use_container_width=True):
