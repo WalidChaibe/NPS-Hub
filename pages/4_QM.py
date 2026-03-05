@@ -331,6 +331,7 @@ with tab2:
                     ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False); ax.grid(False)
                     ax.legend(loc="upper center",bbox_to_anchor=(0.5,-0.22),ncol=4,frameon=False,fontsize=10)
                     fig.subplots_adjust(bottom=0.35); return fig
+                st.subheader("Quality Defects (CM vs YTD)")
                 show_fig(slide_4_quality_defect_cm_vs_ytd_fig(selected_year,selected_month,TOPN_QUALITY_DEFECT))
                 slides_for_pdf.append({"title":"FINAL - Quality Defects (CM vs YTD)","fig":slide_4_quality_defect_cm_vs_ytd_fig(selected_year,selected_month,TOPN_QUALITY_DEFECT)})
 
@@ -346,6 +347,7 @@ with tab2:
                     ax.set_ylim(0,max(1,counts.max())*1.15)
                     ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False); ax.grid(False)
                     plt.tight_layout(); return fig
+                st.subheader("Quality Defects (Current Month)")
                 show_fig(slide_5_quality_defect_current_month_fig(selected_year,selected_month,TOPN_QUALITY_CM))
                 slides_for_pdf.append({"title":"FINAL - Quality Defects (Current Month)","fig":slide_5_quality_defect_current_month_fig(selected_year,selected_month,TOPN_QUALITY_CM)})
 
@@ -383,6 +385,7 @@ with tab2:
                     ax.legend(loc="upper center",bbox_to_anchor=(0.5,-0.22),ncol=4,frameon=False,fontsize=10)
                     fig.subplots_adjust(bottom=0.35); return fig
                 try:
+                    st.subheader("Quality Cost (Credit Note)")
                     show_fig(slide_6_quality_cost_cm_vs_ytd_fig(selected_year,selected_month,TOPN_COST_DEFECT))
                     slides_for_pdf.append({"title":"FINAL - Quality Cost (Credit Note)","fig":slide_6_quality_cost_cm_vs_ytd_fig(selected_year,selected_month,TOPN_COST_DEFECT)})
                 except Exception as e:
@@ -407,6 +410,7 @@ with tab2:
                     ax.legend(loc="upper center",bbox_to_anchor=(0.5,-0.08),ncol=3,frameon=False)
                     ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False); ax.grid(False)
                     plt.tight_layout(rect=[0,0.05,1,1]); return fig
+                st.subheader("Valid Service Count")
                 show_fig(slide_s1_valid_service_count_fig(selected_year,selected_month))
                 slides_for_pdf.append({"title":"FINAL - Valid Service Count","fig":slide_s1_valid_service_count_fig(selected_year,selected_month)})
 
@@ -434,6 +438,7 @@ with tab2:
                     ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False); ax.grid(False)
                     ax.legend(loc="upper center",bbox_to_anchor=(0.5,-0.22),ncol=4,frameon=False,fontsize=10)
                     fig.subplots_adjust(bottom=0.35); return fig
+                st.subheader("Service Reasons (CM vs YTD)")
                 show_fig(slide_s2_service_reason_cm_vs_ytd_fig(selected_year,selected_month,TOPN_SERVICE_REASON))
                 slides_for_pdf.append({"title":"FINAL - Service Reasons (CM vs YTD)","fig":slide_s2_service_reason_cm_vs_ytd_fig(selected_year,selected_month,TOPN_SERVICE_REASON)})
 
@@ -449,6 +454,7 @@ with tab2:
                     ax.set_ylim(0,max(1,counts.max())*1.15)
                     ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False); ax.grid(False)
                     plt.tight_layout(); return fig
+                st.subheader("Service Reasons (Current Month)")
                 show_fig(slide_s3_service_reason_current_month_fig(selected_year,selected_month,TOPN_SERVICE_CM))
                 slides_for_pdf.append({"title":"FINAL - Service Reasons (Current Month)","fig":slide_s3_service_reason_current_month_fig(selected_year,selected_month,TOPN_SERVICE_CM)})
 
