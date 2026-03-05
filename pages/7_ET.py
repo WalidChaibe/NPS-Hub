@@ -590,7 +590,7 @@ with tab5:
                 with col1:
                     selected_act = st.selectbox("Select action", list(act_map.keys()))
                 with col2:
-                    new_act_status = st.selectbox("Status", ["Open", "In Progress", "Done"])
+                    new_act_status = st.selectbox("Status", ["Open", "In Progress", "Done"], key="update_act_status")
                 if st.button("✅ Update Action Status"):
                     supabase.table("et_action_plans").update({"status": new_act_status}).eq("id", act_map[selected_act]).execute()
                     st.success("Status updated!")
@@ -615,7 +615,7 @@ with tab5:
         action_text = st.text_input("Action")
         owner_text  = st.text_input("Owner")
         due_date    = st.date_input("Due Date")
-        status_ap   = st.selectbox("Status", ["Open", "In Progress", "Done"])
+        status_ap   = st.selectbox("Status", ["Open", "In Progress", "Done"], key="new_act_status")
         notes_ap    = st.text_area("Notes", placeholder="Additional context...")
 
         if st.button("➕ Add Action Plan", type="primary"):
