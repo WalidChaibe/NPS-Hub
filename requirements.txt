@@ -7,3 +7,4 @@ matplotlib
 seaborn
 fpdf2
 numpy
+reportlab
