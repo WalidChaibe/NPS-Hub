@@ -332,12 +332,15 @@ with tab2:
                         )
 
                         # Save to Supabase
-                        supabase.table("et_analysis_runs").insert({
-                            "run_by": name,
-                            "total_failures": total_failures,
-                            "notes": notes or "",
-                        }).execute()
-
+                        try:
+                            supabase.table("et_analysis_runs").insert({
+                                "run_by": name,
+                                "total_failures": total_failures,
+                                "notes": notes or "",
+                            }).execute()
+                            st.success("✅ Run saved to history!")
+                        except Exception as save_err:
+                            st.error(f"Failed to save to history: {str(save_err)}")
                     else:
                         st.success("🎉 No failures detected — all employees meet requirements!")
                         supabase.table("et_analysis_runs").insert({
