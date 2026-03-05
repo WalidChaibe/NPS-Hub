@@ -44,10 +44,7 @@ with col2:
                 })
 
                 # Fetch the user's profile (role + pillar)
-                profile = supabase.table("profiles") \\
-                    .select("*") \\
-                    .eq("id", res.user.id) \\
-                    .execute()
+                profile = supabase.table("profiles").select("*").eq("id", res.user.id).execute()
 
                 if not profile.data:
                     st.error(f"Profile not found for UID: {res.user.id}")
