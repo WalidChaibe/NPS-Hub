@@ -206,6 +206,8 @@ with tab2:
                 TOPN_NCR_DEFECT     = topn(c6, "NCR Defects", 20, 50)
                 TOPN_CORRELATION    = topn(c7, "NCR vs CRM", 12)
                 TOPN_CUSTOMER       = topn(c8, "Top Customers", 5, 20)
+                c9, c10 = st.columns([1,7])
+                TOPN_RC_REASONS     = topn(c9, "Root Cause Top Reasons", 4, 15)
 
             run = st.button("🔄 Generate Charts", type="primary", key="qm_run")
 
@@ -512,6 +514,84 @@ with tab2:
                 show_fig(slide_issued_quality_reason_current_month_fig(selected_year,selected_month,TOPN_QUALITY_CM))
                 slides_for_pdf.append({"title":"ISSUED - Quality Reasons (CM)","fig":slide_issued_quality_reason_current_month_fig(selected_year,selected_month,TOPN_QUALITY_CM)})
 
+                # ── Quality Root Cause Drill-Down ──
+                st.subheader("Quality — Root Cause by Reason (Current Month)")
+                def slide_rootcause_fig(category, selected_year, selected_month, top_n_reasons=4):
+                    base = df_issued[
+                        (df_issued["Is_Valid"] == True) &
+                        (df_issued["Complaint_Category"] == category)
+                    ].copy()
+                    # Auto-detect root cause column
+                    rc_col = next((c for c in base.columns if "root" in c.lower() and "cause" in c.lower()), None)
+                    if rc_col is None:
+                        rc_col = next((c for c in base.columns if "root" in c.lower()), None)
+                    if rc_col is None:
+                        rc_col = next((c for c in base.columns if "cause" in c.lower()), None)
+                    if rc_col is None:
+                        return None, f"No root cause column found. Columns: {list(base.columns)}"
+                    base["_Reason"] = base["Reason"].astype(str).str.strip()
+                    base["_RC"]     = base[rc_col].astype(str).str.strip().replace("nan", "Not Specified")
+                    cm = base[(base["Year"] == selected_year) & (base["Month"] == selected_month)]
+                    if cm.empty:
+                        return None, "No data for selected period."
+                    # Top N reasons by count
+                    top_reasons = cm["_Reason"].value_counts().head(top_n_reasons).index.tolist()
+                    n = len(top_reasons)
+                    if n == 0:
+                        return None, "No reasons found."
+                    # Figure: one subplot per reason, horizontal bars for ALL root causes
+                    row_heights = []
+                    for r in top_reasons:
+                        n_rc = cm[cm["_Reason"] == r]["_RC"].nunique()
+                        row_heights.append(max(1.8, n_rc * 0.45 + 0.8))
+                    fig_h = sum(row_heights) + 0.5
+                    fig, axes = plt.subplots(n, 1, figsize=(13.33, fig_h), dpi=300,
+                                             gridspec_kw={"height_ratios": row_heights})
+                    if n == 1:
+                        axes = [axes]
+                    palette = ["#006394","#C1A02E","#0F68B9","#D8C37D","#B7910E",
+                               "#4A90D9","#E8A838","#2E6DA4","#8EC6E6","#F5D07A",
+                               "#1A4F72","#E09020","#5BA3C9","#C8A830","#3D7EA6"]
+                    for ax, reason in zip(axes, top_reasons):
+                        subset   = cm[cm["_Reason"] == reason]
+                        rc_all   = subset["_RC"].value_counts()  # ALL root causes, no limit
+                        reason_n = len(subset)
+                        y_pos    = np.arange(len(rc_all))
+                        bar_cols = [palette[i % len(palette)] for i in range(len(rc_all))]
+                        bars = ax.barh(y_pos, rc_all.values, color=bar_cols, height=0.55, edgecolor="white")
+                        # Value labels + % of this reason
+                        for bar, val in zip(bars, rc_all.values):
+                            pct = val / reason_n * 100
+                            ax.text(bar.get_width() + rc_all.max() * 0.02,
+                                    bar.get_y() + bar.get_height()/2,
+                                    f"{int(val)}  ({pct:.0f}%)",
+                                    va="center", ha="left", fontsize=9, color="#000000")
+                        ax.set_yticks(y_pos)
+                        ax.set_yticklabels([fill(str(r), 50) for r in rc_all.index], fontsize=9)
+                        ax.invert_yaxis()
+                        ax.set_xlim(0, rc_all.max() * 1.35)
+                        ax.set_title(
+                            f"  {fill(reason, 80)}   [n={reason_n}]",
+                            loc="left", fontsize=10, fontweight="bold", color="#333333", pad=5
+                        )
+                        ax.spines["top"].set_visible(False)
+                        ax.spines["right"].set_visible(False)
+                        ax.spines["left"].set_visible(False)
+                        ax.tick_params(axis="x", labelsize=8)
+                        ax.set_xlabel("Count", fontsize=8)
+                        ax.grid(False)
+                        ax.axhline(-0.6, color="#EEEEEE", linewidth=0.8)
+                    plt.tight_layout(h_pad=1.5)
+                    return fig, None
+
+                fig_rc_q, err_rc_q = slide_rootcause_fig("Quality", selected_year, selected_month, TOPN_RC_REASONS or 4)
+                if err_rc_q:
+                    st.warning(f"Quality root cause: {err_rc_q}")
+                else:
+                    show_fig(fig_rc_q)
+                    slides_for_pdf.append({"title": "ISSUED - Quality Root Cause by Reason",
+                        "fig": slide_rootcause_fig("Quality", selected_year, selected_month, TOPN_RC_REASONS or 4)[0]})
+
                 st.subheader("Service (Current Month)")
                 def slide_issued_service_reason_current_month_fig(selected_year,selected_month,top_n=10):
                     base=df_issued[(df_issued["Is_Valid"]==True)&(df_issued["Complaint_Category"]=="Service")].copy()
@@ -527,6 +607,16 @@ with tab2:
                     plt.tight_layout(); return fig
                 show_fig(slide_issued_service_reason_current_month_fig(selected_year,selected_month,TOPN_SERVICE_CM))
                 slides_for_pdf.append({"title":"ISSUED - Service Reasons (CM)","fig":slide_issued_service_reason_current_month_fig(selected_year,selected_month,TOPN_SERVICE_CM)})
+
+                # ── Service Root Cause Drill-Down ──
+                st.subheader("Service — Root Cause by Reason (Current Month)")
+                fig_rc_s, err_rc_s = slide_rootcause_fig("Service", selected_year, selected_month, TOPN_RC_REASONS or 4)
+                if err_rc_s:
+                    st.warning(f"Service root cause: {err_rc_s}")
+                else:
+                    show_fig(fig_rc_s)
+                    slides_for_pdf.append({"title": "ISSUED - Service Root Cause by Reason",
+                        "fig": slide_rootcause_fig("Service", selected_year, selected_month, TOPN_RC_REASONS or 4)[0]})
 
                 st.divider()
 
