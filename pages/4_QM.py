@@ -771,6 +771,146 @@ with tab2:
                 else:
                     st.info("Enter FG Invoiced values above to generate CC Ratio charts.")
 
+                st.divider()
+
+                # ── COST OF QUALITY ──
+                st.header("Cost of Quality (COQ)")
+
+                REWORK_FIXED = 8250.0
+
+                # Load COQ data from Supabase
+                try:
+                    coq_rows = supabase.table("qm_coq_data").select("*").execute()
+                    coq_data = {(r["year"], r["month"]): r for r in (coq_rows.data or [])}
+                except Exception:
+                    coq_data = {}
+
+                # CN @Cost from df_final (Valid=True, Quality, Credit Note)
+                def get_cn_cost(year, month):
+                    try:
+                        decision_col = next((c for c in df_final.columns if "decision" in c.lower()), None)
+                        if not decision_col: return 0.0
+                        base = df_final[
+                            (df_final["Is_Valid"] == True) &
+                            (df_final["Complaint_Category"] == "Quality") &
+                            (df_final["Year"] == year) &
+                            (df_final["Month"] == month)
+                        ].copy()
+                        base[decision_col] = base[decision_col].astype(str).str.strip().str.lower()
+                        base = base[base[decision_col] == "credit note"]
+                        base["Cost Amount"] = pd.to_numeric(base["Cost Amount"], errors="coerce").fillna(0)
+                        return float(base["Cost Amount"].sum())
+                    except Exception:
+                        return 0.0
+
+                # Check missing months for both years in range
+                prev_year_coq = selected_year - 1
+                coq_months_needed = [(prev_year_coq, m) for m in months_range] + [(selected_year, m) for m in months_range]
+                missing_coq = [(y, m) for y, m in coq_months_needed if (y, m) not in coq_data]
+
+                if missing_coq:
+                    st.warning(f"⚠️ COQ data missing for {len(missing_coq)} month(s). Please fill in:")
+                    with st.form("qm_coq_form"):
+                        coq_inputs = {}
+                        for y, m in missing_coq:
+                            st.markdown(f"**{MONTH_LABELS[m-1]}-{str(y)[-2:]}**")
+                            c1, c2 = st.columns(2)
+                            coq_inputs[(y,m,"shredding")] = c1.number_input(f"Shredding List", min_value=0.0, value=0.0, step=100.0, key=f"coq_shr_{y}_{m}")
+                            coq_inputs[(y,m,"ncr")]       = c2.number_input(f"NCR Shredding",  min_value=0.0, value=0.0, step=100.0, key=f"coq_ncr_{y}_{m}")
+                        if st.form_submit_button("💾 Save COQ Data", type="primary"):
+                            for y, m in missing_coq:
+                                try:
+                                    supabase.table("qm_coq_data").upsert({
+                                        "year": y, "month": m,
+                                        "shredding_list": coq_inputs[(y,m,"shredding")],
+                                        "ncr_shredding":  coq_inputs[(y,m,"ncr")],
+                                        "updated_by": name
+                                    }, on_conflict="year,month").execute()
+                                except Exception as e:
+                                    st.error(f"Error saving {MONTH_LABELS[m-1]}-{y}: {e}")
+                            st.success("✅ Saved!"); st.rerun()
+
+                # Build COQ arrays for chart
+                def get_coq_month(year, month):
+                    row = coq_data.get((year, month), {})
+                    shred  = float(row.get("shredding_list", 0) or 0)
+                    ncr    = float(row.get("ncr_shredding",  0) or 0)
+                    rework = REWORK_FIXED
+                    cn     = get_cn_cost(year, month)
+                    total  = shred + ncr + rework + cn
+                    return shred, ncr, rework, cn, total
+
+                # Check we have data for all needed months
+                coq_ready = all((y,m) in coq_data for y,m in coq_months_needed)
+
+                if coq_ready:
+                    METRIC_LABELS = ["Shredding List", "NCR Shredding", "Rework Labor", "CN @Cost", "MCOQ Total"]
+                    COLOR_CM_PREV  = "#D8C37D"
+                    COLOR_CM_SEL   = "#0F68B9"
+                    COLOR_YTD_PREV = "#B7910E"
+                    COLOR_YTD_SEL  = "#006394"
+
+                    def fmt_sar(v):
+                        if v >= 1_000_000: return f"SAR {v/1_000_000:.1f}M"
+                        if v >= 1000:      return f"SAR {int(v/1000)}K"
+                        return f"SAR {int(v)}"
+
+                    def slide_coq_breakdown_fig(selected_year, selected_month):
+                        prev_year = selected_year - 1
+
+                        # CM values
+                        cm_prev_vals = list(get_coq_month(prev_year, selected_month))
+                        cm_sel_vals  = list(get_coq_month(selected_year, selected_month))
+
+                        # YTD values
+                        ytd_prev = [0.0]*5
+                        ytd_sel  = [0.0]*5
+                        for m in months_range:
+                            pp = list(get_coq_month(prev_year, m))
+                            ss = list(get_coq_month(selected_year, m))
+                            for i in range(5):
+                                ytd_prev[i] += pp[i]
+                                ytd_sel[i]  += ss[i]
+
+                        cm_prev_lbl  = pd.to_datetime(f"{prev_year}-{selected_month:02d}-01").strftime("%b-%y")
+                        cm_sel_lbl   = pd.to_datetime(f"{selected_year}-{selected_month:02d}-01").strftime("%b-%y")
+
+                        n_groups = 5
+                        x = np.arange(n_groups)
+                        w = 0.18
+
+                        fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=300)
+
+                        b1 = ax.bar(x - 1.5*w, cm_prev_vals,  w, color=COLOR_CM_PREV,  label=f"CM {cm_prev_lbl}")
+                        b2 = ax.bar(x - 0.5*w, cm_sel_vals,   w, color=COLOR_CM_SEL,   label=f"CM {cm_sel_lbl}")
+                        b3 = ax.bar(x + 0.5*w, ytd_prev,      w, color=COLOR_YTD_PREV, label=f"YTD {prev_year}")
+                        b4 = ax.bar(x + 1.5*w, ytd_sel,       w, color=COLOR_YTD_SEL,  label=f"YTD {selected_year}")
+
+                        for bars_g in [b1, b2, b3, b4]:
+                            for bar in bars_g:
+                                h = bar.get_height()
+                                if h > 0:
+                                    ax.text(bar.get_x() + bar.get_width()/2, h + ax.get_ylim()[1]*0.01,
+                                            fmt_sar(h), ha="center", va="bottom", fontsize=8,
+                                            rotation=90, color="#000000", clip_on=False)
+
+                        ax.set_xticks(x)
+                        ax.set_xticklabels(METRIC_LABELS, fontsize=11)
+                        ax.set_ylabel("Cost (SAR)")
+                        ax.spines["top"].set_visible(False)
+                        ax.spines["right"].set_visible(False)
+                        ax.grid(False)
+                        ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.08), ncol=4, frameon=False, fontsize=10)
+                        fig.subplots_adjust(bottom=0.20)
+                        return fig
+
+                    st.subheader("COQ Breakdown — CM vs YTD")
+                    show_fig(slide_coq_breakdown_fig(selected_year, selected_month))
+                    slides_for_pdf.append({"title": "Cost of Quality — Breakdown", "fig": slide_coq_breakdown_fig(selected_year, selected_month)})
+
+                else:
+                    st.info("Fill in missing COQ data above to generate COQ charts.")
+
                 # PDF Export
                 st.divider()
                 st.header("Export")
