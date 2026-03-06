@@ -690,7 +690,8 @@ with tab2:
                         all_fg      = fg_vals   + [ytd_fg]
                         all_ratios  = ratios    + [ytd_ratio]
 
-                        color_cc = "#006394" if category_filter == "Quality" else "#C1A02E"
+                        # Both graphs: CC = blue, FG = gold, all text black
+                        color_cc = "#006394"
                         color_fg = "#D8C37D"
                         n = len(all_labels)
                         x = np.arange(n)
@@ -702,22 +703,22 @@ with tab2:
                         bars_cc = ax.bar(x - w/2, all_cc, width=w, color=color_cc, label="CC Count", alpha=0.9)
                         bars_fg = ax.bar(x + w/2, all_fg, width=w, color=color_fg, label="FG Invoiced", alpha=0.9)
 
-                        # CC count labels above CC bars
+                        # CC count labels above CC bars — black
                         for bar, val in zip(bars_cc, all_cc):
                             ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + max(all_fg)*0.01,
                                     f"{int(val)}", ha="center", va="bottom", fontsize=9,
-                                    color=color_cc, fontweight="bold")
+                                    color="#000000", fontweight="bold")
 
-                        # FG labels above FG bars
+                        # FG labels above FG bars — black
                         for bar, val in zip(bars_fg, all_fg):
                             ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + max(all_fg)*0.01,
-                                    f"{int(val)}", ha="center", va="bottom", fontsize=9, color="#666666")
+                                    f"{int(val)}", ha="center", va="bottom", fontsize=9, color="#000000")
 
                         # ── Secondary axis for ratio line ──
                         ax2 = ax.twinx()
 
                         # Plot ratio line on secondary axis (monthly only, not YTD)
-                        ax2.plot(x[:-1], ratios, color="#E63946", linewidth=2.5,
+                        ax2.plot(x[:-1], ratios, color="#C1A02E", linewidth=2.5,
                                  marker="o", markersize=6, label="Ratio %", zorder=5)
 
                         # Trendline on secondary axis
@@ -727,19 +728,19 @@ with tab2:
                             ax2.plot(x[:-1], np.polyval(coeff, xf), linestyle="--",
                                      linewidth=1.5, color="#999999", label="Trend", zorder=4)
 
-                        # Ratio % labels above each point
+                        # Ratio % labels above each point — black
                         for i, ratio in enumerate(ratios):
                             ax2.text(x[i], ratio + max(ratios)*0.05, f"{ratio:.2f}%",
                                      ha="center", va="bottom", fontsize=10,
-                                     color="#E63946", fontweight="bold")
+                                     color="#000000", fontweight="bold")
 
-                        # YTD ratio label separately (no dot on line)
+                        # YTD ratio label — black
                         ax2.text(x[-1], ytd_ratio + max(ratios)*0.05, f"{ytd_ratio:.2f}%",
                                  ha="center", va="bottom", fontsize=10,
-                                 color="#333333", fontweight="bold")
+                                 color="#000000", fontweight="bold")
 
-                        ax2.set_ylabel("CC Ratio (%)", color="#E63946")
-                        ax2.tick_params(axis="y", labelcolor="#E63946")
+                        ax2.set_ylabel("CC Ratio (%)", color="#000000")
+                        ax2.tick_params(axis="y", labelcolor="#000000")
                         ax2.set_ylim(0, max(ratios + [ytd_ratio, 1]) * 1.5)
                         ax2.spines["top"].set_visible(False)
 
