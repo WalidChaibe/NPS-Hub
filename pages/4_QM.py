@@ -21,8 +21,101 @@ from qm_pipeline import (
     FINAL_APPROVAL_COL, CREATION_DATETIME_COL,
 )
 from utils.supabase_client import get_supabase
-from utils.notifications import create_notification, check_action_plan_notifications
-from utils.bell import render_bell
+# ── Notifications (inlined) ──
+def _get_unread_count(sb, user_id):
+    try:
+        res = sb.table("notifications").select("id", count="exact").eq("user_id", user_id).eq("is_read", False).execute()
+        return res.count or 0
+    except Exception: return 0
+
+def _get_notifications(sb, user_id, limit=20):
+    try:
+        res = sb.table("notifications").select("*").eq("user_id", user_id).order("created_at", desc=True).limit(limit).execute()
+        return res.data or []
+    except Exception: return []
+
+def _mark_all_read(sb, user_id):
+    try: sb.table("notifications").update({"is_read": True}).eq("user_id", user_id).eq("is_read", False).execute()
+    except Exception: pass
+
+def _mark_one_read(sb, notif_id):
+    try: sb.table("notifications").update({"is_read": True}).eq("id", notif_id).execute()
+    except Exception: pass
+
+def create_notification(sb, user_id, title, message, notif_type="info", action_plan_id=None):
+    try:
+        payload = {"user_id": user_id, "title": title, "message": message, "type": notif_type, "is_read": False}
+        if action_plan_id: payload["action_plan_id"] = action_plan_id
+        sb.table("notifications").insert(payload).execute()
+    except Exception: pass
+
+def check_action_plan_notifications(sb):
+    from datetime import datetime as _dt
+    today = _dt.now().date()
+    try:
+        res = sb.table("qm_action_plans").select("*").in_("status", ["Open","In Progress"]).execute()
+        for plan in (res.data or []):
+            due_str = plan.get("due_date",""); owner = plan.get("owner","")
+            if not due_str or not owner: continue
+            try: due_date = _dt.strptime(due_str[:10], "%Y-%m-%d").date()
+            except Exception: continue
+            days_left = (due_date - today).days
+            try:
+                ur = sb.table("profiles").select("id").eq("full_name", owner).execute()
+                if not ur.data: continue
+                uid = ur.data[0]["id"]
+            except Exception: continue
+            try:
+                today_start = _dt.combine(today, _dt.min.time()).isoformat()
+                existing = sb.table("notifications").select("id").eq("user_id", uid).eq("action_plan_id", plan["id"]).gte("created_at", today_start).execute()
+                if existing.data: continue
+            except Exception: pass
+            if days_left < 0:
+                create_notification(sb, uid, "🔴 Overdue — QM Action Plan",
+                    f'"{plan.get("action","")[:60]}" was due {due_date.strftime("%d %b %Y")} and is still open.',
+                    "overdue", plan["id"])
+            elif days_left <= 2:
+                create_notification(sb, uid, "🟡 Due Soon — QM Action Plan",
+                    f'"{plan.get("action","")[:60]}" due {due_date.strftime("%d %b %Y")} ({days_left} day{"s" if days_left!=1 else ""} left).',
+                    "warning", plan["id"])
+    except Exception: pass
+
+def render_bell(sb, user_id):
+    from datetime import datetime as _dt
+    count = _get_unread_count(sb, user_id)
+    label = f"🔔 {count}" if count > 0 else "🔔"
+    with st.popover(label, use_container_width=False):
+        st.markdown("### Notifications")
+        notifs = _get_notifications(sb, user_id)
+        if not notifs:
+            st.info("You are all caught up!")
+        else:
+            c1, c2 = st.columns([3,1])
+            c1.caption(f"{count} unread" if count else "All read")
+            if count > 0 and c2.button("Mark all read", key="bell_markall"):
+                _mark_all_read(sb, user_id); st.rerun()
+            st.divider()
+            icons = {"overdue":"🔴","warning":"🟡","info":"🔵","success":"🟢"}
+            for n in notifs:
+                icon = icons.get(n.get("type","info"),"🔵")
+                is_read = n.get("is_read", False)
+                try: ts = _dt.fromisoformat(n["created_at"].replace("Z","")).strftime("%d %b %H:%M")
+                except Exception: ts = ""
+                border = "#555" if is_read else "#C1A02E"
+                bg     = "#2a2a2a" if is_read else "#1a2a3a"
+                op     = "0.5" if is_read else "1"
+                fw     = "normal" if is_read else "bold"
+                st.markdown(
+                    f'<div style="padding:10px;margin-bottom:8px;border-radius:8px;' +
+                    f'background:{bg};opacity:{op};border-left:3px solid {border};">' +
+                    f'<div style="font-weight:{fw};font-size:13px;">{icon} {n["title"]}</div>' +
+                    f'<div style="font-size:11px;color:#aaa;margin-top:3px;">{n["message"]}</div>' +
+                    f'<div style="font-size:10px;color:#666;margin-top:4px;">{ts}</div></div>',
+                    unsafe_allow_html=True
+                )
+                if not is_read:
+                    if st.button("Mark read", key=f"bell_read_{n['id']}"):
+                        _mark_one_read(sb, n["id"]); st.rerun()
 
 st.set_page_config(page_title="QM Pillar", page_icon="✅", layout="wide")
 
