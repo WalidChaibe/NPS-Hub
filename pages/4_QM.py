@@ -21,6 +21,8 @@ from qm_pipeline import (
     FINAL_APPROVAL_COL, CREATION_DATETIME_COL,
 )
 from utils.supabase_client import get_supabase
+from utils.notifications import create_notification, check_action_plan_notifications
+from utils.bell import render_bell
 
 st.set_page_config(page_title="QM Pillar", page_icon="✅", layout="wide")
 
@@ -33,11 +35,18 @@ pillar   = st.session_state.get("pillar", "ALL")
 name     = st.session_state.get("name", "User")
 can_edit = (role == "plant_manager") or (role == "pillar_leader" and pillar == "QM")
 
-col1, col2 = st.columns([5, 1])
+# Check action plan notifications once per session
+if "notif_checked" not in st.session_state:
+    check_action_plan_notifications(supabase)
+    st.session_state["notif_checked"] = True
+
+col1, col2, col3 = st.columns([5, 1, 1])
 with col1:
     st.markdown("# ✅ Quality Maintenance")
     st.markdown(f"Logged in as **{name}** · `{role}` · {'✏️ Full Access' if can_edit else '👁️ View Only'}")
 with col2:
+    render_bell(supabase, st.session_state["user"].id)
+with col3:
     if st.button("🏠 Home", use_container_width=True):
         st.switch_page("pages/1_Home.py")
 
@@ -1150,5 +1159,17 @@ with tab4:
             else:
                 try:
                     supabase.table("qm_action_plans").insert({"action":act_text,"owner":own_text,"due_date":str(due_d),"status":stat_ap,"notes":notes_ap}).execute()
+                    # Notify the assigned owner
+                    try:
+                        owner_res = supabase.table("profiles").select("id").eq("full_name", own_text).execute()
+                        if owner_res.data:
+                            create_notification(
+                                supabase, owner_res.data[0]["id"],
+                                title="📋 New Action Plan Assigned — QM",
+                                message=f'"{act_text[:60]}" assigned to you. Due: {due_d.strftime("%d %b %Y")}.',
+                                notif_type="info"
+                            )
+                    except Exception:
+                        pass
                     st.success("✅ Action plan added!"); st.rerun()
                 except Exception as e: st.error(f"Error: {str(e)}")
