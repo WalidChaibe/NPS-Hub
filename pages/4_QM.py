@@ -107,10 +107,11 @@ def render_bell(sb, user_id):
                 fw     = "normal" if is_read else "bold"
                 st.markdown(
                     f'<div style="padding:10px;margin-bottom:8px;border-radius:8px;' +
-                    f'background:{bg};opacity:{op};border-left:3px solid {border};">' +
-                    f'<div style="font-weight:{fw};font-size:13px;">{icon} {n["title"]}</div>' +
-                    f'<div style="font-size:11px;color:#aaa;margin-top:3px;">{n["message"]}</div>' +
-                    f'<div style="font-size:10px;color:#666;margin-top:4px;">{ts}</div></div>',
+                    f'background:{"#f5f5f5" if is_read else "#ffffff"};opacity:{op};' +
+                    f'border-left:4px solid {border};box-shadow:0 1px 3px rgba(0,0,0,0.1);">' +
+                    f'<div style="font-weight:{fw};font-size:13px;color:#111111;">{icon} {n["title"]}</div>' +
+                    f'<div style="font-size:11px;color:#444444;margin-top:3px;">{n["message"]}</div>' +
+                    f'<div style="font-size:10px;color:#888888;margin-top:4px;">{ts}</div></div>',
                     unsafe_allow_html=True
                 )
                 if not is_read:
@@ -141,9 +142,7 @@ with col1:
     st.markdown("# ✅ Quality Maintenance")
     st.markdown(f"Logged in as **{name}** · `{role}` · {'✏️ Full Access' if can_edit else '👁️ View Only'}")
 with col2:
-    _u = st.session_state["user"]
-    _uid = _u.id if hasattr(_u, "id") else (_u.get("id") if isinstance(_u, dict) else str(_u))
-    render_bell(supabase, _uid)
+    render_bell(supabase, st.session_state["user"])
 with col3:
     if st.button("🏠 Home", use_container_width=True):
         st.switch_page("pages/1_Home.py")
