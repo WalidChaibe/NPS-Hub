@@ -663,12 +663,14 @@ with tab2:
                 months_with_fg = [m for m in months_range if fg_data.get((selected_year, m)) is not None]
 
                 if months_with_fg:
-                    def slide_cc_ratio_fig(selected_year, selected_month, category_filter=None, title_label="Total CC Ratio"):
-                        base = df[df["Is_Valid"] == True].copy()
+                    def slide_cc_ratio_fig(selected_year, category_filter=None, title_label="Total CC Ratio"):
+                        # Source: ISSUED file, Is_Valid == True
+                        base = df_issued[df_issued["Is_Valid"] == True].copy()
                         if category_filter:
                             base = base[base["Complaint_Category"] == category_filter]
                         else:
                             base = base[base["Complaint_Category"].isin(["Quality", "Service"])]
+
                         ratios, cc_counts, fg_vals, labels = [], [], [], []
                         for m in months_with_fg:
                             cc = int(base[(base["Year"] == selected_year) & (base["Month"] == m)].shape[0])
@@ -678,37 +680,79 @@ with tab2:
                             cc_counts.append(cc)
                             fg_vals.append(fg)
                             labels.append(MONTH_LABELS[m-1])
-                        x = np.arange(len(labels))
-                        color = "#006394" if category_filter == "Quality" else "#C1A02E"
+
+                        # YTD totals
+                        ytd_cc  = sum(cc_counts)
+                        ytd_fg  = sum(fg_vals)
+                        ytd_ratio = (ytd_cc / ytd_fg * 100) if ytd_fg > 0 else 0.0
+                        all_labels  = labels + ["YTD"]
+                        all_cc      = cc_counts + [ytd_cc]
+                        all_fg      = fg_vals   + [ytd_fg]
+                        all_ratios  = ratios    + [ytd_ratio]
+
+                        color_cc = "#006394" if category_filter == "Quality" else "#C1A02E"
+                        color_fg = "#D8C37D"
+                        n = len(all_labels)
+                        x = np.arange(n)
+                        w = 0.35
+
                         fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=300)
-                        bars = ax.bar(x, ratios, color=color, width=0.55, alpha=0.85, label=title_label)
-                        for bar, ratio, cc, fg in zip(bars, ratios, cc_counts, fg_vals):
-                            ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.05,
-                                    f"{ratio:.2f}%", ha="center", va="bottom", fontsize=10,
+
+                        # Side-by-side bars: CC and FG
+                        bars_cc = ax.bar(x - w/2, all_cc, width=w, color=color_cc, label="CC Count", alpha=0.9)
+                        bars_fg = ax.bar(x + w/2, all_fg, width=w, color=color_fg, label="FG Invoiced", alpha=0.9)
+
+                        # CC count labels above CC bars
+                        for bar, val in zip(bars_cc, all_cc):
+                            ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + max(all_fg)*0.01,
+                                    f"{int(val)}", ha="center", va="bottom", fontsize=9,
+                                    color=color_cc, fontweight="bold")
+
+                        # FG labels above FG bars
+                        for bar, val in zip(bars_fg, all_fg):
+                            ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + max(all_fg)*0.01,
+                                    f"{int(val)}", ha="center", va="bottom", fontsize=9, color="#666666")
+
+                        # Ratio % labels above each month group (centered between the two bars)
+                        ratio_y = max(all_fg) * 1.10
+                        for i, ratio in enumerate(all_ratios):
+                            ax.text(x[i], ratio_y, f"{ratio:.2f}%",
+                                    ha="center", va="bottom", fontsize=10,
                                     color="#333333", fontweight="bold")
+
+                        # Connect ratio labels with a line (monthly only, exclude YTD)
+                        ax.plot(x[:-1], [max(all_fg)*1.10]*len(months_with_fg),
+                                alpha=0)  # invisible anchor; draw real line below
+                        ratio_line_y = [ratio_y + r * max(all_fg) * 0.003 for r in ratios]
+                        ax.plot(x[:-1], ratio_line_y, color="#E63946", linewidth=2,
+                                marker="o", markersize=5, label="Ratio % (monthly)", zorder=5)
+
+                        # Trendline through monthly ratios only
                         if len(ratios) >= 2:
                             xf = np.arange(len(ratios), dtype=float)
                             coeff = np.polyfit(xf, ratios, 1)
-                            ax.plot(x, np.polyval(coeff, xf), linestyle="--", linewidth=2,
-                                    color="#D8C37D" if category_filter == "Quality" else "#0F68B9", label="Trend")
+                            trend_y = [np.polyval(coeff, xi) * max(all_fg) * 0.003 + ratio_y for xi in xf]
+                            ax.plot(x[:-1], trend_y, linestyle="--", linewidth=1.5,
+                                    color="#999999", label="Trend", zorder=4)
+
                         ax.set_xticks(x)
-                        ax.set_xticklabels(labels, fontsize=11)
-                        ax.set_ylabel("CC Ratio (%)")
-                        ax.set_ylim(0, max(ratios + [1]) * 1.25)
+                        ax.set_xticklabels(all_labels, fontsize=11)
+                        ax.set_ylabel("Count")
+                        ax.set_ylim(0, max(all_fg) * 1.25)
                         ax.spines["top"].set_visible(False)
                         ax.spines["right"].set_visible(False)
                         ax.grid(False)
-                        ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.10), ncol=2, frameon=False, fontsize=11)
-                        plt.tight_layout(rect=[0, 0.08, 1, 1])
+                        ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.08), ncol=4, frameon=False, fontsize=10)
+                        plt.tight_layout(rect=[0, 0.05, 1, 1])
                         return fig
 
                     st.subheader("Total Customer Complaints Ratio (Quality + Service)")
-                    show_fig(slide_cc_ratio_fig(selected_year, selected_month, category_filter=None, title_label="Total CC Ratio"))
-                    slides_for_pdf.append({"title": "Total CC Ratio", "fig": slide_cc_ratio_fig(selected_year, selected_month, category_filter=None, title_label="Total CC Ratio")})
+                    show_fig(slide_cc_ratio_fig(selected_year, category_filter=None, title_label="Total CC Ratio"))
+                    slides_for_pdf.append({"title": "Total CC Ratio", "fig": slide_cc_ratio_fig(selected_year, category_filter=None, title_label="Total CC Ratio")})
 
                     st.subheader("Quality Customer Complaints Ratio")
-                    show_fig(slide_cc_ratio_fig(selected_year, selected_month, category_filter="Quality", title_label="Quality CC Ratio"))
-                    slides_for_pdf.append({"title": "Quality CC Ratio", "fig": slide_cc_ratio_fig(selected_year, selected_month, category_filter="Quality", title_label="Quality CC Ratio")})
+                    show_fig(slide_cc_ratio_fig(selected_year, category_filter="Quality", title_label="Quality CC Ratio"))
+                    slides_for_pdf.append({"title": "Quality CC Ratio", "fig": slide_cc_ratio_fig(selected_year, category_filter="Quality", title_label="Quality CC Ratio")})
 
                 else:
                     st.info("Enter FG Invoiced values above to generate CC Ratio charts.")
