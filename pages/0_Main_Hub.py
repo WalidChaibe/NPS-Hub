@@ -4,7 +4,7 @@ import streamlit as st
 import pandas as pd
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from utils.supabase_client import get_supabase
+from utils.supabase_client import get_supabase, get_supabase_admin
 
 st.set_page_config(page_title="Main Hub", page_icon="⚙️", layout="wide")
 
@@ -19,7 +19,8 @@ if role != "plant_manager":
     st.error("🔒 Access restricted to Plant Manager only.")
     st.stop()
 
-supabase = get_supabase()
+supabase       = get_supabase()        # anon key  — for profiles/directory
+supabase_admin = get_supabase_admin()  # service key — for auth user creation
 
 col1, col2 = st.columns([5, 1])
 with col1:
@@ -79,14 +80,14 @@ with tab1:
                 st.error("Please fill in Name, Email and Password.")
             else:
                 try:
-                    # Create auth user via Supabase admin API
-                    res = supabase.auth.admin.create_user({
+                    # Create auth user via service role (admin) client
+                    res = supabase_admin.auth.admin.create_user({
                         "email": new_email,
                         "password": new_password,
                         "email_confirm": True,
                     })
                     uid = res.user.id
-                    # Insert profile
+                    # Insert profile using anon client
                     supabase.table("profiles").insert({
                         "id": uid,
                         "full_name": new_name,
@@ -135,7 +136,7 @@ with tab1:
 
         if delete_clicked:
             try:
-                supabase.auth.admin.delete_user(sel_user["id"])
+                supabase_admin.auth.admin.delete_user(sel_user["id"])
                 supabase.table("profiles").delete().eq("id", sel_user["id"]).execute()
                 st.success(f"🗑️ Deleted user **{sel_user['full_name']}**.")
                 st.rerun()
