@@ -1132,14 +1132,16 @@ with tab4:
         try:
             people_res = supabase.table("people_directory").select("name").order("name").execute()
             people_names = [p["name"] for p in (people_res.data or [])]
-        except Exception:
+        except Exception as e:
+            st.warning(f"Could not load people directory: {e}")
             people_names = []
         act_text=st.text_input("Action",key="qm_act_text")
         if people_names:
             own_text = st.selectbox("Owner", ["— select —"] + people_names, key="qm_own_sel")
             own_text = own_text if own_text != "— select —" else ""
         else:
-            own_text=st.text_input("Owner (add people in Main Hub)",key="qm_own_text")
+            st.caption("⚠️ No people found in directory — go to Main Hub → People Directory to add them.")
+            own_text=st.text_input("Owner",key="qm_own_text")
         due_d=st.date_input("Due Date",key="qm_due_date")
         stat_ap=st.selectbox("Status",["Open","In Progress","Done"],key="qm_new_act_status")
         notes_ap=st.text_area("Notes",key="qm_notes_ap")
