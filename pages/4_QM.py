@@ -1130,10 +1130,10 @@ with tab4:
         st.markdown("#### ➕ Add Action Plan")
         # Load people directory for owner dropdown
         try:
-            people_res = supabase.table("people_directory").select("name").order("name").execute()
-            people_names = [p["name"] for p in (people_res.data or [])]
+            people_res = supabase.table("profiles").select("full_name").order("full_name").execute()
+            people_names = [p["full_name"] for p in (people_res.data or []) if p.get("full_name")]
         except Exception as e:
-            st.warning(f"Could not load people directory: {e}")
+            st.warning(f"Could not load users: {e}")
             people_names = []
         act_text=st.text_input("Action",key="qm_act_text")
         if people_names:
