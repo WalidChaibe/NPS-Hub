@@ -130,7 +130,10 @@ can_edit = (role == "plant_manager") or (role == "pillar_leader" and pillar == "
 
 # Check action plan notifications once per session
 if "notif_checked" not in st.session_state:
-    check_action_plan_notifications(supabase)
+    try:
+        check_action_plan_notifications(supabase)
+    except Exception:
+        pass
     st.session_state["notif_checked"] = True
 
 col1, col2, col3 = st.columns([5, 1, 1])
@@ -138,7 +141,9 @@ with col1:
     st.markdown("# ✅ Quality Maintenance")
     st.markdown(f"Logged in as **{name}** · `{role}` · {'✏️ Full Access' if can_edit else '👁️ View Only'}")
 with col2:
-    render_bell(supabase, st.session_state["user"].id)
+    _u = st.session_state["user"]
+    _uid = _u.id if hasattr(_u, "id") else (_u.get("id") if isinstance(_u, dict) else str(_u))
+    render_bell(supabase, _uid)
 with col3:
     if st.button("🏠 Home", use_container_width=True):
         st.switch_page("pages/1_Home.py")
