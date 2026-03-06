@@ -713,36 +713,49 @@ with tab2:
                             ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + max(all_fg)*0.01,
                                     f"{int(val)}", ha="center", va="bottom", fontsize=9, color="#666666")
 
-                        # Ratio % labels above each month group (centered between the two bars)
-                        ratio_y = max(all_fg) * 1.10
-                        for i, ratio in enumerate(all_ratios):
-                            ax.text(x[i], ratio_y, f"{ratio:.2f}%",
-                                    ha="center", va="bottom", fontsize=10,
-                                    color="#333333", fontweight="bold")
+                        # ── Secondary axis for ratio line ──
+                        ax2 = ax.twinx()
 
-                        # Connect ratio labels with a line (monthly only, exclude YTD)
-                        ax.plot(x[:-1], [max(all_fg)*1.10]*len(months_with_fg),
-                                alpha=0)  # invisible anchor; draw real line below
-                        ratio_line_y = [ratio_y + r * max(all_fg) * 0.003 for r in ratios]
-                        ax.plot(x[:-1], ratio_line_y, color="#E63946", linewidth=2,
-                                marker="o", markersize=5, label="Ratio % (monthly)", zorder=5)
+                        # Plot ratio line on secondary axis (monthly only, not YTD)
+                        ax2.plot(x[:-1], ratios, color="#E63946", linewidth=2.5,
+                                 marker="o", markersize=6, label="Ratio %", zorder=5)
 
-                        # Trendline through monthly ratios only
+                        # Trendline on secondary axis
                         if len(ratios) >= 2:
                             xf = np.arange(len(ratios), dtype=float)
                             coeff = np.polyfit(xf, ratios, 1)
-                            trend_y = [np.polyval(coeff, xi) * max(all_fg) * 0.003 + ratio_y for xi in xf]
-                            ax.plot(x[:-1], trend_y, linestyle="--", linewidth=1.5,
-                                    color="#999999", label="Trend", zorder=4)
+                            ax2.plot(x[:-1], np.polyval(coeff, xf), linestyle="--",
+                                     linewidth=1.5, color="#999999", label="Trend", zorder=4)
+
+                        # Ratio % labels above each point
+                        for i, ratio in enumerate(ratios):
+                            ax2.text(x[i], ratio + max(ratios)*0.05, f"{ratio:.2f}%",
+                                     ha="center", va="bottom", fontsize=10,
+                                     color="#E63946", fontweight="bold")
+
+                        # YTD ratio label separately (no dot on line)
+                        ax2.text(x[-1], ytd_ratio + max(ratios)*0.05, f"{ytd_ratio:.2f}%",
+                                 ha="center", va="bottom", fontsize=10,
+                                 color="#333333", fontweight="bold")
+
+                        ax2.set_ylabel("CC Ratio (%)", color="#E63946")
+                        ax2.tick_params(axis="y", labelcolor="#E63946")
+                        ax2.set_ylim(0, max(ratios + [ytd_ratio, 1]) * 1.5)
+                        ax2.spines["top"].set_visible(False)
 
                         ax.set_xticks(x)
                         ax.set_xticklabels(all_labels, fontsize=11)
                         ax.set_ylabel("Count")
-                        ax.set_ylim(0, max(all_fg) * 1.25)
+                        ax.set_ylim(0, max(all_fg) * 1.20)
                         ax.spines["top"].set_visible(False)
                         ax.spines["right"].set_visible(False)
                         ax.grid(False)
-                        ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.08), ncol=4, frameon=False, fontsize=10)
+
+                        # Combined legend
+                        lines1, labs1 = ax.get_legend_handles_labels()
+                        lines2, labs2 = ax2.get_legend_handles_labels()
+                        ax.legend(lines1+lines2, labs1+labs2, loc="upper center",
+                                  bbox_to_anchor=(0.5, -0.08), ncol=4, frameon=False, fontsize=10)
                         plt.tight_layout(rect=[0, 0.05, 1, 1])
                         return fig
 
