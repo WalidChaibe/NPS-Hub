@@ -23,15 +23,13 @@ if "user" in st.session_state:
 # ── Login UI ──
 col1, col2, col3 = st.columns([1, 2, 1])
 with col2:
-    st.image("https://i.imgur.com/placeholder.png", width=80)  # replace with your logo later
+    st.image("https://i.imgur.com/placeholder.png", width=80)
     st.markdown("## 🏭 NPS Hub")
     st.markdown("**Napco Production System — TPM Program**")
     st.divider()
-
     st.markdown("### Sign In")
     email    = st.text_input("Email", placeholder="you@napconational.com")
     password = st.text_input("Password", type="password", placeholder="••••••••")
-
     if st.button("Login", use_container_width=True, type="primary"):
         if not email or not password:
             st.error("Please enter your email and password.")
@@ -42,27 +40,21 @@ with col2:
                     "email": email,
                     "password": password
                 })
-
-                # Fetch the user's profile (role + pillar)
                 profile = supabase.table("profiles").select("*").eq("id", res.user.id).execute()
-
                 if not profile.data:
                     st.error(f"Profile not found for UID: {res.user.id}")
                     st.stop()
-
-                # Save to session
                 user_profile = profile.data[0]
-                st.session_state["user"]     = res.user.id
-                st.session_state["profile"]  = user_profile
-                st.session_state["role"]     = user_profile["role"]
-                st.session_state["pillar"]   = user_profile["pillar"]
-                st.session_state["name"]     = user_profile["full_name"]
-
+                st.session_state["user"]    = res.user.id
+                st.session_state["profile"] = user_profile
+                st.session_state["role"]    = user_profile["role"]
+                st.session_state["pillar"]  = user_profile["pillar"]
+                st.session_state["name"]    = user_profile["full_name"]
+                # Reset notification check so it runs fresh on next page
+                st.session_state.pop("notif_checked", None)
                 st.success(f"Welcome back, {user_profile['full_name']}!")
                 st.switch_page("pages/1_Home.py")
-
             except Exception as e:
                 st.error(f"Error: {str(e)}")
-
     st.divider()
     st.caption("Access issues? Contact your NPS Administrator.")
