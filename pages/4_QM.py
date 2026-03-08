@@ -1107,6 +1107,178 @@ with tab2:
                 else:
                     st.info("Fill in missing COQ data above to generate COQ charts.")
 
+                st.divider()
+
+                # ── NCR RATIO ──
+                st.header("NCR Ratio")
+
+                # Load WO data from Supabase
+                try:
+                    wo_rows = supabase.table("qm_wo_data").select("*").execute()
+                    wo_data = {(r["year"], r["month"]): r for r in (wo_rows.data or [])}
+                except Exception:
+                    wo_data = {}
+
+                # Get valid NCR count per month from df_ncr
+                def get_ncr_count(year, month):
+                    try:
+                        return int(df_ncr_dash[
+                            (df_ncr_dash["Is_Valid"] == True) &
+                            (df_ncr_dash["Year"] == year) &
+                            (df_ncr_dash["Month"] == month)
+                        ].shape[0])
+                    except Exception:
+                        return 0
+
+                # Check missing WO months for both years
+                prev_year_wo = selected_year - 1
+                wo_months_needed = [(prev_year_wo, m) for m in months_range] + [(selected_year, m) for m in months_range]
+                missing_wo = [(y, m) for y, m in wo_months_needed if (y, m) not in wo_data]
+
+                if missing_wo:
+                    st.warning(f"⚠️ Work Order data missing for {len(missing_wo)} month(s). Please fill in:")
+                    with st.form("qm_wo_form"):
+                        wo_inputs = {}
+                        cols_wo = st.columns(min(4, len(missing_wo)))
+                        for idx, (y, m) in enumerate(missing_wo):
+                            col = cols_wo[idx % len(cols_wo)]
+                            wo_inputs[(y, m)] = col.number_input(
+                                f"{MONTH_LABELS[m-1]}-{str(y)[-2:]}",
+                                min_value=0, value=0, step=10,
+                                key=f"wo_{y}_{m}"
+                            )
+                        if st.form_submit_button("💾 Save WO Data", type="primary"):
+                            for y, m in missing_wo:
+                                try:
+                                    supabase.table("qm_wo_data").upsert({
+                                        "year": y, "month": m,
+                                        "wo_count": wo_inputs[(y, m)],
+                                        "updated_by": name
+                                    }, on_conflict="year,month").execute()
+                                except Exception as e:
+                                    st.error(f"Error saving {MONTH_LABELS[m-1]}-{y}: {e}")
+                            st.success("✅ Saved!"); st.rerun()
+
+                wo_ready = all((y, m) in wo_data for y, m in wo_months_needed)
+
+                if wo_ready:
+                    def slide_ncr_ratio_fig(selected_year):
+                        prev_year = selected_year - 1
+                        all_labels = [MONTH_LABELS[m-1] for m in months_range] + ["YTD"]
+
+                        # Monthly NCR and WO counts
+                        ncr_months_sel  = [get_ncr_count(selected_year, m) for m in months_range]
+                        ncr_months_prev = [get_ncr_count(prev_year, m) for m in months_range]
+                        wo_months_sel   = [int(wo_data.get((selected_year, m), {}).get("wo_count", 0) or 0) for m in months_range]
+                        wo_months_prev  = [int(wo_data.get((prev_year, m), {}).get("wo_count", 0) or 0) for m in months_range]
+
+                        # YTD totals
+                        ytd_ncr_sel  = sum(ncr_months_sel)
+                        ytd_ncr_prev = sum(ncr_months_prev)
+                        ytd_wo_sel   = sum(wo_months_sel)
+                        ytd_wo_prev  = sum(wo_months_prev)
+
+                        all_ncr_sel  = ncr_months_sel  + [ytd_ncr_sel]
+                        all_ncr_prev = ncr_months_prev + [ytd_ncr_prev]
+                        all_wo_sel   = wo_months_sel   + [ytd_wo_sel]
+                        all_wo_prev  = wo_months_prev  + [ytd_wo_prev]
+
+                        # Ratios (monthly only, not YTD point on line)
+                        ratios_sel  = [ncr/wo*100 if wo > 0 else 0 for ncr, wo in zip(ncr_months_sel,  wo_months_sel)]
+                        ratios_prev = [ncr/wo*100 if wo > 0 else 0 for ncr, wo in zip(ncr_months_prev, wo_months_prev)]
+                        ytd_ratio_sel  = ytd_ncr_sel  / ytd_wo_sel  * 100 if ytd_wo_sel  > 0 else 0
+                        ytd_ratio_prev = ytd_ncr_prev / ytd_wo_prev * 100 if ytd_wo_prev > 0 else 0
+
+                        n = len(all_labels)
+                        x = np.arange(n)
+                        w = 0.2
+
+                        fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=300)
+
+                        # 4 bars: NCR prev, NCR sel, WO prev, WO sel
+                        COLOR_NCR_PREV = "#D8C37D"
+                        COLOR_NCR_SEL  = "#006394"
+                        COLOR_WO_PREV  = "#B7910E"
+                        COLOR_WO_SEL   = "#0F68B9"
+
+                        b1 = ax.bar(x - 1.5*w, all_ncr_prev, w, color=COLOR_NCR_PREV, label=f"NCR {prev_year}",  alpha=0.9)
+                        b2 = ax.bar(x - 0.5*w, all_ncr_sel,  w, color=COLOR_NCR_SEL,  label=f"NCR {selected_year}", alpha=0.9)
+                        b3 = ax.bar(x + 0.5*w, all_wo_prev,  w, color=COLOR_WO_PREV,  label=f"WO {prev_year}",  alpha=0.9)
+                        b4 = ax.bar(x + 1.5*w, all_wo_sel,   w, color=COLOR_WO_SEL,   label=f"WO {selected_year}", alpha=0.9)
+
+                        # Value labels on bars
+                        for bars in [b1, b2, b3, b4]:
+                            for bar in bars:
+                                h = bar.get_height()
+                                if h > 0:
+                                    ax.text(bar.get_x() + bar.get_width()/2, h + ax.get_ylim()[1]*0.005,
+                                            f"{int(h)}", ha="center", va="bottom", fontsize=7,
+                                            color="#000000", rotation=90)
+
+                        # Secondary axis for ratio lines
+                        ax2 = ax.twinx()
+
+                        all_r_sel  = ratios_sel  + [None]
+                        all_r_prev = ratios_prev + [None]
+
+                        ax2.plot(x[:-1], ratios_sel,  color="#C1A02E", linewidth=2,
+                                 marker="o", markersize=5, label=f"Ratio {selected_year}", zorder=5)
+                        ax2.plot(x[:-1], ratios_prev, color="#E74C3C", linewidth=2,
+                                 marker="s", markersize=5, linestyle="--",
+                                 label=f"Ratio {prev_year}", zorder=5)
+
+                        # Trendlines
+                        if len(ratios_sel) >= 2:
+                            xf = np.arange(len(ratios_sel), dtype=float)
+                            ax2.plot(x[:-1], np.polyval(np.polyfit(xf, ratios_sel,  1), xf),
+                                     linestyle=":", linewidth=1.2, color="#C1A02E", alpha=0.7)
+                            ax2.plot(x[:-1], np.polyval(np.polyfit(xf, ratios_prev, 1), xf),
+                                     linestyle=":", linewidth=1.2, color="#E74C3C", alpha=0.7)
+
+                        # Ratio labels
+                        max_r = max(ratios_sel + ratios_prev + [1])
+                        for i, r in enumerate(ratios_sel):
+                            ax2.text(x[i] - 0.15, r + max_r*0.04, f"{r:.2f}%",
+                                     ha="center", va="bottom", fontsize=8,
+                                     color="#000000", fontweight="bold")
+                        for i, r in enumerate(ratios_prev):
+                            ax2.text(x[i] + 0.15, r + max_r*0.04, f"{r:.2f}%",
+                                     ha="center", va="bottom", fontsize=8,
+                                     color="#000000")
+
+                        # YTD ratio labels
+                        ax2.text(x[-1] - 0.15, ytd_ratio_sel  + max_r*0.04, f"{ytd_ratio_sel:.2f}%",
+                                 ha="center", va="bottom", fontsize=9, color="#000000", fontweight="bold")
+                        ax2.text(x[-1] + 0.15, ytd_ratio_prev + max_r*0.04, f"{ytd_ratio_prev:.2f}%",
+                                 ha="center", va="bottom", fontsize=9, color="#000000")
+
+                        ax2.set_ylabel("NCR Ratio (%)", color="#000000")
+                        ax2.tick_params(axis="y", labelcolor="#000000")
+                        ax2.set_ylim(0, max_r * 1.6)
+                        ax2.spines["top"].set_visible(False)
+
+                        ax.set_xticks(x)
+                        ax.set_xticklabels(all_labels, fontsize=10)
+                        ax.set_ylabel("Count", color="#000000")
+                        ax.spines["top"].set_visible(False)
+                        ax.grid(False)
+
+                        # Combined legend
+                        lines1, labs1 = ax.get_legend_handles_labels()
+                        lines2, labs2 = ax2.get_legend_handles_labels()
+                        ax.legend(lines1 + lines2, labs1 + labs2,
+                                  loc="upper center", bbox_to_anchor=(0.5, -0.08),
+                                  ncol=6, frameon=False, fontsize=9)
+                        fig.subplots_adjust(bottom=0.18)
+                        return fig
+
+                    st.subheader("NCR Ratio — Current Year vs Previous Year")
+                    show_fig(slide_ncr_ratio_fig(selected_year))
+                    slides_for_pdf.append({"title": "NCR Ratio",
+                                           "fig": slide_ncr_ratio_fig(selected_year)})
+                else:
+                    st.info("Fill in missing Work Order data above to generate NCR Ratio chart.")
+
                 # PDF Export
                 st.divider()
                 st.header("Export")
