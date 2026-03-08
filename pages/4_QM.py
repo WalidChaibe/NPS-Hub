@@ -1130,9 +1130,8 @@ with tab2:
                     except Exception:
                         return 0
 
-                # Check missing WO months for both years
-                prev_year_wo = selected_year - 1
-                wo_months_needed = [(prev_year_wo, m) for m in months_range] + [(selected_year, m) for m in months_range]
+                # Check missing WO months — current year only
+                wo_months_needed = [(selected_year, m) for m in months_range]
                 missing_wo = [(y, m) for y, m in wo_months_needed if (y, m) not in wo_data]
 
                 if missing_wo:
