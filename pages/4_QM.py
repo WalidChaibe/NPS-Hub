@@ -1163,98 +1163,68 @@ with tab2:
 
                 if wo_ready:
                     def slide_ncr_ratio_fig(selected_year):
-                        prev_year = selected_year - 1
                         all_labels = [MONTH_LABELS[m-1] for m in months_range] + ["YTD"]
 
-                        # Monthly NCR and WO counts
-                        ncr_months_sel  = [get_ncr_count(selected_year, m) for m in months_range]
-                        ncr_months_prev = [get_ncr_count(prev_year, m) for m in months_range]
-                        wo_months_sel   = [int(wo_data.get((selected_year, m), {}).get("wo_count", 0) or 0) for m in months_range]
-                        wo_months_prev  = [int(wo_data.get((prev_year, m), {}).get("wo_count", 0) or 0) for m in months_range]
+                        # Monthly NCR and WO counts — current year only
+                        ncr_months = [get_ncr_count(selected_year, m) for m in months_range]
+                        wo_months  = [int(wo_data.get((selected_year, m), {}).get("wo_count", 0) or 0) for m in months_range]
 
                         # YTD totals
-                        ytd_ncr_sel  = sum(ncr_months_sel)
-                        ytd_ncr_prev = sum(ncr_months_prev)
-                        ytd_wo_sel   = sum(wo_months_sel)
-                        ytd_wo_prev  = sum(wo_months_prev)
+                        ytd_ncr = sum(ncr_months)
+                        ytd_wo  = sum(wo_months)
 
-                        all_ncr_sel  = ncr_months_sel  + [ytd_ncr_sel]
-                        all_ncr_prev = ncr_months_prev + [ytd_ncr_prev]
-                        all_wo_sel   = wo_months_sel   + [ytd_wo_sel]
-                        all_wo_prev  = wo_months_prev  + [ytd_wo_prev]
+                        all_ncr = ncr_months + [ytd_ncr]
+                        all_wo  = wo_months  + [ytd_wo]
 
-                        # Ratios (monthly only, not YTD point on line)
-                        ratios_sel  = [ncr/wo*100 if wo > 0 else 0 for ncr, wo in zip(ncr_months_sel,  wo_months_sel)]
-                        ratios_prev = [ncr/wo*100 if wo > 0 else 0 for ncr, wo in zip(ncr_months_prev, wo_months_prev)]
-                        ytd_ratio_sel  = ytd_ncr_sel  / ytd_wo_sel  * 100 if ytd_wo_sel  > 0 else 0
-                        ytd_ratio_prev = ytd_ncr_prev / ytd_wo_prev * 100 if ytd_wo_prev > 0 else 0
+                        # Monthly ratios
+                        ratios = [ncr/wo*100 if wo > 0 else 0 for ncr, wo in zip(ncr_months, wo_months)]
+                        ytd_ratio = ytd_ncr / ytd_wo * 100 if ytd_wo > 0 else 0
 
                         n = len(all_labels)
                         x = np.arange(n)
-                        w = 0.2
+                        w = 0.35
 
                         fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=300)
 
-                        # 4 bars: NCR prev, NCR sel, WO prev, WO sel
-                        COLOR_NCR_PREV = "#D8C37D"
-                        COLOR_NCR_SEL  = "#006394"
-                        COLOR_WO_PREV  = "#B7910E"
-                        COLOR_WO_SEL   = "#0F68B9"
+                        # Side-by-side bars: NCR and WO
+                        bars_ncr = ax.bar(x - w/2, all_ncr, w, color="#006394", label="NCR Count", alpha=0.9)
+                        bars_wo  = ax.bar(x + w/2, all_wo,  w, color="#D8C37D", label="Work Orders", alpha=0.9)
 
-                        b1 = ax.bar(x - 1.5*w, all_ncr_prev, w, color=COLOR_NCR_PREV, label=f"NCR {prev_year}",  alpha=0.9)
-                        b2 = ax.bar(x - 0.5*w, all_ncr_sel,  w, color=COLOR_NCR_SEL,  label=f"NCR {selected_year}", alpha=0.9)
-                        b3 = ax.bar(x + 0.5*w, all_wo_prev,  w, color=COLOR_WO_PREV,  label=f"WO {prev_year}",  alpha=0.9)
-                        b4 = ax.bar(x + 1.5*w, all_wo_sel,   w, color=COLOR_WO_SEL,   label=f"WO {selected_year}", alpha=0.9)
+                        # Value labels
+                        for bar, val in zip(bars_ncr, all_ncr):
+                            ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + max(all_wo)*0.01,
+                                    f"{int(val)}", ha="center", va="bottom", fontsize=9,
+                                    color="#000000", fontweight="bold")
+                        for bar, val in zip(bars_wo, all_wo):
+                            ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + max(all_wo)*0.01,
+                                    f"{int(val)}", ha="center", va="bottom", fontsize=9, color="#000000")
 
-                        # Value labels on bars
-                        for bars in [b1, b2, b3, b4]:
-                            for bar in bars:
-                                h = bar.get_height()
-                                if h > 0:
-                                    ax.text(bar.get_x() + bar.get_width()/2, h + ax.get_ylim()[1]*0.005,
-                                            f"{int(h)}", ha="center", va="bottom", fontsize=7,
-                                            color="#000000", rotation=90)
-
-                        # Secondary axis for ratio lines
+                        # Secondary axis — ratio line
                         ax2 = ax.twinx()
+                        ax2.plot(x[:-1], ratios, color="#C1A02E", linewidth=2.5,
+                                 marker="o", markersize=6, label="NCR Ratio %", zorder=5)
 
-                        all_r_sel  = ratios_sel  + [None]
-                        all_r_prev = ratios_prev + [None]
+                        # Trendline
+                        if len(ratios) >= 2:
+                            xf = np.arange(len(ratios), dtype=float)
+                            ax2.plot(x[:-1], np.polyval(np.polyfit(xf, ratios, 1), xf),
+                                     linestyle="--", linewidth=1.5, color="#999999", zorder=4)
 
-                        ax2.plot(x[:-1], ratios_sel,  color="#C1A02E", linewidth=2,
-                                 marker="o", markersize=5, label=f"Ratio {selected_year}", zorder=5)
-                        ax2.plot(x[:-1], ratios_prev, color="#E74C3C", linewidth=2,
-                                 marker="s", markersize=5, linestyle="--",
-                                 label=f"Ratio {prev_year}", zorder=5)
-
-                        # Trendlines
-                        if len(ratios_sel) >= 2:
-                            xf = np.arange(len(ratios_sel), dtype=float)
-                            ax2.plot(x[:-1], np.polyval(np.polyfit(xf, ratios_sel,  1), xf),
-                                     linestyle=":", linewidth=1.2, color="#C1A02E", alpha=0.7)
-                            ax2.plot(x[:-1], np.polyval(np.polyfit(xf, ratios_prev, 1), xf),
-                                     linestyle=":", linewidth=1.2, color="#E74C3C", alpha=0.7)
-
-                        # Ratio labels
-                        max_r = max(ratios_sel + ratios_prev + [1])
-                        for i, r in enumerate(ratios_sel):
-                            ax2.text(x[i] - 0.15, r + max_r*0.04, f"{r:.2f}%",
-                                     ha="center", va="bottom", fontsize=8,
+                        # Ratio % labels
+                        max_r = max(ratios + [ytd_ratio, 1])
+                        for i, r in enumerate(ratios):
+                            ax2.text(x[i], r + max_r*0.05, f"{r:.2f}%",
+                                     ha="center", va="bottom", fontsize=10,
                                      color="#000000", fontweight="bold")
-                        for i, r in enumerate(ratios_prev):
-                            ax2.text(x[i] + 0.15, r + max_r*0.04, f"{r:.2f}%",
-                                     ha="center", va="bottom", fontsize=8,
-                                     color="#000000")
 
-                        # YTD ratio labels
-                        ax2.text(x[-1] - 0.15, ytd_ratio_sel  + max_r*0.04, f"{ytd_ratio_sel:.2f}%",
-                                 ha="center", va="bottom", fontsize=9, color="#000000", fontweight="bold")
-                        ax2.text(x[-1] + 0.15, ytd_ratio_prev + max_r*0.04, f"{ytd_ratio_prev:.2f}%",
-                                 ha="center", va="bottom", fontsize=9, color="#000000")
+                        # YTD ratio label
+                        ax2.text(x[-1], ytd_ratio + max_r*0.05, f"{ytd_ratio:.2f}%",
+                                 ha="center", va="bottom", fontsize=10,
+                                 color="#000000", fontweight="bold")
 
                         ax2.set_ylabel("NCR Ratio (%)", color="#000000")
                         ax2.tick_params(axis="y", labelcolor="#000000")
-                        ax2.set_ylim(0, max_r * 1.6)
+                        ax2.set_ylim(0, max_r * 1.5)
                         ax2.spines["top"].set_visible(False)
 
                         ax.set_xticks(x)
@@ -1263,16 +1233,15 @@ with tab2:
                         ax.spines["top"].set_visible(False)
                         ax.grid(False)
 
-                        # Combined legend
                         lines1, labs1 = ax.get_legend_handles_labels()
                         lines2, labs2 = ax2.get_legend_handles_labels()
                         ax.legend(lines1 + lines2, labs1 + labs2,
                                   loc="upper center", bbox_to_anchor=(0.5, -0.08),
-                                  ncol=6, frameon=False, fontsize=9)
-                        fig.subplots_adjust(bottom=0.18)
+                                  ncol=3, frameon=False, fontsize=10)
+                        fig.subplots_adjust(bottom=0.15)
                         return fig
 
-                    st.subheader("NCR Ratio — Current Year vs Previous Year")
+                    st.subheader("NCR Ratio")
                     show_fig(slide_ncr_ratio_fig(selected_year))
                     slides_for_pdf.append({"title": "NCR Ratio",
                                            "fig": slide_ncr_ratio_fig(selected_year)})
