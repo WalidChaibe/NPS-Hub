@@ -1,21 +1,21 @@
-# utils/qm_pipeline.py
+# qm_pipeline.py
 import io
 import pandas as pd
 
-SHEET_NAME = 0
-CRM_COL = "Ref NB"
+SHEET_NAME            = 0
+CRM_COL               = "Ref NB"
 FINAL_APPROVAL_COL    = "Final Approval Date"
 CREATION_DATETIME_COL = "Creation Date Time"
-REASON_COL = "Reason"
-GEN_CAT_COL = "Gen Categories"
-PHYS_STATUS_COL = "Physical Status"
-REASON_TYPE_COL = "Reason Type"
-COST_COL = "Cost Amount"
+REASON_COL            = "Reason"
+GEN_CAT_COL           = "Gen Categories"
+PHYS_STATUS_COL       = "Physical Status"
+REASON_TYPE_COL       = "Reason Type"
+COST_COL              = "Cost Amount"
 
-GEN_CAT_ALLOWED = {"Customer Complaint", "Customer Return", "Process Improvement"}
+GEN_CAT_ALLOWED       = {"Customer Complaint", "Customer Return", "Process Improvement"}
 PHYS_STATUS_BLOCKLIST = {"Baled Waste", "Plastic/Wood Waste"}
 
-CRM_DELETE_MAP = {
+_CRM_DELETE_MAP_DEFAULT = {
     "EPAK-CRM-10376": 14, "EPAK-CRM-10439": 10, "EPAK-CRM-10452": 3,
     "EPAK-CRM-10514": 10, "EPAK-CRM-10573": 4,  "EPAK-CRM-10561": 8,
     "EPAK-CRM-10697": 9,  "EPAK-CRM-10698": 13, "EPAK-CRM-10699": 9,
@@ -26,7 +26,7 @@ CRM_DELETE_MAP = {
     "EPAK-CRM-11143": 8,  "EPAK-CRM-11147": 13,
 }
 
-QUALITY_REASONS = {
+_QUALITY_REASONS_DEFAULT = {
     "Poor Ink Coverage / Pinholes","Score Cracking","Missing/ Hard Score","Delamination",
     "Warped Sheets","Belt Mark","Chemical odors","Wrong score size","Misaligned Paper",
     "Variation paper Shade","Deviation from customer flute requirement","Crushed boards",
@@ -49,7 +49,7 @@ QUALITY_REASONS = {
     "Ink Color Variation","Printing Miss-Registration","Wash Boarding","Missing FT Data",
 }
 
-SERVICE_REASONS = {
+_SERVICE_REASONS_DEFAULT = {
     "Incorrect Finished Goods Pallet Tag","Excess Quantity Produced",
     "Deviation from delivery Schedule","Incorrect Delivery Location / address",
     "Wrong Item Delivered / Invoiced","Wrong Unit Price",
@@ -58,10 +58,33 @@ SERVICE_REASONS = {
     "Variance in Quantity Invoiced",
 }
 
-def _require_cols(df, cols, df_name="df"):
-    missing = [c for c in cols if c not in df.columns]
-    if missing:
-        raise KeyError(f"[{df_name}] Missing: {missing}\nAvailable: {list(df.columns)}")
+def load_settings_from_supabase(supabase=None):
+    if supabase is None:
+        return _CRM_DELETE_MAP_DEFAULT, _QUALITY_REASONS_DEFAULT, _SERVICE_REASONS_DEFAULT, set()
+    try:
+        crm_rows = supabase.table("qm_crm_delete_map").select("crm_ref,kept_count").execute()
+        crm_map  = {r["crm_ref"]: r["kept_count"] for r in (crm_rows.data or [])}
+        if not crm_map: crm_map = _CRM_DELETE_MAP_DEFAULT
+    except Exception:
+        crm_map = _CRM_DELETE_MAP_DEFAULT
+    try:
+        q_rows = supabase.table("qm_quality_reasons").select("reason").execute()
+        q_set  = {r["reason"] for r in (q_rows.data or [])}
+        if not q_set: q_set = _QUALITY_REASONS_DEFAULT
+    except Exception:
+        q_set = _QUALITY_REASONS_DEFAULT
+    try:
+        s_rows = supabase.table("qm_service_reasons").select("reason").execute()
+        s_set  = {r["reason"] for r in (s_rows.data or [])}
+        if not s_set: s_set = _SERVICE_REASONS_DEFAULT
+    except Exception:
+        s_set = _SERVICE_REASONS_DEFAULT
+    try:
+        i_rows = supabase.table("qm_invalid_reasons").select("reason").execute()
+        i_set  = {r["reason"] for r in (i_rows.data or [])}
+    except Exception:
+        i_set = set()
+    return crm_map, q_set, s_set, i_set
 
 def _clean_text(x) -> str:
     s = "" if pd.isna(x) else str(x)
@@ -70,15 +93,20 @@ def _clean_text(x) -> str:
     s = s.replace(" ;", ";").replace("; ", ";").replace(";", "; ")
     return " ".join(s.split())
 
-QUALITY_REASONS_CLEAN = {_clean_text(r) for r in QUALITY_REASONS}
-SERVICE_REASONS_CLEAN = {_clean_text(r) for r in SERVICE_REASONS}
+def make_classifier(quality_set, service_set, invalid_set):
+    q_clean = {_clean_text(r) for r in quality_set}
+    s_clean = {_clean_text(r) for r in service_set}
+    i_clean = {_clean_text(r) for r in invalid_set}
+    def _classify(rsn) -> str:
+        rsn = _clean_text(rsn)
+        if rsn == "": return "UNCLASSIFIED"
+        if rsn in i_clean: return "Invalid"
+        if rsn in q_clean: return "Quality"
+        if rsn in s_clean: return "Service"
+        return "UNCLASSIFIED"
+    return _classify
 
-def _classify_reason(rsn) -> str:
-    rsn = _clean_text(rsn)
-    if rsn == "": return "UNCLASSIFIED"
-    if rsn in QUALITY_REASONS_CLEAN: return "Quality"
-    if rsn in SERVICE_REASONS_CLEAN: return "Service"
-    return "UNCLASSIFIED"
+_classify_reason_default = make_classifier(_QUALITY_REASONS_DEFAULT, _SERVICE_REASONS_DEFAULT, set())
 
 def apply_crm_deletions(df, crm_delete_map, crm_col=CRM_COL, df_name="df"):
     rows_to_drop = []
@@ -90,7 +118,8 @@ def apply_crm_deletions(df, crm_delete_map, crm_col=CRM_COL, df_name="df"):
         rows_to_drop.extend(idx[-n:].tolist())
     return df.drop(index=rows_to_drop).reset_index(drop=True)
 
-def add_date_and_flags_final_issued(df, date_col, df_name="df"):
+def add_date_and_flags_final_issued(df, date_col, df_name="df", classifier=None):
+    if classifier is None: classifier = _classify_reason_default
     df["Base_Date"] = pd.to_datetime(df[date_col], errors="coerce")
     df["Year"]  = df["Base_Date"].dt.year
     df["Month"] = df["Base_Date"].dt.month
@@ -108,12 +137,13 @@ def add_date_and_flags_final_issued(df, date_col, df_name="df"):
         (~phys_status.isin(PHYS_STATUS_BLOCKLIST)) & gen_cat.isin(GEN_CAT_ALLOWED)
     )
     df["Complaint_Category"] = [
-        "Invalid" if not v else _classify_reason(r)
+        "Invalid" if not v else classifier(r)
         for v, r in zip(df["Is_Valid"].tolist(), reason.tolist())
     ]
     return df
 
-def add_date_and_flags_ncr(df, date_col, df_name="NCR"):
+def add_date_and_flags_ncr(df, date_col, df_name="NCR", classifier=None):
+    if classifier is None: classifier = _classify_reason_default
     df["Base_Date"] = pd.to_datetime(df[date_col], errors="coerce")
     df["Year"]  = df["Base_Date"].dt.year
     df["Month"] = df["Base_Date"].dt.month
@@ -121,14 +151,16 @@ def add_date_and_flags_ncr(df, date_col, df_name="NCR"):
     reason  = df[REASON_COL].map(_clean_text)
     df["Is_Valid"] = gen_cat.eq("Work In Progress")
     df["Complaint_Category"] = [
-        "Invalid" if not v else _classify_reason(r)
+        "Invalid" if not v else classifier(r)
         for v, r in zip(df["Is_Valid"].tolist(), reason.tolist())
     ]
     return df
 
 def show_unclassified_counts(df):
     reason_clean = df[REASON_COL].map(_clean_text)
-    unclassified = df[(df["Complaint_Category"] == "UNCLASSIFIED") & (reason_clean != "Invalid")].copy()
+    unclassified = df[
+        (df["Complaint_Category"] == "UNCLASSIFIED") & (reason_clean != "Invalid")
+    ].copy()
     unclassified_nonblank = unclassified[reason_clean.loc[unclassified.index] != ""]
     if unclassified_nonblank.empty: return pd.Series([], dtype="int64")
     return unclassified_nonblank[REASON_COL].map(_clean_text).value_counts()
@@ -140,16 +172,31 @@ def read_excel_from_upload(uploaded_file, sheet_name=SHEET_NAME, drop_last_two=T
         df = df.iloc[:-2].reset_index(drop=True)
     return df
 
-def build_dataset_final_issued(df_loaded, date_col, dataset_name="DATASET"):
-    raw            = df_loaded.copy()
-    raw_flagged    = add_date_and_flags_final_issued(raw.copy(), date_col=date_col, df_name=f"{dataset_name}.raw")
-    cleaned        = apply_crm_deletions(df_loaded.copy(), CRM_DELETE_MAP, crm_col=CRM_COL, df_name=dataset_name)
-    cleaned_flagged= add_date_and_flags_final_issued(cleaned, date_col=date_col, df_name=f"{dataset_name}.cleaned")
-    return {"raw": raw, "raw_flagged": raw_flagged, "cleaned_flagged": cleaned_flagged,
-            "unclassified_counts": show_unclassified_counts(cleaned_flagged)}
+def build_dataset_final_issued(df_loaded, date_col, dataset_name="DATASET",
+                                crm_delete_map=None, classifier=None):
+    if crm_delete_map is None: crm_delete_map = _CRM_DELETE_MAP_DEFAULT
+    if classifier is None: classifier = _classify_reason_default
+    raw             = df_loaded.copy()
+    raw_flagged     = add_date_and_flags_final_issued(raw.copy(), date_col=date_col,
+                                                       df_name=f"{dataset_name}.raw", classifier=classifier)
+    cleaned         = apply_crm_deletions(df_loaded.copy(), crm_delete_map, crm_col=CRM_COL, df_name=dataset_name)
+    cleaned_flagged = add_date_and_flags_final_issued(cleaned, date_col=date_col,
+                                                       df_name=f"{dataset_name}.cleaned", classifier=classifier)
+    return {
+        "raw": raw, "raw_flagged": raw_flagged, "cleaned_flagged": cleaned_flagged,
+        "unclassified_counts": show_unclassified_counts(cleaned_flagged),
+    }
 
-def build_dataset_ncr(df_loaded, date_col, dataset_name="NCR"):
+def build_dataset_ncr(df_loaded, date_col, dataset_name="NCR", classifier=None):
+    if classifier is None: classifier = _classify_reason_default
     raw         = df_loaded.copy()
-    raw_flagged = add_date_and_flags_ncr(raw.copy(), date_col=date_col, df_name=dataset_name)
-    return {"raw": raw, "raw_flagged": raw_flagged, "cleaned_flagged": raw_flagged.copy(),
-            "unclassified_counts": show_unclassified_counts(raw_flagged)}
+    raw_flagged = add_date_and_flags_ncr(raw.copy(), date_col=date_col,
+                                          df_name=dataset_name, classifier=classifier)
+    return {
+        "raw": raw, "raw_flagged": raw_flagged, "cleaned_flagged": raw_flagged.copy(),
+        "unclassified_counts": show_unclassified_counts(raw_flagged),
+    }
+
+def get_crm_row_counts(df_loaded, crm_refs, crm_col=CRM_COL):
+    crm_series = df_loaded[crm_col].astype(str).str.strip()
+    return {crm: int((crm_series == crm).sum()) for crm in crm_refs}
