@@ -1602,9 +1602,9 @@ with tab5:
         st.caption("CRM entries here are permanently removed from every upload. Rows shown = how many rows are KEPT (not deleted).")
 
         if crm_list:
-            crm_df = pd.DataFrame(crm_list)[["crm_ref","customer_name","kept_count","added_by","added_at"]].rename(columns={
+            crm_df = pd.DataFrame(crm_list)[["crm_ref","customer_name","delete_count","added_by","added_at"]].rename(columns={
                 "crm_ref": "CRM #", "customer_name": "Customer",
-                "kept_count": "Rows Kept", "added_by": "Added By", "added_at": "Added At"
+                "delete_count": "Rows Deleted", "added_by": "Added By", "added_at": "Added At"
             })
             crm_df["Added At"] = pd.to_datetime(crm_df["Added At"]).dt.strftime("%d %b %Y")
             st.dataframe(crm_df, use_container_width=True, hide_index=True)
@@ -1620,7 +1620,7 @@ with tab5:
         with st.form("qm_crm_add_form"):
             c1, c2 = st.columns(2)
             new_crm_ref   = c1.text_input("CRM Reference #", placeholder="EPAK-CRM-XXXXX").strip()
-            new_kept_count = c2.number_input("Rows to KEEP (0 = delete all)", min_value=0, value=0, step=1)
+            new_delete_count = c2.number_input("Rows to DELETE", min_value=0, value=0, step=1)
 
             # Auto-lookup customer from uploaded file
             customer_display = ""
@@ -1645,10 +1645,10 @@ with tab5:
                         supabase.table("qm_crm_delete_map").upsert({
                             "crm_ref": new_crm_ref,
                             "customer_name": new_customer or "",
-                            "kept_count": int(new_kept_count),
+                            "delete_count": int(new_delete_count),
                             "added_by": name,
                         }, on_conflict="crm_ref").execute()
-                        st.success(f"✅ {new_crm_ref} saved — keeping {new_kept_count} rows.")
+                        st.success(f"✅ {new_crm_ref} saved — keeping {new_delete_count} rows.")
                         st.rerun()
                     except Exception as e:
                         st.error(f"Error: {e}")
