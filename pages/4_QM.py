@@ -490,8 +490,40 @@ with tab2:
                         ax.text(b.get_x()+b.get_width()/2,h+pad,fmt_fn(h),
                                 ha="center",va="bottom",fontsize=10,color="#4D4D4D",clip_on=False)
 
+                # ── Export processed data ──
+                st.subheader("📥 Export Processed Data")
+                st.caption("Download the processed FINAL file with pipeline-added columns: Year, Month, Is_Valid, Complaint_Category. Use this to compare against your manual file.")
+
+                export_cols = [c for c in df_final.columns if c not in ["Base_Date"]]
+                export_df = final_pkg["cleaned_flagged"][export_cols].copy()
+                # Rename for clarity
+                export_df = export_df.rename(columns={"Complaint_Category": "Type_Pipeline", "Is_Valid": "Valid_Pipeline"})
+
+                import io as _io
+                _buf = _io.BytesIO()
+                export_df.to_excel(_buf, index=False, engine="openpyxl")
+                _buf.seek(0)
+                st.download_button(
+                    label="📥 Download Processed FINAL file",
+                    data=_buf,
+                    file_name=f"FINAL_processed_{selected_year}_{selected_month:02d}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="dl_final_processed"
+                )
+                st.divider()
+
                 # ── FINAL ──
                 st.header("FINAL (CRM Approved)")
+
+                # Warn about UNCLASSIFIED valid rows
+                _unc_final = final_pkg["unclassified_counts"]
+                _unc_issued = issued_pkg["unclassified_counts"]
+                if not _unc_final.empty:
+                    _unc_total = int(_unc_final.sum())
+                    with st.expander(f"⚠️ {_unc_total} valid FINAL rows are UNCLASSIFIED and excluded from charts — click to see", expanded=True):
+                        st.caption("These rows pass Is_Valid=True but their reason is not in Quality or Service lists. They are NOT counted in any chart. Classify them in the prompt above.")
+                        st.dataframe(_unc_final.reset_index().rename(columns={"index":"Reason", 0:"Count", "Reason":"Reason", _unc_final.name if hasattr(_unc_final,'name') else 0:"Count"}), use_container_width=True, hide_index=True)
+
                 st.subheader("Overview")
 
                 def slide_1_final_donuts_fig(year, month):
