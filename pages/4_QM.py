@@ -317,6 +317,110 @@ with tab2:
 
             run = st.button("🔄 Generate Charts", type="primary", key="qm_run")
 
+            # ── Persistent data forms (outside run block so they survive rerun) ──
+            _months_range_pre = list(range(1, selected_month + 1))
+            _prev_year_pre    = selected_year - 1
+            _MONTH_LABELS_pre = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
+
+            # FG Invoiced missing form
+            try:
+                _fg_rows = supabase.table("qm_fg_invoiced").select("*").execute()
+                _fg_data = {(r["year"], r["month"]): r["fg_invoiced"] for r in (_fg_rows.data or [])}
+            except Exception:
+                _fg_data = {}
+            _missing_fg = [m for m in _months_range_pre if _fg_data.get((selected_year, m)) is None]
+            if _missing_fg:
+                st.warning(f"⚠️ FG Invoiced missing for: {', '.join([_MONTH_LABELS_pre[m-1]+'-'+str(selected_year)[-2:] for m in _missing_fg])}")
+                with st.form("qm_fg_form_persistent"):
+                    _fg_inputs = {}
+                    _cols = st.columns(min(len(_missing_fg), 6))
+                    for i, m in enumerate(_missing_fg):
+                        _fg_inputs[m] = _cols[i % 6].number_input(
+                            f"{_MONTH_LABELS_pre[m-1]}-{str(selected_year)[-2:]}",
+                            min_value=0, value=0, step=1, key=f"pfg_{selected_year}_{m}"
+                        )
+                    if st.form_submit_button("💾 Save FG Invoiced", type="primary"):
+                        _errors = []
+                        for m, val in _fg_inputs.items():
+                            try:
+                                supabase.table("qm_fg_invoiced").upsert({
+                                    "year": int(selected_year), "month": int(m),
+                                    "fg_invoiced": float(val), "updated_by": name
+                                }, on_conflict="year,month").execute()
+                            except Exception as e:
+                                _errors.append(f"{_MONTH_LABELS_pre[m-1]}: {e}")
+                        if _errors:
+                            for err in _errors: st.error(err)
+                        else:
+                            st.success("✅ FG Invoiced saved!"); st.rerun()
+
+            # COQ missing form
+            try:
+                _coq_rows = supabase.table("qm_coq_data").select("*").execute()
+                _coq_data = {(r["year"], r["month"]): r for r in (_coq_rows.data or [])}
+            except Exception:
+                _coq_data = {}
+            _coq_needed  = [(_prev_year_pre, m) for m in _months_range_pre] + [(selected_year, m) for m in _months_range_pre]
+            _missing_coq = [(y, m) for y, m in _coq_needed if (y, m) not in _coq_data]
+            if _missing_coq:
+                st.warning(f"⚠️ COQ data missing for {len(_missing_coq)} month(s):")
+                with st.form("qm_coq_form_persistent"):
+                    _coq_inputs = {}
+                    for y, m in _missing_coq:
+                        st.markdown(f"**{_MONTH_LABELS_pre[m-1]}-{str(y)[-2:]}**")
+                        c1, c2 = st.columns(2)
+                        _coq_inputs[(y,m,"shredding")] = c1.number_input(f"Shredding List", min_value=0.0, value=0.0, step=100.0, key=f"pcoq_shr_{y}_{m}")
+                        _coq_inputs[(y,m,"ncr")]       = c2.number_input(f"NCR Shredding",  min_value=0.0, value=0.0, step=100.0, key=f"pcoq_ncr_{y}_{m}")
+                    if st.form_submit_button("💾 Save COQ Data", type="primary"):
+                        _errors = []
+                        for y, m in _missing_coq:
+                            try:
+                                supabase.table("qm_coq_data").upsert({
+                                    "year": int(y), "month": int(m),
+                                    "shredding_list": float(_coq_inputs[(y,m,"shredding")]),
+                                    "ncr_shredding":  float(_coq_inputs[(y,m,"ncr")]),
+                                    "updated_by": name
+                                }, on_conflict="year,month").execute()
+                            except Exception as e:
+                                _errors.append(f"{_MONTH_LABELS_pre[m-1]}-{y}: {e}")
+                        if _errors:
+                            for err in _errors: st.error(err)
+                        else:
+                            st.success("✅ COQ data saved!"); st.rerun()
+
+            # WO missing form
+            try:
+                _wo_rows = supabase.table("qm_wo_data").select("*").execute()
+                _wo_data = {(r["year"], r["month"]): r for r in (_wo_rows.data or [])}
+            except Exception:
+                _wo_data = {}
+            _missing_wo = [(selected_year, m) for m in _months_range_pre if (selected_year, m) not in _wo_data]
+            if _missing_wo:
+                st.warning(f"⚠️ Work Order data missing for {len(_missing_wo)} month(s):")
+                with st.form("qm_wo_form_persistent"):
+                    _wo_inputs = {}
+                    _cols_wo = st.columns(min(4, len(_missing_wo)))
+                    for idx, (y, m) in enumerate(_missing_wo):
+                        _wo_inputs[(y, m)] = _cols_wo[idx % len(_cols_wo)].number_input(
+                            f"{_MONTH_LABELS_pre[m-1]}-{str(y)[-2:]}",
+                            min_value=0, value=0, step=10, key=f"pwo_{y}_{m}"
+                        )
+                    if st.form_submit_button("💾 Save WO Data", type="primary"):
+                        _errors = []
+                        for y, m in _missing_wo:
+                            try:
+                                supabase.table("qm_wo_data").upsert({
+                                    "year": int(y), "month": int(m),
+                                    "wo_count": int(_wo_inputs[(y, m)]),
+                                    "updated_by": name
+                                }, on_conflict="year,month").execute()
+                            except Exception as e:
+                                _errors.append(f"{_MONTH_LABELS_pre[m-1]}-{y}: {e}")
+                        if _errors:
+                            for err in _errors: st.error(err)
+                        else:
+                            st.success("✅ WO data saved!"); st.rerun()
+
             if run:
                 prev_year    = selected_year - 1
                 months_range = list(range(1, selected_month+1))
@@ -841,20 +945,21 @@ with tab2:
                                 f"{MONTH_LABELS[m-1]}-{str(selected_year)[-2:]}",
                                 min_value=0, value=0, step=1, key=f"fg_{selected_year}_{m}"
                             )
-                        submitted = st.form_submit_button("Save FG Invoiced", type="primary")
+                        submitted = st.form_submit_button("💾 Save FG Invoiced", type="primary")
                         if submitted:
+                            errors = []
                             for m, val in fg_inputs.items():
-                                if val > 0:
-                                    try:
-                                        supabase.table("qm_fg_invoiced").upsert({
-                                            "year": selected_year, "month": m,
-                                            "fg_invoiced": val, "updated_by": name
-                                        }, on_conflict="year,month").execute()
-                                        fg_data[(selected_year, m)] = val
-                                    except Exception as e:
-                                        st.error(f"Could not save {MONTH_LABELS[m-1]}: {e}")
-                            st.success("Saved! Regenerating charts...")
-                            st.rerun()
+                                try:
+                                    supabase.table("qm_fg_invoiced").upsert({
+                                        "year": int(selected_year), "month": int(m),
+                                        "fg_invoiced": float(val), "updated_by": name
+                                    }, on_conflict="year,month").execute()
+                                except Exception as e:
+                                    errors.append(f"{MONTH_LABELS[m-1]}: {e}")
+                            if errors:
+                                for err in errors: st.error(err)
+                            else:
+                                st.success("✅ Saved!"); st.rerun()
 
                 months_with_fg = [m for m in months_range if fg_data.get((selected_year, m)) is not None]
 
@@ -1014,17 +1119,21 @@ with tab2:
                             coq_inputs[(y,m,"shredding")] = c1.number_input(f"Shredding List", min_value=0.0, value=0.0, step=100.0, key=f"coq_shr_{y}_{m}")
                             coq_inputs[(y,m,"ncr")]       = c2.number_input(f"NCR Shredding",  min_value=0.0, value=0.0, step=100.0, key=f"coq_ncr_{y}_{m}")
                         if st.form_submit_button("💾 Save COQ Data", type="primary"):
+                            errors = []
                             for y, m in missing_coq:
                                 try:
                                     supabase.table("qm_coq_data").upsert({
-                                        "year": y, "month": m,
-                                        "shredding_list": coq_inputs[(y,m,"shredding")],
-                                        "ncr_shredding":  coq_inputs[(y,m,"ncr")],
+                                        "year": int(y), "month": int(m),
+                                        "shredding_list": float(coq_inputs[(y,m,"shredding")]),
+                                        "ncr_shredding":  float(coq_inputs[(y,m,"ncr")]),
                                         "updated_by": name
                                     }, on_conflict="year,month").execute()
                                 except Exception as e:
-                                    st.error(f"Error saving {MONTH_LABELS[m-1]}-{y}: {e}")
-                            st.success("✅ Saved!"); st.rerun()
+                                    errors.append(f"{MONTH_LABELS[m-1]}-{y}: {e}")
+                            if errors:
+                                for err in errors: st.error(err)
+                            else:
+                                st.success("✅ Saved!"); st.rerun()
 
                 # Build COQ arrays for chart
                 def get_coq_month(year, month):
@@ -1147,16 +1256,20 @@ with tab2:
                                 key=f"wo_{y}_{m}"
                             )
                         if st.form_submit_button("💾 Save WO Data", type="primary"):
+                            errors = []
                             for y, m in missing_wo:
                                 try:
                                     supabase.table("qm_wo_data").upsert({
-                                        "year": y, "month": m,
-                                        "wo_count": wo_inputs[(y, m)],
+                                        "year": int(y), "month": int(m),
+                                        "wo_count": int(wo_inputs[(y, m)]),
                                         "updated_by": name
                                     }, on_conflict="year,month").execute()
                                 except Exception as e:
-                                    st.error(f"Error saving {MONTH_LABELS[m-1]}-{y}: {e}")
-                            st.success("✅ Saved!"); st.rerun()
+                                    errors.append(f"{MONTH_LABELS[m-1]}-{y}: {e}")
+                            if errors:
+                                for err in errors: st.error(err)
+                            else:
+                                st.success("✅ Saved!"); st.rerun()
 
                 wo_ready = all((y, m) in wo_data for y, m in wo_months_needed)
 
