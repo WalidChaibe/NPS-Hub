@@ -19,6 +19,7 @@ os.environ["MPLCONFIGDIR"] = os.path.join(os.getcwd(), ".mplconfig")
 from qm_pipeline import (
     read_excel_from_upload, build_dataset_final_issued, build_dataset_ncr,
     FINAL_APPROVAL_COL, CREATION_DATETIME_COL,
+    load_settings_from_supabase, make_classifier, get_crm_row_counts, _clean_text,
 )
 from utils.supabase_client import get_supabase
 # ── Notifications (inlined) ──
@@ -149,8 +150,8 @@ with col3:
 
 st.divider()
 
-tab1, tab2, tab3, tab4 = st.tabs([
-    "📊 Maturity Level", "📈 Quality Indicators", "📁 Documents", "🎯 Action Plans",
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    "📊 Maturity Level", "📈 Quality Indicators", "📁 Documents", "🎯 Action Plans", "⚙️ Settings",
 ])
 
 # ════════════════════════════════════════
@@ -255,13 +256,17 @@ with tab2:
     else:
         try:
             with st.spinner("Loading data..."):
+                # Load settings from Supabase
+                _crm_map, _q_set, _s_set, _i_set = load_settings_from_supabase(supabase)
+                _classifier = make_classifier(_q_set, _s_set, _i_set)
+
                 df_final_loaded  = read_excel_from_upload(final_file)
                 df_issued_loaded = read_excel_from_upload(issued_file)
                 df_ncr_loaded    = read_excel_from_upload(ncr_file)
 
-                final_pkg  = build_dataset_final_issued(df_final_loaded,  date_col=FINAL_APPROVAL_COL,    dataset_name="FINAL")
-                issued_pkg = build_dataset_final_issued(df_issued_loaded, date_col=CREATION_DATETIME_COL, dataset_name="ISSUED")
-                ncr_pkg    = build_dataset_ncr(df_ncr_loaded,             date_col=FINAL_APPROVAL_COL,    dataset_name="NCR")
+                final_pkg  = build_dataset_final_issued(df_final_loaded,  date_col=FINAL_APPROVAL_COL,    dataset_name="FINAL",  crm_delete_map=_crm_map, classifier=_classifier)
+                issued_pkg = build_dataset_final_issued(df_issued_loaded, date_col=CREATION_DATETIME_COL, dataset_name="ISSUED", crm_delete_map=_crm_map, classifier=_classifier)
+                ncr_pkg    = build_dataset_ncr(df_ncr_loaded,             date_col=FINAL_APPROVAL_COL,    dataset_name="NCR",    classifier=_classifier)
 
                 df_final  = final_pkg["cleaned_flagged"].copy()
                 df_issued = issued_pkg["cleaned_flagged"].copy()
@@ -286,6 +291,41 @@ with tab2:
                 df_ncr_dash   = df_ncr
 
             st.success("✅ Files loaded!")
+
+            # ── Unknown reasons prompt ──
+            _all_unclassified = set()
+            for _pkg_name, _pkg in [("FINAL", final_pkg), ("ISSUED", issued_pkg)]:
+                for r in _pkg["unclassified_counts"].index:
+                    _all_unclassified.add(str(r).strip())
+            _all_unclassified = {r for r in _all_unclassified if r and r.lower() not in ("", "nan", "invalid")}
+
+            if _all_unclassified:
+                st.warning(f"⚠️ {len(_all_unclassified)} unclassified reason(s) found in uploaded files. Please classify them:")
+                with st.form("qm_classify_reasons_form"):
+                    _classifications = {}
+                    for r in sorted(_all_unclassified):
+                        _col1, _col2 = st.columns([3, 1])
+                        _col1.markdown(f"**{r}**")
+                        _classifications[r] = _col2.radio(
+                            "", ["Quality", "Service", "Invalid (exclude)"],
+                            key=f"cls_{r[:40]}", horizontal=True
+                        )
+                    if st.form_submit_button("💾 Save Classifications", type="primary"):
+                        for r, cls in _classifications.items():
+                            try:
+                                if cls == "Quality":
+                                    supabase.table("qm_quality_reasons").upsert(
+                                        {"reason": r, "added_by": name}, on_conflict="reason").execute()
+                                elif cls == "Service":
+                                    supabase.table("qm_service_reasons").upsert(
+                                        {"reason": r, "added_by": name}, on_conflict="reason").execute()
+                                else:
+                                    supabase.table("qm_invalid_reasons").upsert(
+                                        {"reason": r, "added_by": name}, on_conflict="reason").execute()
+                            except Exception as e:
+                                st.error(f"Error saving '{r}': {e}")
+                        st.success("✅ Classifications saved! Regenerate charts to apply.")
+                        st.rerun()
 
             # Period selector
             df_dates = df_final[["Year","Month"]].drop_duplicates().sort_values(["Year","Month"])
@@ -1523,3 +1563,192 @@ with tab4:
                         pass
                     st.success("✅ Action plan added!"); st.rerun()
                 except Exception as e: st.error(f"Error: {str(e)}")
+
+
+# ════════════════════════════════════════
+# TAB 5 — SETTINGS
+# ════════════════════════════════════════
+with tab5:
+    st.markdown("### ⚙️ QM Settings")
+    if not can_edit:
+        st.warning("🔒 Only Pillar Leader or Plant Manager can manage settings.")
+        st.stop()
+
+    set1, set2, set3 = st.tabs(["🗑️ CRM Delete Map", "📋 Reasons", "🔍 Preview"])
+
+    # ── LOAD CURRENT SETTINGS ──
+    try:
+        crm_rows_s = supabase.table("qm_crm_delete_map").select("*").order("added_at", desc=True).execute()
+        crm_list   = crm_rows_s.data or []
+    except Exception: crm_list = []
+    try:
+        q_rows_s = supabase.table("qm_quality_reasons").select("*").order("reason").execute()
+        q_list   = q_rows_s.data or []
+    except Exception: q_list = []
+    try:
+        s_rows_s = supabase.table("qm_service_reasons").select("*").order("reason").execute()
+        s_list   = s_rows_s.data or []
+    except Exception: s_list = []
+    try:
+        i_rows_s = supabase.table("qm_invalid_reasons").select("*").order("reason").execute()
+        i_list   = i_rows_s.data or []
+    except Exception: i_list = []
+
+    # ════════════════════════════════════
+    # SETTINGS TAB 1 — CRM DELETE MAP
+    # ════════════════════════════════════
+    with set1:
+        st.markdown("#### 🗑️ Permanent CRM Delete Log")
+        st.caption("CRM entries here are permanently removed from every upload. Rows shown = how many rows are KEPT (not deleted).")
+
+        if crm_list:
+            crm_df = pd.DataFrame(crm_list)[["crm_ref","customer_name","kept_count","added_by","added_at"]].rename(columns={
+                "crm_ref": "CRM #", "customer_name": "Customer",
+                "kept_count": "Rows Kept", "added_by": "Added By", "added_at": "Added At"
+            })
+            crm_df["Added At"] = pd.to_datetime(crm_df["Added At"]).dt.strftime("%d %b %Y")
+            st.dataframe(crm_df, use_container_width=True, hide_index=True)
+        else:
+            st.info("No CRM deletions recorded yet.")
+
+        st.divider()
+        st.markdown("#### ➕ Add / Update CRM Deletion")
+        st.caption("Upload a CRM file to look up customer names, then enter the CRM # and how many rows to KEEP.")
+
+        crm_lookup_file = st.file_uploader("Upload CRM file (for customer lookup)", type=["xlsx","xls"], key="crm_lookup")
+
+        with st.form("qm_crm_add_form"):
+            c1, c2 = st.columns(2)
+            new_crm_ref   = c1.text_input("CRM Reference #", placeholder="EPAK-CRM-XXXXX").strip()
+            new_kept_count = c2.number_input("Rows to KEEP (0 = delete all)", min_value=0, value=0, step=1)
+
+            # Auto-lookup customer from uploaded file
+            customer_display = ""
+            if crm_lookup_file and new_crm_ref:
+                try:
+                    import io as _io
+                    _df_lookup = pd.read_excel(_io.BytesIO(crm_lookup_file.getvalue()))
+                    _match = _df_lookup[_df_lookup["Ref NB"].astype(str).str.strip() == new_crm_ref]
+                    if not _match.empty and "Customer" in _df_lookup.columns:
+                        customer_display = str(_match["Customer"].iloc[0]).strip()
+                except Exception:
+                    pass
+
+            new_customer = st.text_input("Customer Name", value=customer_display,
+                                          placeholder="Auto-filled from file or type manually")
+
+            if st.form_submit_button("💾 Save CRM Entry", type="primary"):
+                if not new_crm_ref:
+                    st.error("Please enter a CRM reference number.")
+                else:
+                    try:
+                        supabase.table("qm_crm_delete_map").upsert({
+                            "crm_ref": new_crm_ref,
+                            "customer_name": new_customer or "",
+                            "kept_count": int(new_kept_count),
+                            "added_by": name,
+                        }, on_conflict="crm_ref").execute()
+                        st.success(f"✅ {new_crm_ref} saved — keeping {new_kept_count} rows.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+
+        if crm_list:
+            st.divider()
+            st.markdown("#### 🗑️ Remove from Delete Map")
+            st.caption("Removing a CRM from this list means its rows will NO longer be deleted on upload.")
+            del_crm_map = {r["crm_ref"]: r["id"] for r in crm_list}
+            sel_del_crm = st.selectbox("Select CRM to remove", list(del_crm_map.keys()), key="del_crm_sel")
+            if st.button("🗑️ Remove CRM Entry", key="btn_del_crm"):
+                try:
+                    supabase.table("qm_crm_delete_map").delete().eq("id", del_crm_map[sel_del_crm]).execute()
+                    st.success(f"Removed {sel_del_crm}"); st.rerun()
+                except Exception as e:
+                    st.error(f"Error: {e}")
+
+    # ════════════════════════════════════
+    # SETTINGS TAB 2 — REASONS
+    # ════════════════════════════════════
+    with set2:
+        col_q, col_s, col_i = st.columns(3)
+
+        # Quality Reasons
+        with col_q:
+            st.markdown(f"#### ✅ Quality Reasons ({len(q_list)})")
+            if q_list:
+                st.dataframe(pd.DataFrame(q_list)[["reason"]].rename(columns={"reason":"Reason"}),
+                             use_container_width=True, hide_index=True, height=300)
+            with st.form("qm_add_q_reason"):
+                new_q = st.text_input("Add Quality Reason", key="new_q_reason")
+                if st.form_submit_button("➕ Add", type="primary"):
+                    if new_q.strip():
+                        try:
+                            supabase.table("qm_quality_reasons").upsert(
+                                {"reason": new_q.strip(), "added_by": name}, on_conflict="reason").execute()
+                            st.success("✅ Added!"); st.rerun()
+                        except Exception as e: st.error(str(e))
+            if q_list:
+                del_q = st.selectbox("Remove", [r["reason"] for r in q_list], key="del_q_sel")
+                if st.button("🗑️ Remove", key="btn_del_q"):
+                    try:
+                        supabase.table("qm_quality_reasons").delete().eq("reason", del_q).execute()
+                        st.rerun()
+                    except Exception as e: st.error(str(e))
+
+        # Service Reasons
+        with col_s:
+            st.markdown(f"#### 🚚 Service Reasons ({len(s_list)})")
+            if s_list:
+                st.dataframe(pd.DataFrame(s_list)[["reason"]].rename(columns={"reason":"Reason"}),
+                             use_container_width=True, hide_index=True, height=300)
+            with st.form("qm_add_s_reason"):
+                new_s = st.text_input("Add Service Reason", key="new_s_reason")
+                if st.form_submit_button("➕ Add", type="primary"):
+                    if new_s.strip():
+                        try:
+                            supabase.table("qm_service_reasons").upsert(
+                                {"reason": new_s.strip(), "added_by": name}, on_conflict="reason").execute()
+                            st.success("✅ Added!"); st.rerun()
+                        except Exception as e: st.error(str(e))
+            if s_list:
+                del_s = st.selectbox("Remove", [r["reason"] for r in s_list], key="del_s_sel")
+                if st.button("🗑️ Remove", key="btn_del_s"):
+                    try:
+                        supabase.table("qm_service_reasons").delete().eq("reason", del_s).execute()
+                        st.rerun()
+                    except Exception as e: st.error(str(e))
+
+        # Invalid Reasons
+        with col_i:
+            st.markdown(f"#### ❌ Invalid / Excluded Reasons ({len(i_list)})")
+            if i_list:
+                st.dataframe(pd.DataFrame(i_list)[["reason"]].rename(columns={"reason":"Reason"}),
+                             use_container_width=True, hide_index=True, height=300)
+            with st.form("qm_add_i_reason"):
+                new_i = st.text_input("Add Invalid Reason", key="new_i_reason")
+                if st.form_submit_button("➕ Add", type="primary"):
+                    if new_i.strip():
+                        try:
+                            supabase.table("qm_invalid_reasons").upsert(
+                                {"reason": new_i.strip(), "added_by": name}, on_conflict="reason").execute()
+                            st.success("✅ Added!"); st.rerun()
+                        except Exception as e: st.error(str(e))
+            if i_list:
+                del_i = st.selectbox("Remove", [r["reason"] for r in i_list], key="del_i_sel")
+                if st.button("🗑️ Remove", key="btn_del_i"):
+                    try:
+                        supabase.table("qm_invalid_reasons").delete().eq("reason", del_i).execute()
+                        st.rerun()
+                    except Exception as e: st.error(str(e))
+
+    # ════════════════════════════════════
+    # SETTINGS TAB 3 — PREVIEW
+    # ════════════════════════════════════
+    with set3:
+        st.markdown("#### 🔍 Settings Summary")
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("CRM Deletions", len(crm_list))
+        c2.metric("Quality Reasons", len(q_list))
+        c3.metric("Service Reasons", len(s_list))
+        c4.metric("Invalid Reasons", len(i_list))
+        st.info("Changes take effect the next time you upload and generate charts in the Quality Indicators tab.")
