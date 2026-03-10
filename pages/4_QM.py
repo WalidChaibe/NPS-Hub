@@ -19,7 +19,7 @@ os.environ["MPLCONFIGDIR"] = os.path.join(os.getcwd(), ".mplconfig")
 from qm_pipeline import (
     read_excel_from_upload, build_dataset_final_issued, build_dataset_ncr,
     FINAL_APPROVAL_COL, CREATION_DATETIME_COL,
-    load_settings_from_supabase, make_classifier, get_crm_row_counts, _clean_text,
+    load_settings_from_supabase, make_classifier,
 )
 from utils.supabase_client import get_supabase
 # ── Notifications (inlined) ──
