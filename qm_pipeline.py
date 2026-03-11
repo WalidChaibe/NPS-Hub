@@ -62,7 +62,7 @@ def load_settings_from_supabase(supabase=None):
     if supabase is None:
         return _CRM_DELETE_MAP_DEFAULT, _QUALITY_REASONS_DEFAULT, _SERVICE_REASONS_DEFAULT, set()
     try:
-        crm_rows = supabase.table("qm_crm_delete_map").select("crm_ref,kept_count").execute()
+        crm_rows = supabase.table("qm_crm_delete_map").select("crm_ref,delete_count").execute()
         crm_map  = {r["crm_ref"]: r["delete_count"] for r in (crm_rows.data or [])}
         if not crm_map: crm_map = _CRM_DELETE_MAP_DEFAULT
     except Exception:
