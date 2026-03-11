@@ -467,6 +467,32 @@ with tab2:
                 MONTH_LABELS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
                 slides_for_pdf = []
 
+                # ── Always re-fetch settings + rebuild datasets on Generate ──
+                _crm_map, _q_set, _s_set, _i_set = load_settings_from_supabase(supabase)
+                _classifier = make_classifier(_q_set, _s_set, _i_set)
+                final_pkg  = build_dataset_final_issued(df_final_loaded,  date_col=FINAL_APPROVAL_COL,    dataset_name="FINAL",  crm_delete_map=_crm_map, classifier=_classifier)
+                issued_pkg = build_dataset_final_issued(df_issued_loaded, date_col=CREATION_DATETIME_COL, dataset_name="ISSUED", crm_delete_map=_crm_map, classifier=_classifier)
+                ncr_pkg    = build_dataset_ncr(df_ncr_loaded,             date_col=FINAL_APPROVAL_COL,    dataset_name="NCR",    classifier=_classifier)
+                df_final   = final_pkg["cleaned_flagged"].copy()
+                df_issued  = issued_pkg["cleaned_flagged"].copy()
+                df_ncr     = ncr_pkg["cleaned_flagged"].copy()
+                for _d in (df_final, df_issued, df_ncr):
+                    _d["Year"]  = pd.to_numeric(_d["Year"],  errors="coerce").astype("Int64")
+                    _d["Month"] = pd.to_numeric(_d["Month"], errors="coerce").astype("Int64")
+                df_final  = df_final.dropna(subset=["Year","Month"])
+                df_issued = df_issued.dropna(subset=["Year","Month"])
+                df_ncr    = df_ncr.dropna(subset=["Year","Month"])
+                df_final["Year"]   = df_final["Year"].astype(int)
+                df_final["Month"]  = df_final["Month"].astype(int)
+                df_issued["Year"]  = df_issued["Year"].astype(int)
+                df_issued["Month"] = df_issued["Month"].astype(int)
+                df_ncr["Year"]     = df_ncr["Year"].astype(int)
+                df_ncr["Month"]    = df_ncr["Month"].astype(int)
+                df_final_raw_flagged = final_pkg["raw_flagged"]
+                df             = df_final
+                df_raw_flagged = df_final_raw_flagged
+                df_ncr_dash    = df_ncr
+
                 def donut_chart(ax, counts):
                     labels = ["Service","Quality","Invalid"]
                     values = np.array([int(counts.get(l,0)) for l in labels], dtype=float)
