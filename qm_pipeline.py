@@ -109,13 +109,20 @@ def make_classifier(quality_set, service_set, invalid_set):
 _classify_reason_default = make_classifier(_QUALITY_REASONS_DEFAULT, _SERVICE_REASONS_DEFAULT, set())
 
 def apply_crm_deletions(df, crm_delete_map, crm_col=CRM_COL, df_name="df"):
+    import streamlit as st
     rows_to_drop = []
     crm_series = df[crm_col].astype(str).str.strip()
+    debug_lines = []
     for crm, n in crm_delete_map.items():
         if n <= 0: continue
         idx = df[crm_series == crm].index
-        if len(idx) == 0: continue
-        rows_to_drop.extend(idx[-n:].tolist())
+        total = len(idx)
+        if total == 0: continue
+        to_drop = idx[-n:].tolist()
+        rows_to_drop.extend(to_drop)
+        debug_lines.append(f"`{crm}`: found {total} rows, deleting {len(to_drop)}")
+    if debug_lines:
+        st.expander(f"🔍 CRM Deletion Debug ({df_name})", expanded=False).write("\n\n".join(debug_lines))
     return df.drop(index=rows_to_drop).reset_index(drop=True)
 
 def add_date_and_flags_final_issued(df, date_col, df_name="df", classifier=None):
