@@ -266,7 +266,7 @@ with tab2:
 
                 final_pkg  = build_dataset_final_issued(df_final_loaded,  date_col=FINAL_APPROVAL_COL,    dataset_name="FINAL",  crm_delete_map=_crm_map, classifier=_classifier)
                 issued_pkg = build_dataset_final_issued(df_issued_loaded, date_col=CREATION_DATETIME_COL, dataset_name="ISSUED", crm_delete_map=_crm_map, classifier=_classifier)
-                ncr_pkg    = build_dataset_ncr(df_ncr_loaded,             date_col=FINAL_APPROVAL_COL,    dataset_name="NCR",    classifier=_classifier)
+                ncr_pkg    = build_dataset_ncr(df_ncr_loaded,             date_col=CREATION_DATETIME_COL, dataset_name="NCR",    classifier=_classifier)
 
                 df_final  = final_pkg["cleaned_flagged"].copy()
                 df_issued = issued_pkg["cleaned_flagged"].copy()
@@ -472,7 +472,7 @@ with tab2:
                 _classifier = make_classifier(_q_set, _s_set, _i_set)
                 final_pkg  = build_dataset_final_issued(df_final_loaded,  date_col=FINAL_APPROVAL_COL,    dataset_name="FINAL",  crm_delete_map=_crm_map, classifier=_classifier)
                 issued_pkg = build_dataset_final_issued(df_issued_loaded, date_col=CREATION_DATETIME_COL, dataset_name="ISSUED", crm_delete_map=_crm_map, classifier=_classifier)
-                ncr_pkg    = build_dataset_ncr(df_ncr_loaded,             date_col=FINAL_APPROVAL_COL,    dataset_name="NCR",    classifier=_classifier)
+                ncr_pkg    = build_dataset_ncr(df_ncr_loaded,             date_col=CREATION_DATETIME_COL, dataset_name="NCR",    classifier=_classifier)
                 df_final   = final_pkg["cleaned_flagged"].copy()
                 df_issued  = issued_pkg["cleaned_flagged"].copy()
                 df_ncr     = ncr_pkg["cleaned_flagged"].copy()
