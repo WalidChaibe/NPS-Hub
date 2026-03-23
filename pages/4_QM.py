@@ -661,6 +661,81 @@ with tab2:
                 show_fig(slide_5_quality_defect_current_month_fig(selected_year,selected_month,TOPN_QUALITY_CM))
                 slides_for_pdf.append({"title":"FINAL - Quality Defects (Current Month)","fig":slide_5_quality_defect_current_month_fig(selected_year,selected_month,TOPN_QUALITY_CM)})
 
+                # ── Reason Trend Explorer ──
+                st.subheader("📈 Reason Trend Explorer")
+                st.caption("Select a reason to see its monthly trend — FINAL file, Final Approval Date.")
+
+                _all_reasons = sorted([
+                    r for r in df[(df["Is_Valid"]==True)]["Reason"].astype(str).str.strip().unique()
+                    if r and r.lower() not in ("nan","")
+                ])
+
+                _selected_reason = st.selectbox(
+                    "Select Reason", ["— select a reason —"] + _all_reasons,
+                    key="qm_trend_reason"
+                )
+
+                if _selected_reason != "— select a reason —":
+                    def slide_reason_trend_fig(reason, selected_year, selected_month):
+                        MONTH_LABELS_T = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
+                        prev_year_t = selected_year - 1
+                        months_t = list(range(1, 13))
+
+                        def get_monthly(yr):
+                            base = df[
+                                (df["Is_Valid"]==True) &
+                                (df["Reason"].astype(str).str.strip()==reason) &
+                                (df["Year"]==yr)
+                            ]
+                            return base.groupby("Month").size().reindex(months_t, fill_value=0)
+
+                        vals_prev = get_monthly(prev_year_t)
+                        vals_sel  = get_monthly(selected_year)
+
+                        # YTD counts
+                        ytd_prev = int(vals_prev.iloc[:selected_month].sum())
+                        ytd_sel  = int(vals_sel.iloc[:selected_month].sum())
+
+                        x = np.arange(12)
+                        w = 0.35
+                        fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=300)
+
+                        b1 = ax.bar(x - w/2, vals_prev.values, w, color="#006394",
+                                    label=f"{prev_year_t}  (YTD: {ytd_prev})", alpha=0.85)
+                        b2 = ax.bar(x + w/2, vals_sel.values,  w, color="#C1A02E",
+                                    label=f"{selected_year}  (YTD: {ytd_sel})", alpha=0.85)
+
+                        add_simple_value_labels(ax, b1, lambda v: f"{int(v)}", 0.3)
+                        add_simple_value_labels(ax, b2, lambda v: f"{int(v)}", 0.3)
+
+                        # Trendline for selected year (months up to selected_month)
+                        y_trend = vals_sel.values[:selected_month].astype(float)
+                        if len(y_trend) >= 2 and np.any(y_trend > 0):
+                            xf = np.arange(selected_month, dtype=float)
+                            coeff = np.polyfit(xf, y_trend, 1)
+                            ax.plot(x[:selected_month], np.polyval(coeff, xf),
+                                    linestyle="--", linewidth=1.5, color="#C1A02E",
+                                    label=f"Trend {selected_year}")
+
+                        # Mark current month
+                        ax.axvline(selected_month - 1, color="#DE201B", linewidth=1.2,
+                                   linestyle=":", alpha=0.6, label="Current Month")
+
+                        ax.set_xticks(x)
+                        ax.set_xticklabels(MONTH_LABELS_T, fontsize=11)
+                        ax.set_ylabel("Count")
+                        ax.set_ylim(0, max(max(vals_prev.max(), vals_sel.max()), 1) * 1.25)
+                        ax.spines["top"].set_visible(False)
+                        ax.spines["right"].set_visible(False)
+                        ax.grid(False)
+                        ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.08),
+                                  ncol=4, frameon=False, fontsize=11)
+                        plt.tight_layout(rect=[0, 0.05, 1, 1])
+                        return fig
+
+                    _fig_trend = slide_reason_trend_fig(_selected_reason, selected_year, selected_month)
+                    show_fig(_fig_trend)
+
                 def slide_6_quality_cost_cm_vs_ytd_fig(selected_year,selected_month,top_n=15):
                     decision_candidates=[c for c in df_raw_flagged.columns if "decision" in str(c).lower()]
                     if not decision_candidates: raise KeyError("Could not find Decision column.")
