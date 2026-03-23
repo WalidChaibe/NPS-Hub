@@ -224,101 +224,24 @@ with tab2:
         st.image(fig_to_png_bytes(fig, dpi=dpi))
         plt.close(fig)
 
-    # ── Load logo once ──
-    _LOGO_URL = "https://sjcwzbftzpfylwdqiknh.supabase.co/storage/v1/object/public/asset/branding/napco_logo.png"
-    _logo_img = None
-    try:
-        import urllib.request as _ur
-        import tempfile as _tf
-        _tmp = _tf.NamedTemporaryFile(delete=False, suffix=".png")
-        _ur.urlretrieve(_LOGO_URL, _tmp.name)
-        _logo_img = ImageReader(_tmp.name)
-    except Exception:
-        _logo_img = None
-
     def ppt_slide_title_bar(c, title, W, H):
-        # ── Red corner accent (top-left) ──
-        c.setFillColor(HexColor("#DE201B"))
-        c.rect(0, H - 18, 60, 18, fill=1, stroke=0)
-
-        # ── Blue title bar ──
         c.setFillColor(HexColor("#006394"))
-        c.rect(0, H - 58, W, 40, fill=1, stroke=0)
-
-        # ── Title text — Liberation Sans Bold (Franklin Gothic alternative) ──
-        c.setFillColor(HexColor("#FFFFFF"))
-        c.setFont("Helvetica-Bold", 22)
-        c.drawString(70, H - 44, title)
-
-        # ── Thin separator line ──
-        c.setStrokeColor(HexColor("#004A70"))
-        c.setLineWidth(1)
-        c.line(0, H - 60, W, H - 60)
-
-    def ppt_intro_slide(c, title, subtitle, W, H):
-        # ── White background ──
-        c.setFillColor(HexColor("#FFFFFF"))
-        c.rect(0, 0, W, H, fill=1, stroke=0)
-
-        # ── Red corner accent (top-left) ──
-        c.setFillColor(HexColor("#DE201B"))
-        c.rect(0, H - 18, 60, 18, fill=1, stroke=0)
-
-        # ── Blue top bar ──
-        c.setFillColor(HexColor("#006394"))
-        c.rect(0, H - 58, W, 40, fill=1, stroke=0)
-
-        # ── Logo on blue bar (top left) ──
-        if _logo_img:
-            try:
-                c.drawImage(_logo_img, 8, H - 52, width=100, height=32,
-                            preserveAspectRatio=True, mask="auto")
-            except Exception:
-                pass
-
-        # ── Title text centered — grey, large ──
-        c.setFillColor(HexColor("#555555"))
-        c.setFont("Helvetica-Bold", 36)
-        title_w = c.stringWidth(title, "Helvetica-Bold", 36)
-        c.drawString((W - title_w) / 2, H / 2 + 20, title)
-
-        # ── Subtitle text centered — lighter grey ──
-        if subtitle:
-            c.setFillColor(HexColor("#888888"))
-            c.setFont("Helvetica", 22)
-            sub_w = c.stringWidth(subtitle, "Helvetica", 22)
-            c.drawString((W - sub_w) / 2, H / 2 - 20, subtitle)
-
-        # ── Bottom accent line ──
+        c.setFont("Helvetica-Bold", 26)
+        c.drawString(40, H - 58, title)
         c.setStrokeColor(HexColor("#006394"))
-        c.setLineWidth(3)
-        c.line(80, 60, W - 80, 60)
+        c.setLineWidth(4)
+        c.line(40, H - 78, W - 40, H - 78)
 
     def build_ppt_pdf(slides, dpi=300):
         W, H = 960, 540
         pdf_buf = io.BytesIO()
         c = canvas.Canvas(pdf_buf, pagesize=(W, H))
         for s in slides:
-            is_intro = s.get("intro", False)
-            if is_intro:
-                ppt_intro_slide(c, s["title"], s.get("subtitle", ""), W, H)
-                # Draw the figure below the bar if present
-                if s.get("fig"):
-                    img = ImageReader(fig_to_png_bytes(s["fig"], dpi=dpi))
-                    c.drawImage(img, 40, 80, width=W-80, height=H-160,
-                                preserveAspectRatio=True, anchor="c")
-                    plt.close(s["fig"])
-            else:
-                # White background
-                c.setFillColor(HexColor("#FFFFFF"))
-                c.rect(0, 0, W, H, fill=1, stroke=0)
-                ppt_slide_title_bar(c, s["title"], W, H)
-                if s.get("fig"):
-                    img = ImageReader(fig_to_png_bytes(s["fig"], dpi=dpi))
-                    c.drawImage(img, 20, 20, width=W-40, height=H-80,
-                                preserveAspectRatio=True, anchor="c")
-                    plt.close(s["fig"])
+            ppt_slide_title_bar(c, s["title"], W, H)
+            img = ImageReader(fig_to_png_bytes(s["fig"], dpi=dpi))
+            c.drawImage(img, 40, 40, width=W-80, height=H-92-40, preserveAspectRatio=True, anchor="c")
             c.showPage()
+            plt.close(s["fig"])
         c.save()
         pdf_buf.seek(0)
         return pdf_buf
@@ -1611,9 +1534,20 @@ with tab2:
                     plt.tight_layout(h_pad=1.5)
                     return fig, None
 
-                # ── Intro slide helper (rendered directly in PDF, no matplotlib fig) ──
+                # ── Intro slide helper ──
                 def make_intro_slide(title_text, subtitle_text=""):
-                    return None  # drawn directly by ppt_intro_slide in build_ppt_pdf
+                    fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=300)
+                    fig.patch.set_facecolor("#006394")
+                    ax.set_facecolor("#006394")
+                    ax.text(0.5, 0.55, title_text, transform=ax.transAxes,
+                            ha="center", va="center", fontsize=36, fontweight="bold",
+                            color="white", wrap=True)
+                    if subtitle_text:
+                        ax.text(0.5, 0.35, subtitle_text, transform=ax.transAxes,
+                                ha="center", va="center", fontsize=22, color="#D8C37D")
+                    ax.axis("off")
+                    plt.tight_layout()
+                    return fig
 
                 month_name = pd.to_datetime(f"{selected_year}-{selected_month:02d}-01").strftime("%B %Y")
 
@@ -1621,95 +1555,94 @@ with tab2:
                 pdf_slides = []
 
                 # 1 - Total Complaints Issued (ISSUED donut)
-                pdf_slides.append({"title": "1 — Total Complaints Issued", "fig": slide_issued_1_donuts_fig(selected_year, selected_month)})
+                pdf_slides.append({"title": "Total Complaints Issued", "fig": slide_issued_1_donuts_fig(selected_year, selected_month)})
 
                 # 2 - Total Complaints Approved (FINAL donut)
-                pdf_slides.append({"title": "2 — Total Complaints Approved", "fig": slide_1_final_donuts_fig(selected_year, selected_month)})
+                pdf_slides.append({"title": "Total Complaints Approved", "fig": slide_1_final_donuts_fig(selected_year, selected_month)})
 
                 # 3 - Complaints Lead Time
-                pdf_slides.append({"title": "3 — Complaints Lead Time — First Approval", "fig": slide_2_leadtime_fig(selected_year, selected_month)})
+                pdf_slides.append({"title": "Complaints Lead Time — First Approval", "fig": slide_2_leadtime_fig(selected_year, selected_month)})
 
                 # 4 - Complaints Ratio (Total)
                 if months_with_fg:
-                    pdf_slides.append({"title": "4 — Complaints Ratio", "fig": slide_cc_ratio_fig(selected_year, category_filter=None)})
+                    pdf_slides.append({"title": "Complaints Ratio", "fig": slide_cc_ratio_fig(selected_year, category_filter=None)})
                     # 5 - Quality Complaints Ratio
-                    pdf_slides.append({"title": "5 — Quality Complaints Ratio", "fig": slide_cc_ratio_fig(selected_year, category_filter="Quality")})
+                    pdf_slides.append({"title": "Quality Complaints Ratio", "fig": slide_cc_ratio_fig(selected_year, category_filter="Quality")})
                     # 6 - Service Complaints Ratio
-                    pdf_slides.append({"title": "6 — Service Complaints Ratio", "fig": slide_service_cc_ratio_fig(selected_year)})
+                    pdf_slides.append({"title": "Service Complaints Ratio", "fig": slide_service_cc_ratio_fig(selected_year)})
 
                 # 7 - Total Complaints Issued YoY
-                pdf_slides.append({"title": "7 — Total Complaints Issued — YoY", "fig": slide_issued_valid_count_fig(selected_year, selected_month)})
+                pdf_slides.append({"title": "Total Complaints Issued — YoY", "fig": slide_issued_valid_count_fig(selected_year, selected_month)})
 
                 # Intro slide — Month overview
-                pdf_slides.append({"title": month_name, "subtitle": "Monthly Overview", "intro": True, "fig": None})
+                pdf_slides.append({"title": month_name, "fig": make_intro_slide(month_name, "Monthly Overview")})
 
                 # 8 - Breakdown Quality Complaints Issued CM
-                pdf_slides.append({"title": f"8 — Breakdown of Quality Complaints Issued — {month_name}", "fig": slide_issued_quality_reason_current_month_fig(selected_year, selected_month, TOPN_QUALITY_CM)})
+                pdf_slides.append({"title": f"Breakdown of Quality Complaints Issued — {month_name}", "fig": slide_issued_quality_reason_current_month_fig(selected_year, selected_month, TOPN_QUALITY_CM)})
 
                 # 9 - Root Cause Quality Complaints Issued CM
                 _fig_rcq, _err_rcq = slide_rootcause_fig("Quality", selected_year, selected_month, TOPN_RC_REASONS or 4)
                 if _fig_rcq:
-                    pdf_slides.append({"title": f"9 — Root Cause of Quality Complaints Issued — {month_name}", "fig": _fig_rcq})
+                    pdf_slides.append({"title": f"Root Cause of Quality Complaints Issued — {month_name}", "fig": _fig_rcq})
 
                 # 10 - Breakdown Service Complaints Issued CM
-                pdf_slides.append({"title": f"10 — Breakdown of Service Complaints Issued — {month_name}", "fig": slide_issued_service_reason_current_month_fig(selected_year, selected_month, TOPN_SERVICE_CM)})
+                pdf_slides.append({"title": f"Breakdown of Service Complaints Issued — {month_name}", "fig": slide_issued_service_reason_current_month_fig(selected_year, selected_month, TOPN_SERVICE_CM)})
 
                 # 11 - Root Cause Service Complaints Issued CM
                 _fig_rcs, _err_rcs = slide_rootcause_fig("Service", selected_year, selected_month, TOPN_RC_REASONS or 4)
                 if _fig_rcs:
-                    pdf_slides.append({"title": f"11 — Root Cause of Service Complaints Issued — {month_name}", "fig": _fig_rcs})
+                    pdf_slides.append({"title": f"Root Cause of Service Complaints Issued — {month_name}", "fig": _fig_rcs})
 
                 # Intro slide — Quality Complaints Overview
-                pdf_slides.append({"title": "Quality Complaints Overview", "subtitle": "", "intro": True, "fig": None})
+                pdf_slides.append({"title": "Quality Complaints Overview", "fig": make_intro_slide("Quality Complaints Overview")})
 
                 # 12 - Valid Quality Complaints Count
-                pdf_slides.append({"title": "12 — Valid Quality Complaints Count — To Date", "fig": slide_3_valid_quality_count_fig(selected_year, selected_month)})
+                pdf_slides.append({"title": "Valid Quality Complaints Count — To Date", "fig": slide_3_valid_quality_count_fig(selected_year, selected_month)})
 
                 # 13 - Quality Defects CM vs YTD
-                pdf_slides.append({"title": "13 — Valid Quality Complaints by Defect — CM vs To Date", "fig": slide_4_quality_defect_cm_vs_ytd_fig(selected_year, selected_month, TOPN_QUALITY_DEFECT)})
+                pdf_slides.append({"title": "Valid Quality Complaints by Defect — CM vs To Date", "fig": slide_4_quality_defect_cm_vs_ytd_fig(selected_year, selected_month, TOPN_QUALITY_DEFECT)})
 
                 # 14 - Quality Defects CM
-                pdf_slides.append({"title": f"14 — Valid Quality Complaints by Reason — {month_name}", "fig": slide_5_quality_defect_current_month_fig(selected_year, selected_month, TOPN_QUALITY_CM)})
+                pdf_slides.append({"title": f"Valid Quality Complaints by Reason — {month_name}", "fig": slide_5_quality_defect_current_month_fig(selected_year, selected_month, TOPN_QUALITY_CM)})
 
                 # 15 - Quality CN Cost
                 try:
-                    pdf_slides.append({"title": "15 — Quality Complaints Value (CN at Cost) by Defect — To Date", "fig": slide_6_quality_cost_cm_vs_ytd_fig(selected_year, selected_month, TOPN_COST_DEFECT)})
+                    pdf_slides.append({"title": "Quality Complaints Value (CN at Cost) by Defect — To Date", "fig": slide_6_quality_cost_cm_vs_ytd_fig(selected_year, selected_month, TOPN_COST_DEFECT)})
                 except Exception: pass
 
                 # 18 - Internal Defect Ratio Trend (= NCR Ratio)
                 if wo_ready:
-                    pdf_slides.append({"title": "18 — Internal Defect Ratio Trend", "fig": slide_ncr_ratio_fig(selected_year)})
+                    pdf_slides.append({"title": "Internal Defect Ratio Trend", "fig": slide_ncr_ratio_fig(selected_year)})
 
                 # 19 - NCR Root Cause
                 _fig_ncr_rc, _err_ncr_rc = slide_ncr_rootcause_fig(selected_year, selected_month, TOPN_RC_REASONS or 4)
                 if _fig_ncr_rc:
-                    pdf_slides.append({"title": "19 — NCR Breakdown by Root Cause", "fig": _fig_ncr_rc})
+                    pdf_slides.append({"title": "NCR Breakdown by Root Cause", "fig": _fig_ncr_rc})
 
                 # 20 - NCR and CRM Correlation
-                pdf_slides.append({"title": "20 — NCR and CRM Correlation — YTD", "fig": slide_ncr_vs_crm_correlation_ytd_fig(selected_year, selected_month, TOPN_CORRELATION)})
+                pdf_slides.append({"title": "NCR and CRM Correlation — YTD", "fig": slide_ncr_vs_crm_correlation_ytd_fig(selected_year, selected_month, TOPN_CORRELATION)})
 
                 # Intro slide — Service Complaints Overview
-                pdf_slides.append({"title": "Service Complaints Overview", "subtitle": "", "intro": True, "fig": None})
+                pdf_slides.append({"title": "Service Complaints Overview", "fig": make_intro_slide("Service Complaints Overview")})
 
                 # 21 - Valid Service Count
-                pdf_slides.append({"title": "21 — Valid Service Complaints Count", "fig": slide_s1_valid_service_count_fig(selected_year, selected_month)})
+                pdf_slides.append({"title": "Valid Service Complaints Count", "fig": slide_s1_valid_service_count_fig(selected_year, selected_month)})
 
                 # 22 - Service Reasons CM vs YTD
-                pdf_slides.append({"title": "22 — Valid Service Complaints — CM vs YTD", "fig": slide_s2_service_reason_cm_vs_ytd_fig(selected_year, selected_month, TOPN_SERVICE_REASON)})
+                pdf_slides.append({"title": "Valid Service Complaints — CM vs YTD", "fig": slide_s2_service_reason_cm_vs_ytd_fig(selected_year, selected_month, TOPN_SERVICE_REASON)})
 
                 # 23 - Service CN Cost
                 try:
-                    pdf_slides.append({"title": "23 — Service Complaints Value (CN at Cost) by Defect — To Date", "fig": slide_service_cn_cost_fig(selected_year, selected_month, TOPN_COST_DEFECT)})
+                    pdf_slides.append({"title": "Service Complaints Value (CN at Cost) by Defect — To Date", "fig": slide_service_cn_cost_fig(selected_year, selected_month, TOPN_COST_DEFECT)})
                 except Exception: pass
 
                 # Intro slide — Cost of Quality
-                pdf_slides.append({"title": "Cost of Quality", "subtitle": "", "intro": True, "fig": None})
+                pdf_slides.append({"title": "Cost of Quality", "fig": make_intro_slide("Cost of Quality")})
 
                 # 24 - COQ CM (single month bar — reuse breakdown fig)
                 if coq_ready:
-                    pdf_slides.append({"title": f"24 — Cost of Quality — {month_name}", "fig": slide_coq_breakdown_fig(selected_year, selected_month)})
-                    # 25 - COQ Breakdown YTD (same chart = already covers CM vs YTD)
-                    pdf_slides.append({"title": "25 — Cost of Quality Breakdown (SAR) — CM vs YTD", "fig": slide_coq_breakdown_fig(selected_year, selected_month)})
+                    pdf_slides.append({"title": f"Cost of Quality — {month_name}", "fig": slide_coq_breakdown_fig(selected_year, selected_month)})
+
 
                 # PDF Export
                 st.divider()
