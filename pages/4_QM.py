@@ -2089,36 +2089,31 @@ with tab6:
 
     # ── File uploaders ──
     _c1, _c2 = st.columns(2)
-    _qm_final_file    = _c1.file_uploader("📂 FINAL Approved file", type=["xls","xlsx"], key="qm6_final")
-    _qm_ncr_app_file  = _c2.file_uploader("📂 NCR Fully Approved file", type=["xls","xlsx"], key="qm6_ncr_app")
+    _qm_final_file   = _c1.file_uploader("📂 FINAL Approved file",      type=["xls","xlsx"], key="qm6_final")
+    _qm_ncr_app_file = _c2.file_uploader("📂 NCR Fully Approved file",  type=["xls","xlsx"], key="qm6_ncr_app")
 
     if not _qm_final_file or not _qm_ncr_app_file:
         st.info("⬆️ Upload both files above to enable PPM analysis.")
     else:
         try:
             with st.spinner("Loading files..."):
-                # Load settings from Supabase
                 _qm6_crm_map, _qm6_q_set, _qm6_s_set, _qm6_i_set = load_settings_from_supabase(supabase)
                 _qm6_classifier = make_classifier(_qm6_q_set, _qm6_s_set, _qm6_i_set)
 
-                # ── Load FINAL file ──
                 _qm6_final_loaded = read_excel_from_upload(_qm_final_file)
                 _qm6_final_pkg    = build_dataset_final_issued(
                     _qm6_final_loaded, date_col=FINAL_APPROVAL_COL,
                     dataset_name="QM6_FINAL", crm_delete_map={}, classifier=_qm6_classifier
                 )
                 _qm6_df_final = _qm6_final_pkg["cleaned_flagged"].copy()
-                for _c in ["Year","Month"]:
-                    _qm6_df_final[_c] = pd.to_numeric(_qm6_df_final[_c], errors="coerce").astype("Int64")
+                for _col in ["Year","Month"]:
+                    _qm6_df_final[_col] = pd.to_numeric(_qm6_df_final[_col], errors="coerce").astype("Int64")
                 _qm6_df_final = _qm6_df_final.dropna(subset=["Year","Month"])
                 _qm6_df_final["Year"]  = _qm6_df_final["Year"].astype(int)
                 _qm6_df_final["Month"] = _qm6_df_final["Month"].astype(int)
 
-                # ── Load NCR Fully Approved file ──
                 _qm6_ncr_loaded = read_excel_from_upload(_qm_ncr_app_file)
-                _qm6_ncr_loaded["_Base_Date"] = pd.to_datetime(
-                    _qm6_ncr_loaded[FINAL_APPROVAL_COL], errors="coerce"
-                )
+                _qm6_ncr_loaded["_Base_Date"] = pd.to_datetime(_qm6_ncr_loaded[FINAL_APPROVAL_COL], errors="coerce")
                 _qm6_ncr_loaded["Year"]  = _qm6_ncr_loaded["_Base_Date"].dt.year.astype("Int64")
                 _qm6_ncr_loaded["Month"] = _qm6_ncr_loaded["_Base_Date"].dt.month.astype("Int64")
                 _qm6_ncr_loaded = _qm6_ncr_loaded.dropna(subset=["Year","Month"])
@@ -2128,16 +2123,15 @@ with tab6:
             st.success("✅ Files loaded!")
 
             # ── Unknown reasons prompt ──
-            _qm6_unclassified = set()
+            _qm6_unc = set()
             for r in _qm6_final_pkg["unclassified_counts"].index:
-                _qm6_unclassified.add(str(r).strip())
-            _qm6_unclassified = {r for r in _qm6_unclassified if r and r.lower() not in ("","nan","invalid")}
-
-            if _qm6_unclassified:
-                st.warning(f"⚠️ {len(_qm6_unclassified)} unclassified reason(s) found. Please classify:")
+                _qm6_unc.add(str(r).strip())
+            _qm6_unc = {r for r in _qm6_unc if r and r.lower() not in ("","nan","invalid")}
+            if _qm6_unc:
+                st.warning(f"⚠️ {len(_qm6_unc)} unclassified reason(s) found. Please classify:")
                 with st.form("qm6_classify_form"):
                     _qm6_cls = {}
-                    for r in sorted(_qm6_unclassified):
+                    for r in sorted(_qm6_unc):
                         _cc1, _cc2 = st.columns([3,1])
                         _cc1.markdown(f"**{r}**")
                         _qm6_cls[r] = _cc2.radio("", ["Quality","Service","Invalid (exclude)"],
@@ -2162,112 +2156,169 @@ with tab6:
             # ── Period selector ──
             _qm6_dates = _qm6_df_final[["Year","Month"]].drop_duplicates().sort_values(["Year","Month"])
             _qm6_years = sorted(_qm6_dates["Year"].unique().tolist())
-            _pc1, _pc2 = st.columns(2)
-            _qm6_year  = _pc1.selectbox("Year", _qm6_years, index=len(_qm6_years)-1, key="qm6_year")
+            _pc1, _pc2, _pc3 = st.columns(3)
+            _qm6_year       = _pc1.selectbox("Year", _qm6_years, index=len(_qm6_years)-1, key="qm6_year")
             _qm6_months_avail = sorted(_qm6_dates[_qm6_dates["Year"]==_qm6_year]["Month"].unique().tolist())
-            _qm6_month = int(_pc2.selectbox("YTD up to Month", _qm6_months_avail,
-                                             index=len(_qm6_months_avail)-1, key="qm6_month"))
+            _MONTH_LABELS_6   = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
+            _month_opts       = [_MONTH_LABELS_6[m-1] for m in _qm6_months_avail]
+            _qm6_from_lbl = _pc2.selectbox("From Month", _month_opts, index=0, key="qm6_from_month")
+            _qm6_to_lbl   = _pc3.selectbox("To Month",   _month_opts, index=len(_month_opts)-1, key="qm6_to_month")
+            _qm6_from_month = _MONTH_LABELS_6.index(_qm6_from_lbl) + 1
+            _qm6_to_month   = _MONTH_LABELS_6.index(_qm6_to_lbl)   + 1
+
+            if _qm6_from_month > _qm6_to_month:
+                st.warning("⚠️ 'From Month' must be before or equal to 'To Month'.")
+                st.stop()
+
+            # ── Load production data from Supabase ──
+            try:
+                _prod_rows = supabase.table("qm_production_data").select("*").execute()
+                _prod_data = {(r["year"], r["month"]): r["produced_qty"] for r in (_prod_rows.data or [])}
+            except Exception:
+                _prod_data = {}
+
+            # Check missing production months in selected range
+            _needed_months   = list(range(_qm6_from_month, _qm6_to_month + 1))
+            _missing_prod    = [(int(_qm6_year), m) for m in _needed_months
+                                if _prod_data.get((int(_qm6_year), m)) is None]
+
+            if _missing_prod:
+                st.warning(f"⚠️ Production data missing for {len(_missing_prod)} month(s):")
+                with st.form("qm6_prod_form"):
+                    _prod_inputs = {}
+                    _pcols = st.columns(min(6, len(_missing_prod)))
+                    for i, (y, m) in enumerate(_missing_prod):
+                        _prod_inputs[(y,m)] = _pcols[i % len(_pcols)].number_input(
+                            f"{_MONTH_LABELS_6[m-1]}-{str(y)[-2:]}",
+                            min_value=0.0, value=0.0, step=100000.0,
+                            key=f"qm6_prod_{y}_{m}"
+                        )
+                    if st.form_submit_button("💾 Save Production Data", type="primary"):
+                        _perrors = []
+                        for (y, m), val in _prod_inputs.items():
+                            try:
+                                supabase.table("qm_production_data").upsert({
+                                    "year": int(y), "month": int(m),
+                                    "produced_qty": float(val), "updated_by": name
+                                }, on_conflict="year,month").execute()
+                            except Exception as e:
+                                _perrors.append(f"{_MONTH_LABELS_6[m-1]}: {e}")
+                        if _perrors:
+                            for err in _perrors: st.error(err)
+                        else:
+                            st.success("✅ Production data saved!"); st.rerun()
+
+            # Total produced qty for selected range
+            _total_produced = sum(
+                float(_prod_data.get((int(_qm6_year), m), 0) or 0)
+                for m in _needed_months
+            )
 
             if st.button("📊 Generate PPM Table", type="primary", key="qm6_run"):
-                with st.spinner("Computing PPM..."):
-                    # ── FINAL: Quality + Credit Note → sum Dec Qty ──
-                    _dec_col = next((c for c in _qm6_df_final.columns if "decision" in c.lower()), None)
-                    if not _dec_col:
-                        st.error("Could not find Decision column in FINAL file.")
-                        st.stop()
+                if _total_produced == 0:
+                    st.warning("⚠️ Production data missing or zero for selected period. Please fill in above.")
+                else:
+                    with st.spinner("Computing PPM..."):
+                        _dec_col = next((c for c in _qm6_df_final.columns if "decision" in c.lower()), None)
+                        if not _dec_col:
+                            st.error("Could not find Decision column in FINAL file."); st.stop()
 
-                    _qm6_final_filt = _qm6_df_final[
-                        (_qm6_df_final["Is_Valid"] == True) &
-                        (_qm6_df_final["Complaint_Category"] == "Quality") &
-                        (_qm6_df_final["Year"] == _qm6_year) &
-                        (_qm6_df_final["Month"] <= _qm6_month) &
-                        (_qm6_df_final[_dec_col].astype(str).str.strip().str.lower() == "credit note")
-                    ].copy()
-                    _qm6_final_filt["_Reason"] = _qm6_final_filt["Reason"].astype(str).str.strip()
-                    _qm6_final_filt["_Qty"]    = pd.to_numeric(_qm6_final_filt["Dec Qty"], errors="coerce").fillna(0)
-                    _qm6_final_qty = _qm6_final_filt.groupby("_Reason")["_Qty"].sum()
+                        _qm6_final_filt = _qm6_df_final[
+                            (_qm6_df_final["Is_Valid"] == True) &
+                            (_qm6_df_final["Complaint_Category"] == "Quality") &
+                            (_qm6_df_final["Year"] == int(_qm6_year)) &
+                            (_qm6_df_final["Month"] >= _qm6_from_month) &
+                            (_qm6_df_final["Month"] <= _qm6_to_month) &
+                            (_qm6_df_final[_dec_col].astype(str).str.strip().str.lower() == "credit note")
+                        ].copy()
+                        _qm6_final_filt["_Reason"] = _qm6_final_filt["Reason"].astype(str).str.strip()
+                        _qm6_final_filt["_Qty"]    = pd.to_numeric(_qm6_final_filt["Dec Qty"], errors="coerce").fillna(0)
+                        _qm6_final_qty = _qm6_final_filt.groupby("_Reason")["_Qty"].sum()
 
-                    # ── NCR Fully Approved: Shredding → sum Dec Qty ──
-                    _qm6_dec_col_ncr = next((c for c in _qm6_ncr_loaded.columns if "decision" in c.lower()), None)
-                    if not _qm6_dec_col_ncr:
-                        st.error("Could not find Decision column in NCR Fully Approved file.")
-                        st.stop()
+                        _qm6_dec_col_ncr = next((c for c in _qm6_ncr_loaded.columns if "decision" in c.lower()), None)
+                        if not _qm6_dec_col_ncr:
+                            st.error("Could not find Decision column in NCR file."); st.stop()
 
-                    _qm6_ncr_filt = _qm6_ncr_loaded[
-                        (_qm6_ncr_loaded["Year"] == _qm6_year) &
-                        (_qm6_ncr_loaded["Month"] <= _qm6_month) &
-                        (_qm6_ncr_loaded[_qm6_dec_col_ncr].astype(str).str.strip().str.lower() == "shredding")
-                    ].copy()
-                    _qm6_ncr_filt["_Reason"] = _qm6_ncr_filt["Reason"].astype(str).str.strip()
-                    _qm6_ncr_filt["_Qty"]    = pd.to_numeric(_qm6_ncr_filt["Dec Qty"], errors="coerce").fillna(0)
-                    _qm6_ncr_qty = _qm6_ncr_filt.groupby("_Reason")["_Qty"].sum()
+                        _qm6_ncr_filt = _qm6_ncr_loaded[
+                            (_qm6_ncr_loaded["Year"] == int(_qm6_year)) &
+                            (_qm6_ncr_loaded["Month"] >= _qm6_from_month) &
+                            (_qm6_ncr_loaded["Month"] <= _qm6_to_month) &
+                            (_qm6_ncr_loaded[_qm6_dec_col_ncr].astype(str).str.strip().str.lower() == "shredding")
+                        ].copy()
+                        _qm6_ncr_filt["_Reason"] = _qm6_ncr_filt["Reason"].astype(str).str.strip()
+                        _qm6_ncr_filt["_Qty"]    = pd.to_numeric(_qm6_ncr_filt["Dec Qty"], errors="coerce").fillna(0)
+                        _qm6_ncr_qty = _qm6_ncr_filt.groupby("_Reason")["_Qty"].sum()
 
-                    # ── Combine all reasons ──
-                    _qm6_all_reasons = set(_qm6_final_qty.index) | set(_qm6_ncr_qty.index)
-                    _qm6_rows = []
-                    for r in sorted(_qm6_all_reasons):
-                        _f_qty = float(_qm6_final_qty.get(r, 0))
-                        _n_qty = float(_qm6_ncr_qty.get(r, 0))
-                        _qm6_rows.append({
-                            "Defect": r,
-                            "Credit Note (Qty)": _f_qty,
-                            "NCR Shredding (Qty)": _n_qty,
-                            "Total YTD Qty": _f_qty + _n_qty,
-                        })
+                        _qm6_all_reasons = set(_qm6_final_qty.index) | set(_qm6_ncr_qty.index)
+                        _qm6_rows = []
+                        for r in sorted(_qm6_all_reasons):
+                            _f_qty = float(_qm6_final_qty.get(r, 0))
+                            _n_qty = float(_qm6_ncr_qty.get(r, 0))
+                            _total_r = _f_qty + _n_qty
+                            _ppm_r   = round((_total_r / _total_produced) * 1_000_000, 1) if _total_produced > 0 else 0
+                            _qm6_rows.append({
+                                "Defect":                 r,
+                                "NCR Shredding (Qty)":    int(_n_qty),
+                                "Credit Note (Qty)":      int(_f_qty),
+                                "Total Defective Qty":    int(_total_r),
+                                "PPM":                    _ppm_r,
+                            })
 
-                    _qm6_ppm_df = pd.DataFrame(_qm6_rows)
-                    _qm6_total  = _qm6_ppm_df["Total YTD Qty"].sum()
-                    _qm6_ppm_df["PPM"] = _qm6_ppm_df["Total YTD Qty"]
-                    _qm6_ppm_df = _qm6_ppm_df.sort_values("PPM", ascending=False).reset_index(drop=True)
+                        _qm6_ppm_df = pd.DataFrame(_qm6_rows)
+                        _qm6_ppm_df = _qm6_ppm_df.sort_values("PPM", ascending=False).reset_index(drop=True)
+                        _qm6_total_def = int(_qm6_ppm_df["Total Defective Qty"].sum())
+                        _qm6_total_ppm = round((_qm6_total_def / _total_produced) * 1_000_000, 1) if _total_produced > 0 else 0
 
-                    st.session_state["qm6_ppm_df"]    = _qm6_ppm_df
-                    st.session_state["qm6_total_qty"] = _qm6_total
-                    st.session_state["qm6_ppm_year"]  = _qm6_year
-                    st.session_state["qm6_ppm_month"] = _qm6_month
+                        st.session_state["qm6_ppm_df"]       = _qm6_ppm_df
+                        st.session_state["qm6_total_def"]    = _qm6_total_def
+                        st.session_state["qm6_total_ppm"]    = _qm6_total_ppm
+                        st.session_state["qm6_total_prod"]   = _total_produced
+                        st.session_state["qm6_ppm_year"]     = _qm6_year
+                        st.session_state["qm6_ppm_from"]     = _qm6_from_month
+                        st.session_state["qm6_ppm_to"]       = _qm6_to_month
 
             # ── Display ──
             if "qm6_ppm_df" in st.session_state:
-                _ppm_df    = st.session_state["qm6_ppm_df"]
-                _total_qty = st.session_state["qm6_total_qty"]
-                _yr        = st.session_state["qm6_ppm_year"]
-                _mo        = st.session_state["qm6_ppm_month"]
-                _mo_name   = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][int(_mo)-1]
+                _ppm_df      = st.session_state["qm6_ppm_df"]
+                _total_def   = st.session_state["qm6_total_def"]
+                _total_ppm   = st.session_state["qm6_total_ppm"]
+                _total_prod  = st.session_state["qm6_total_prod"]
+                _yr          = st.session_state["qm6_ppm_year"]
+                _fm          = st.session_state["qm6_ppm_from"]
+                _tm          = st.session_state["qm6_ppm_to"]
+                _MONTH_L     = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
+                _period_lbl  = f"{_MONTH_L[_fm-1]} to {_MONTH_L[_tm-1]} {_yr}"
 
                 st.divider()
-                st.markdown(f"#### YTD PPM Table — Jan to {_mo_name} {_yr}")
+                st.markdown(f"#### PPM Table — {_period_lbl}")
 
-                _mc1, _mc2, _mc3 = st.columns(3)
-                _ncr_total_qty = int(_ppm_df["NCR Shredding (Qty)"].sum())
-                _cn_total_qty  = int(_ppm_df["Credit Note (Qty)"].sum())
-                _mc1.metric("NCR Shredding — Total Qty", f"{_ncr_total_qty:,}")
-                _mc2.metric("Credit Note — Total Qty", f"{_cn_total_qty:,}")
-                _mc3.metric("Total YTD Qty", f"{int(_total_qty):,}")
-
-                _disp = _ppm_df[["Defect","NCR Shredding (Qty)","Credit Note (Qty)","Total YTD Qty"]].copy()
-                for _col in ["NCR Shredding (Qty)","Credit Note (Qty)","Total YTD Qty"]:
-                    _disp[_col] = _disp[_col].astype(int)
+                _mc1, _mc2, _mc3, _mc4 = st.columns(4)
+                _mc1.metric("Sheets Produced",      f"{int(_total_prod):,}")
+                _mc2.metric("NCR Shredding Qty",     f"{int(_ppm_df['NCR Shredding (Qty)'].sum()):,}")
+                _mc3.metric("Credit Note Qty",       f"{int(_ppm_df['Credit Note (Qty)'].sum()):,}")
+                _mc4.metric("Total PPM",             f"{_total_ppm:,.1f}")
 
                 st.dataframe(
-                    _disp.style.apply(
-                        lambda row: ["background-color:#EAF4FB" if row["Total YTD Qty"]>0 else "" for _ in row],
+                    _ppm_df.style.apply(
+                        lambda row: ["background-color:#EAF4FB" if row["Total Defective Qty"]>0 else "" for _ in row],
                         axis=1
                     ),
                     use_container_width=True, hide_index=True
                 )
 
                 # ── Pareto ──
-                _pareto = _ppm_df[_ppm_df["Total YTD Qty"]>0].sort_values("Total YTD Qty", ascending=False).copy()
+                _pareto = _ppm_df[_ppm_df["PPM"]>0].copy()
                 if not _pareto.empty:
                     st.divider()
-                    st.markdown(f"#### Pareto — PPM by Defect (YTD {_yr})")
-                    _pareto["Cumulative %"] = (_pareto["Total YTD Qty"].cumsum() / _pareto["Total YTD Qty"].sum() * 100)
+                    st.markdown(f"#### Pareto — PPM by Defect ({_period_lbl})")
+                    _pareto["Cumulative %"] = (_pareto["PPM"].cumsum() / _pareto["PPM"].sum() * 100)
                     _fig_p, _ax_p = plt.subplots(figsize=(13.33, 7.5), dpi=150)
                     _xp = np.arange(len(_pareto))
-                    _bars_p = _ax_p.bar(_xp, _pareto["Total YTD Qty"].values, color="#006394", width=0.6, alpha=0.9)
+                    _bars_p = _ax_p.bar(_xp, _pareto["PPM"].values, color="#006394", width=0.6, alpha=0.9)
                     for _bar, _val in zip(_bars_p, _pareto["PPM"].values):
                         _ax_p.text(_bar.get_x()+_bar.get_width()/2,
-                                   _bar.get_height()+_pareto["Total YTD Qty"].max()*0.01,
-                                   f"{int(_val)}", ha="center", va="bottom", fontsize=9, color="#000000")
+                                   _bar.get_height()+_pareto["PPM"].max()*0.01,
+                                   f"{_val:.1f}", ha="center", va="bottom", fontsize=9, color="#000000")
                     _ax_p2 = _ax_p.twinx()
                     _ax_p2.plot(_xp, _pareto["Cumulative %"].values, color="#C1A02E",
                                 linewidth=2.5, marker="o", markersize=5, label="Cumulative %")
@@ -2277,7 +2328,7 @@ with tab6:
                     _ax_p.set_xticks(_xp)
                     _ax_p.set_xticklabels([fill(d,16) for d in _pareto["Defect"]],
                                           rotation=40, ha="right", fontsize=8)
-                    _ax_p.set_ylabel("Quantity (PPM)")
+                    _ax_p.set_ylabel("PPM")
                     _ax_p.spines["top"].set_visible(False); _ax_p.spines["right"].set_visible(False)
                     _ax_p.grid(False)
                     _l2, _lb2 = _ax_p2.get_legend_handles_labels()
@@ -2288,12 +2339,12 @@ with tab6:
 
                 # Download
                 _buf6 = io.BytesIO()
-                _disp.to_excel(_buf6, index=False, engine="openpyxl")
+                _ppm_df.to_excel(_buf6, index=False, engine="openpyxl")
                 _buf6.seek(0)
                 st.download_button(
                     label="📥 Download PPM Table",
                     data=_buf6,
-                    file_name=f"PPM_Table_{_yr}_YTD{_mo_name}.xlsx",
+                    file_name=f"PPM_{_yr}_{_MONTH_L[_fm-1]}_to_{_MONTH_L[_tm-1]}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     key="dl_ppm_table"
                 )
