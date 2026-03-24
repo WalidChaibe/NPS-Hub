@@ -2277,7 +2277,7 @@ with tab6:
                         st.session_state["qm6_total_ppm"]    = _qm6_total_ppm
                         st.session_state["qm6_total_prod"]   = _total_produced
                         st.session_state["qm6_ppm_year"]     = _qm6_year
-                        st.session_state["qm6_topn"]         = int(_qm6_topn)
+                        st.session_state["qm6_ppm_topn"]     = int(_qm6_topn)
                         st.session_state["qm6_ppm_from"]     = _qm6_from_month
                         st.session_state["qm6_ppm_to"]       = _qm6_to_month
 
@@ -2311,7 +2311,7 @@ with tab6:
                 )
 
                 # ── Pareto ──
-                _qm6_topn_disp = st.session_state.get("qm6_topn", 15)
+                _qm6_topn_disp = st.session_state.get("qm6_ppm_topn", 15)
                 _pareto = _ppm_df[_ppm_df["PPM"]>0].head(int(_qm6_topn_disp)).copy()
                 if not _pareto.empty:
                     st.divider()
