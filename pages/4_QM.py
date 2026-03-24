@@ -2224,15 +2224,15 @@ with tab6:
 
                     st.session_state["qm6_ppm_df"]    = _qm6_ppm_df
                     st.session_state["qm6_total_qty"] = _qm6_total
-                    st.session_state["qm6_year"]      = _qm6_year
-                    st.session_state["qm6_month"]     = _qm6_month
+                    st.session_state["qm6_ppm_year"]  = _qm6_year
+                    st.session_state["qm6_ppm_month"] = _qm6_month
 
             # ── Display ──
             if "qm6_ppm_df" in st.session_state:
                 _ppm_df    = st.session_state["qm6_ppm_df"]
                 _total_qty = st.session_state["qm6_total_qty"]
-                _yr        = st.session_state["qm6_year"]
-                _mo        = st.session_state["qm6_month"]
+                _yr        = st.session_state["qm6_ppm_year"]
+                _mo        = st.session_state["qm6_ppm_month"]
                 _mo_name   = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][int(_mo)-1]
 
                 st.divider()
