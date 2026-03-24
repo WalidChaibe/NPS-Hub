@@ -2237,8 +2237,10 @@ with tab6:
                 st.markdown(f"#### YTD PPM Table — Jan to {_mo_name} {_yr}")
 
                 _mc1, _mc2, _mc3 = st.columns(3)
-                _mc1.metric("Total Qty YTD", f"{int(_total_qty):,}")
-                _mc2.metric("Defects with data", int((_ppm_df["Total YTD Qty"] > 0).sum()))
+                _ncr_total_qty = int(_ppm_df["NCR Shredding (Qty)"].sum())
+                _cn_total_qty  = int(_ppm_df["Credit Note (Qty)"].sum())
+                _mc1.metric("NCR Shredding — Total Qty", f"{_ncr_total_qty:,}")
+                _mc2.metric("Credit Note — Total Qty", f"{_cn_total_qty:,}")
                 _mc3.metric("Total YTD Qty", f"{int(_total_qty):,}")
 
                 _disp = _ppm_df[["Defect","NCR Shredding (Qty)","Credit Note (Qty)","Total YTD Qty"]].copy()
