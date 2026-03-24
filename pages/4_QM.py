@@ -2210,16 +2210,14 @@ with tab6:
                         _n_qty = float(_qm6_ncr_qty.get(r, 0))
                         _qm6_rows.append({
                             "Defect": r,
-                            "CN @Cost (Qty)": _f_qty,
+                            "Credit Note (Qty)": _f_qty,
                             "NCR Shredding (Qty)": _n_qty,
                             "Total YTD Qty": _f_qty + _n_qty,
                         })
 
                     _qm6_ppm_df = pd.DataFrame(_qm6_rows)
                     _qm6_total  = _qm6_ppm_df["Total YTD Qty"].sum()
-                    _qm6_ppm_df["PPM"] = _qm6_ppm_df["Total YTD Qty"].apply(
-                        lambda x: round((x / _qm6_total) * 1_000_000, 1) if _qm6_total > 0 else 0
-                    )
+                    _qm6_ppm_df["PPM"] = _qm6_ppm_df["Total YTD Qty"]
                     _qm6_ppm_df = _qm6_ppm_df.sort_values("PPM", ascending=False).reset_index(drop=True)
 
                     st.session_state["qm6_ppm_df"]    = _qm6_ppm_df
@@ -2241,10 +2239,10 @@ with tab6:
                 _mc1, _mc2, _mc3 = st.columns(3)
                 _mc1.metric("Total Qty YTD", f"{int(_total_qty):,}")
                 _mc2.metric("Defects with data", int((_ppm_df["Total YTD Qty"] > 0).sum()))
-                _mc3.metric("Total PPM", f"{int(_ppm_df['PPM'].sum()):,}")
+                _mc3.metric("Total YTD Qty", f"{int(_total_qty):,}")
 
-                _disp = _ppm_df[["Defect","NCR Shredding (Qty)","CN @Cost (Qty)","Total YTD Qty","PPM"]].copy()
-                for _col in ["NCR Shredding (Qty)","CN @Cost (Qty)","Total YTD Qty"]:
+                _disp = _ppm_df[["Defect","NCR Shredding (Qty)","Credit Note (Qty)","Total YTD Qty"]].copy()
+                for _col in ["NCR Shredding (Qty)","Credit Note (Qty)","Total YTD Qty"]:
                     _disp[_col] = _disp[_col].astype(int)
 
                 st.dataframe(
@@ -2256,17 +2254,17 @@ with tab6:
                 )
 
                 # ── Pareto ──
-                _pareto = _ppm_df[_ppm_df["Total YTD Qty"]>0].copy()
+                _pareto = _ppm_df[_ppm_df["Total YTD Qty"]>0].sort_values("Total YTD Qty", ascending=False).copy()
                 if not _pareto.empty:
                     st.divider()
                     st.markdown(f"#### Pareto — PPM by Defect (YTD {_yr})")
-                    _pareto["Cumulative %"] = (_pareto["PPM"].cumsum() / _pareto["PPM"].sum() * 100)
+                    _pareto["Cumulative %"] = (_pareto["Total YTD Qty"].cumsum() / _pareto["Total YTD Qty"].sum() * 100)
                     _fig_p, _ax_p = plt.subplots(figsize=(13.33, 7.5), dpi=150)
                     _xp = np.arange(len(_pareto))
-                    _bars_p = _ax_p.bar(_xp, _pareto["PPM"].values, color="#006394", width=0.6, alpha=0.9)
+                    _bars_p = _ax_p.bar(_xp, _pareto["Total YTD Qty"].values, color="#006394", width=0.6, alpha=0.9)
                     for _bar, _val in zip(_bars_p, _pareto["PPM"].values):
                         _ax_p.text(_bar.get_x()+_bar.get_width()/2,
-                                   _bar.get_height()+_pareto["PPM"].max()*0.01,
+                                   _bar.get_height()+_pareto["Total YTD Qty"].max()*0.01,
                                    f"{int(_val)}", ha="center", va="bottom", fontsize=9, color="#000000")
                     _ax_p2 = _ax_p.twinx()
                     _ax_p2.plot(_xp, _pareto["Cumulative %"].values, color="#C1A02E",
@@ -2277,7 +2275,7 @@ with tab6:
                     _ax_p.set_xticks(_xp)
                     _ax_p.set_xticklabels([fill(d,16) for d in _pareto["Defect"]],
                                           rotation=40, ha="right", fontsize=8)
-                    _ax_p.set_ylabel("PPM")
+                    _ax_p.set_ylabel("Quantity (PPM)")
                     _ax_p.spines["top"].set_visible(False); _ax_p.spines["right"].set_visible(False)
                     _ax_p.grid(False)
                     _l2, _lb2 = _ax_p2.get_legend_handles_labels()
