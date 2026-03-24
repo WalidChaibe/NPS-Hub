@@ -2214,7 +2214,10 @@ with tab6:
                 for m in _needed_months
             )
 
-            if st.button("📊 Generate PPM Table", type="primary", key="qm6_run"):
+            _qm6_topn_col, _qm6_btn_col = st.columns([1, 3])
+            _qm6_topn = _qm6_topn_col.number_input("Top N Defects (chart)", min_value=3, max_value=50, value=15, step=1, key="qm6_topn")
+
+            if _qm6_btn_col.button("📊 Generate PPM Table", type="primary", key="qm6_run"):
                 if _total_produced == 0:
                     st.warning("⚠️ Production data missing or zero for selected period. Please fill in above.")
                 else:
@@ -2274,6 +2277,7 @@ with tab6:
                         st.session_state["qm6_total_ppm"]    = _qm6_total_ppm
                         st.session_state["qm6_total_prod"]   = _total_produced
                         st.session_state["qm6_ppm_year"]     = _qm6_year
+                        st.session_state["qm6_topn"]         = int(_qm6_topn)
                         st.session_state["qm6_ppm_from"]     = _qm6_from_month
                         st.session_state["qm6_ppm_to"]       = _qm6_to_month
 
@@ -2307,7 +2311,8 @@ with tab6:
                 )
 
                 # ── Pareto ──
-                _pareto = _ppm_df[_ppm_df["PPM"]>0].copy()
+                _qm6_topn_disp = st.session_state.get("qm6_topn", 15)
+                _pareto = _ppm_df[_ppm_df["PPM"]>0].head(int(_qm6_topn_disp)).copy()
                 if not _pareto.empty:
                     st.divider()
                     st.markdown(f"#### Pareto — PPM by Defect ({_period_lbl})")
