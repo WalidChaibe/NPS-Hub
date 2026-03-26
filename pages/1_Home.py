@@ -183,7 +183,15 @@ for i, p in enumerate(PILLARS):
         """, unsafe_allow_html=True)
         if st.button(f"Open {p['id']}", key=f"btn_{p['id']}", use_container_width=True):
             st.session_state["active_pillar"] = p["id"]
-            st.switch_page(f"pages/{i+2}_{p['id']}.py")
+            _pillar_pages = {
+                "AM":  "pages/2_AM.py",
+                "PM":  "pages/3_PM.py",
+                "QM":  "pages/4_QM.py",
+                "HSE": "pages/5_HSE.py",
+                "FI":  "pages/5_FI.py",
+                "ET":  "pages/7_ET.py",
+            }
+            st.switch_page(_pillar_pages.get(p["id"], "app.py"))
 
 st.divider()
 st.caption("Napco National · NPS Hub · TPM Program")
