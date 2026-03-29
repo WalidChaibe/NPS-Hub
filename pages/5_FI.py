@@ -400,6 +400,8 @@ with tab1:
         if flute_file:
             if st.button("🔄 Parse Speed by Flute", type="primary", key="fi_flute_run"):
                 st.session_state["fi_run_flute"] = True
+                if "fi_flute_df" in st.session_state:
+                    del st.session_state["fi_flute_df"]
 
             if st.session_state.get("fi_run_flute"):
                 try:
@@ -459,6 +461,7 @@ with tab1:
 
                         df_flute = pd.DataFrame(all_rows)
                         st.session_state["fi_flute_df"] = df_flute
+                        st.write(f"DEBUG: parsed {len(all_rows)} rows, machines: {list(set(r['Machine'] for r in all_rows))}, flutes: {list(set(r['Flute Type'] for r in all_rows))}")
                 except Exception as e:
                     st.error(f"Speed by Flute Error: {e}")
 
