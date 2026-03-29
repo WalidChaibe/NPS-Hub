@@ -567,26 +567,43 @@ with tab1:
                     })
                 _fp_df = pd.DataFrame(_flute_params)
 
-                # ── Speed inputs per flute ──
-                st.markdown("#### ⚡ Speed Simulation (adjust per flute)")
-                _glob_col1, _glob_col2 = st.columns([1,4])
+                # ── Baseline speed table ──
+                st.markdown("#### 📋 Current Speeds from File (Baseline)")
+                _bdisp = _fp_df[["Flute Type","Avg Speed m/min (avg)","GSM (avg)","Roll Width cm (avg)"]].copy()
+                _bdisp = _bdisp.rename(columns={
+                    "Avg Speed m/min (avg)": "Current Avg Speed (m/min)",
+                    "GSM (avg)":             "GSM",
+                    "Roll Width cm (avg)":   "Roll Width (cm)",
+                })
+                for c in ["Current Avg Speed (m/min)","GSM","Roll Width (cm)"]:
+                    if c in _bdisp.columns:
+                        _bdisp[c] = _bdisp[c].round(1)
+                st.dataframe(_bdisp, use_container_width=True, hide_index=True)
+                st.divider()
+
+                # ── Speed inputs ──
+                st.markdown("#### ⚡ Speed Simulation")
+                _glob_col1, _glob_col2 = st.columns([1, 4])
                 _speed_increase_pct = _glob_col1.number_input(
                     "Increase ALL speeds by %", min_value=-50, max_value=200,
                     value=0, step=5, key="fi_spd_global_pct"
                 )
-                _glob_col1.caption("Set 0 for no change. Applies to all flutes before individual override.")
+                _glob_col1.caption("Applies proportionally to all flute speeds from the file.")
 
+                # Compute effective speed per flute = file speed × (1 + global%)
                 _speed_overrides = {}
-                _scols = st.columns(min(4, len(_fp_df)))
-                for i, (_, frow) in enumerate(_fp_df.iterrows()):
+                for _, frow in _fp_df.iterrows():
                     ft = frow["Flute Type"]
                     base_spd = float(frow["Avg Speed m/min (avg)"]) if pd.notna(frow["Avg Speed m/min (avg)"]) else 100.0
-                    proposed_spd = base_spd * (1 + _speed_increase_pct/100)
-                    _speed_overrides[ft] = _scols[i % len(_scols)].number_input(
-                        f"{ft} (m/min)",
-                        min_value=10, max_value=500,
-                        value=int(round(proposed_spd)), step=5,
-                        key=f"fi_spd_{ft}"
+                    _speed_overrides[ft] = round(base_spd * (1 + _speed_increase_pct / 100), 1)
+
+                # Show effective speeds as metrics
+                _eff_cols = _glob_col2.columns(min(5, len(_speed_overrides)))
+                for i, (ft, spd) in enumerate(_speed_overrides.items()):
+                    base = float(_fp_df[_fp_df["Flute Type"]==ft]["Avg Speed m/min (avg)"].iloc[0])
+                    _eff_cols[i % len(_eff_cols)].metric(
+                        ft, f"{spd:.0f} m/min",
+                        delta=f"{spd-base:+.0f}" if _speed_increase_pct != 0 else None
                     )
 
                 # ── Calculate per flute ──
