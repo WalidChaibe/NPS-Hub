@@ -567,18 +567,25 @@ with tab1:
                     })
                 _fp_df = pd.DataFrame(_flute_params)
 
-                # ── Speed sliders per flute ──
+                # ── Speed inputs per flute ──
                 st.markdown("#### ⚡ Speed Simulation (adjust per flute)")
+                _glob_col1, _glob_col2 = st.columns([1,4])
+                _speed_increase_pct = _glob_col1.number_input(
+                    "Increase ALL speeds by %", min_value=-50, max_value=200,
+                    value=0, step=5, key="fi_spd_global_pct"
+                )
+                _glob_col1.caption("Set 0 for no change. Applies to all flutes before individual override.")
+
                 _speed_overrides = {}
                 _scols = st.columns(min(4, len(_fp_df)))
                 for i, (_, frow) in enumerate(_fp_df.iterrows()):
                     ft = frow["Flute Type"]
-                    default_spd = frow["Avg Speed m/min (avg)"]
-                    default_spd = float(default_spd) if pd.notna(default_spd) else 100.0
-                    _speed_overrides[ft] = _scols[i % len(_scols)].slider(
-                        f"{ft} Speed (m/min)",
-                        min_value=50, max_value=400,
-                        value=int(default_spd), step=5,
+                    base_spd = float(frow["Avg Speed m/min (avg)"]) if pd.notna(frow["Avg Speed m/min (avg)"]) else 100.0
+                    proposed_spd = base_spd * (1 + _speed_increase_pct/100)
+                    _speed_overrides[ft] = _scols[i % len(_scols)].number_input(
+                        f"{ft} (m/min)",
+                        min_value=10, max_value=500,
+                        value=int(round(proposed_spd)), step=5,
                         key=f"fi_spd_{ft}"
                     )
 
@@ -614,16 +621,18 @@ with tab1:
                     feasible = oee_needed <= 100
 
                     sim_rows.append({
-                        "Flute Type":          ft,
-                        "% Distribution":      round(dist_pct, 2),
-                        "Gross MT":            round(gross_mt, 1),
-                        "Expected SQM":        round(exp_sqm, 0),
-                        "Expected LM":         round(exp_lm, 0),
-                        "Speed Used (m/min)":  spd,
-                        "Time Needed (hrs)":   round(time_needed, 2),
-                        "Available Time (hrs)":round(_avail_time, 2),
-                        "OEE Needed %":        round(oee_needed, 1),
-                        "Feasible":            "✅ Yes" if feasible else "❌ No",
+                        "Flute Type":               ft,
+                        "% Distribution":           round(dist_pct, 2),
+                        "Expected Metric Ton":      round(gross_mt, 1),
+                        "Expected SQM":             round(exp_sqm, 0),
+                        "Expected LM":              round(exp_lm, 0),
+                        "Current Avg Speed (m/min)":round(float(frow["Avg Speed m/min (avg)"]) if pd.notna(frow["Avg Speed m/min (avg)"]) else 0, 1),
+                        "Proposed Speed (m/min)":   spd,
+                        "Time at Current Speed (hrs)": round((exp_lm / (float(frow["Avg Speed m/min (avg)"]) * 60)) if pd.notna(frow["Avg Speed m/min (avg)"]) and frow["Avg Speed m/min (avg)"]>0 else 0, 2),
+                        "Time at Proposed Speed (hrs)":round(time_needed, 2),
+                        "Available Time (hrs)":     round(_avail_time, 2),
+                        "OEE Needed %":             round(oee_needed, 1),
+                        "Feasible":                 "✅ Yes" if feasible else "❌ No",
                     })
 
                 sim_df = pd.DataFrame(sim_rows)
