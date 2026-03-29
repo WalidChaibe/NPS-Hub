@@ -631,48 +631,45 @@ with tab1:
                     # Step 4: Time needed (hrs)
                     time_needed = (exp_lm / (spd * 60)) if spd and spd > 0 else 0
 
-                    # Step 5: OEE needed
-                    oee_needed = (time_needed / _avail_time * 100) if _avail_time > 0 else 0
-
-                    # Step 6: Feasibility
-                    feasible = oee_needed <= 100
-
-                    sim_rows.append({
-                        "Flute Type":               ft,
-                        "% Distribution":           round(dist_pct, 2),
-                        "Expected Metric Ton":      round(gross_mt, 1),
-                        "Expected SQM":             round(exp_sqm, 0),
-                        "Expected LM":              round(exp_lm, 0),
-                        "Current Avg Speed (m/min)":round(float(frow["Avg Speed m/min (avg)"]) if pd.notna(frow["Avg Speed m/min (avg)"]) else 0, 1),
-                        "Proposed Speed (m/min)":   spd,
-                        "Time at Current Speed (hrs)": round((exp_lm / (float(frow["Avg Speed m/min (avg)"]) * 60)) if pd.notna(frow["Avg Speed m/min (avg)"]) and frow["Avg Speed m/min (avg)"]>0 else 0, 2),
+                    # Net Run Time = LM / (optimal 250 m/min × 60 sec) — time at perfect speed
+                net_run_time_flute = exp_lm / (250 * 60) if exp_lm > 0 else 0
+                _cur_spd = float(frow["Avg Speed m/min (avg)"]) if pd.notna(frow["Avg Speed m/min (avg)"]) and frow["Avg Speed m/min (avg)"] > 0 else 0
+                sim_rows.append({
+                        "Flute Type":                  ft,
+                        "% Distribution":              round(dist_pct, 2),
+                        "Expected Metric Ton":         round(gross_mt, 1),
+                        "Expected SQM":                round(exp_sqm, 0),
+                        "Expected LM":                 round(exp_lm, 0),
+                        "Current Avg Speed (m/min)":   round(_cur_spd, 1),
+                        "Proposed Speed (m/min)":      spd,
+                        "Time at Current Speed (hrs)": round(exp_lm / (_cur_spd * 60) if _cur_spd > 0 else 0, 2),
                         "Time at Proposed Speed (hrs)":round(time_needed, 2),
-                        "Available Time (hrs)":     round(_avail_time, 2),
-                        "OEE Needed %":             round(oee_needed, 1),
-                        "Feasible":                 "✅ Yes" if feasible else "❌ No",
+                        "Net Run Time (hrs)":          round(net_run_time_flute, 4),
                     })
 
                 sim_df = pd.DataFrame(sim_rows)
 
                 # ── Summary metrics ──
-                _total_time = sim_df["Time at Proposed Speed (hrs)"].sum()
-                _overall_oee = (_total_time / _avail_time * 100) if _avail_time > 0 else 0
-                _feasible_all = _overall_oee <= 100
+                _total_run_time  = sim_df["Time at Proposed Speed (hrs)"].sum()
+                _net_run_time    = sim_df["Net Run Time (hrs)"].sum()  # sum of LM/(250×60) per flute
+                _required_oee    = (_net_run_time / _avail_time * 100) if _avail_time > 0 else 0
+                _feasible_all    = _required_oee <= 100
 
-                _sm1, _sm2, _sm3, _sm4 = st.columns(4)
-                _sm1.metric("Total Time Needed", f"{_total_time:,.1f} hrs")
-                _sm2.metric("Available Time",    f"{_avail_time:,.1f} hrs")
-                _sm3.metric("Overall OEE Needed",f"{_overall_oee:.1f}%",
-                            delta=f"{100-_overall_oee:.1f}% headroom" if _feasible_all else f"{_overall_oee-100:.1f}% over capacity",
+                _sm1, _sm2, _sm3, _sm4, _sm5 = st.columns(5)
+                _sm1.metric("Total Run Time Needed",  f"{_total_run_time:,.2f} hrs")
+                _sm2.metric("Net Run Time",            f"{_net_run_time:,.4f} hrs")
+                _sm3.metric("Available Time",          f"{_avail_time:,.1f} hrs")
+                _sm4.metric("Required OEE",            f"{_required_oee:.1f}%",
+                            delta=f"{100-_required_oee:.1f}% headroom" if _feasible_all else f"{_required_oee-100:.1f}% over",
                             delta_color="normal" if _feasible_all else "inverse")
-                _sm4.metric("Achievable?", "✅ Yes" if _feasible_all else "❌ No")
+                _sm5.metric("Achievable?", "✅ Yes" if _feasible_all else "❌ No")
 
                 if not _feasible_all:
-                    st.warning(f"⚠️ At current settings, the target requires **{_overall_oee:.1f}% OEE** which exceeds 100%. "
+                    st.warning(f"⚠️ Required OEE is **{_required_oee:.1f}%** — exceeds 100%. "
                                f"Try increasing speed or availability.")
                 else:
-                    st.success(f"✅ Target is achievable at **{_overall_oee:.1f}% OEE** with "
-                               f"{100-_overall_oee:.1f}% headroom remaining.")
+                    st.success(f"✅ Target achievable at **{_required_oee:.1f}% OEE** — "
+                               f"{100-_required_oee:.1f}% headroom remaining.")
 
                 # ── Results table ──
                 st.dataframe(
@@ -683,22 +680,28 @@ with tab1:
                     use_container_width=True, hide_index=True
                 )
 
-                # ── OEE Needed bar chart ──
+                # ── Time comparison chart per flute ──
                 _fig_sim, _ax_sim = plt.subplots(figsize=(13.33, 5), dpi=150)
-                _xs = np.arange(len(sim_df))
-                _bar_colors = ["#006394" if float(v)<=100 else "#DE201B" for v in sim_df["OEE Needed %"]]
-                _bars_sim = _ax_sim.bar(_xs, sim_df["OEE Needed %"], color=_bar_colors, width=0.6, alpha=0.9)
-                for _bar, _val in zip(_bars_sim, sim_df["OEE Needed %"]):
-                    _ax_sim.text(_bar.get_x()+_bar.get_width()/2, _bar.get_height()+0.5,
-                                 f"{_val:.1f}%", ha="center", va="bottom", fontsize=9, color="#000000")
-                _ax_sim.axhline(100, color="#DE201B", linewidth=1.5, linestyle="--", label="100% Limit")
+                _xs = np.arange(len(sim_df)); _w = 0.35
+                _b1 = _ax_sim.bar(_xs-_w/2, sim_df["Time at Current Speed (hrs)"], _w,
+                                   color="#D8C37D", label="Current Speed", alpha=0.9)
+                _b2 = _ax_sim.bar(_xs+_w/2, sim_df["Time at Proposed Speed (hrs)"], _w,
+                                   color="#006394", label="Proposed Speed", alpha=0.9)
+                for _b in [_b1, _b2]:
+                    for _bar in _b:
+                        _h = _bar.get_height()
+                        if _h > 0:
+                            _ax_sim.text(_bar.get_x()+_bar.get_width()/2, _h+0.1,
+                                         f"{_h:.1f}h", ha="center", va="bottom",
+                                         fontsize=8, color="#000000")
                 _ax_sim.set_xticks(_xs)
                 _ax_sim.set_xticklabels(sim_df["Flute Type"].tolist(), rotation=30, ha="right", fontsize=9)
-                _ax_sim.set_ylabel("OEE Needed (%)")
+                _ax_sim.set_ylabel("Time to Produce (hrs)")
                 _ax_sim.spines["top"].set_visible(False); _ax_sim.spines["right"].set_visible(False)
                 _ax_sim.grid(False)
-                _ax_sim.legend(frameon=False, fontsize=10)
-                plt.tight_layout()
+                _ax_sim.legend(loc="upper center", bbox_to_anchor=(0.5,-0.15),
+                               ncol=2, frameon=False, fontsize=10)
+                plt.tight_layout(rect=[0,0.08,1,1])
                 _buf_sim = io.BytesIO()
                 _fig_sim.savefig(_buf_sim, format="png", dpi=150, bbox_inches="tight")
                 _buf_sim.seek(0); st.image(_buf_sim); plt.close(_fig_sim)
