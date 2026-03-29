@@ -672,13 +672,7 @@ with tab1:
                                f"{100-_required_oee:.1f}% headroom remaining.")
 
                 # ── Results table ──
-                st.dataframe(
-                    sim_df.style.apply(
-                        lambda row: ["background-color:#d4edda" if row["Feasible"]=="✅ Yes"
-                                     else "background-color:#f8d7da" for _ in row], axis=1
-                    ),
-                    use_container_width=True, hide_index=True
-                )
+                st.dataframe(sim_df, use_container_width=True, hide_index=True)
 
                 # ── Time comparison chart per flute ──
                 _fig_sim, _ax_sim = plt.subplots(figsize=(13.33, 5), dpi=150)
