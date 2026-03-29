@@ -327,11 +327,26 @@ with tab1:
                 _dfvv = _vm.copy()
                 if _vs != "All": _dfvv = _dfvv[_dfvv["Section"]==_vs]
 
+                # ── Add computed Capacity Utilization column ──
+                if "Available Time (Hrs)" in _vm.columns and "Shift Time (Hrs)" in _vm.columns:
+                    _vm = _vm.copy()
+                    _vm["Capacity Utilization %"] = (
+                        _vm["Available Time (Hrs)"] / _vm["Shift Time (Hrs)"] * 100
+                    ).round(1)
+
+                def _wavg(df, val_col, weight_col="Full Qty Weight"):
+                    if val_col not in df.columns or weight_col not in df.columns:
+                        return None
+                    _w = pd.to_numeric(df[weight_col], errors="coerce").fillna(0)
+                    _v = pd.to_numeric(df[val_col],    errors="coerce").fillna(0)
+                    return (_v * _w).sum() / _w.sum() if _w.sum() > 0 else None
+
                 # Summary
-                st.markdown("#### OEE Summary by Section")
+                st.markdown("#### OEE Summary by Section (Weighted by Full Qty Weight)")
                 _sec_ord = ["Die Cutters","FFG","Printer","Folder Gluers",
                             "Stitcher","Jumbo","Single Facer","Shrink Wrapper"]
-                _scols = st.columns(min(4, len(_sec_ord)))
+                _active_secs = [s for s in _sec_ord if not _vm[_vm["Section"]==s].empty]
+                _scols = st.columns(min(4, len(_active_secs)))
                 _si = 0
                 for _sec in _sec_ord:
                     _sdf = _vm[_vm["Section"]==_sec]
@@ -340,9 +355,9 @@ with tab1:
                     _sc.markdown(f"**{_sec}**")
                     for metric, col in [("OEE","OEE %"),("Availability","Availability %"),
                                         ("Rate","Rate %"),("Quality","Quality %"),
-                                        ("Cap. Util.","Capacity Utilization Value")]:
-                        _v = _sdf[col].mean() if col in _sdf.columns else None
-                        _sc.metric(metric, f"{_v:.1f}%" if pd.notna(_v) else "—")
+                                        ("Cap. Util.","Capacity Utilization %")]:
+                        _v = _wavg(_sdf, col)
+                        _sc.metric(metric, f"{_v:.1f}%" if _v is not None and pd.notna(_v) else "—")
                     _si += 1
 
                 _tr = df_conv[df_conv["Row Type"]=="Total"]
@@ -375,3 +390,127 @@ with tab1:
                     key="fi_conv_dl")
             except Exception as e:
                 st.error(f"Converting Error: {e}")
+
+        # ══ SPEED BY FLUTE ══
+        st.divider()
+        st.markdown("## ⚡ Speed by Flute Analysis")
+        st.caption("Upload the Speed by Flute .xls file to analyze speed and waste by flute type per machine.")
+        flute_file = st.file_uploader("📂 Speed by Flute Report (.xls)", type=["xls"], key="fi_flute_file")
+
+        if flute_file:
+            if st.button("🔄 Parse Speed by Flute", type="primary", key="fi_flute_run"):
+                st.session_state["fi_run_flute"] = True
+
+            if st.session_state.get("fi_run_flute"):
+                try:
+                    with st.spinner("Parsing Speed by Flute file..."):
+                        COL_MAP = {
+                            "Gross MT":5,"% Dist MT":9,"Norm Trim":14,"Extra Trim":17,
+                            "Up Down":19,"Sheet Waste":23,"Total Waste":25,"Waste %":29,
+                            "LM":32,"Gross SQM":37,"Net SQM":40,"Good Boards SQM":42,
+                            "Good Boards MT":46,"GSM":50,"Roll Size":55,"Avg Speed":58,
+                        }
+                        _wb = xlrd.open_workbook(file_contents=flute_file.getvalue())
+                        _sh = _wb.sheet_by_index(0)
+
+                        def _safe(ri, ci):
+                            try: return _sh.cell_value(ri, ci)
+                            except: return None
+
+                        def _has_numeric(ri):
+                            for ci in COL_MAP.values():
+                                v = _safe(ri, ci)
+                                if isinstance(v, (int, float)) and v not in (0, 0.0): return True
+                            return False
+
+                        def _row_texts(ri):
+                            return [str(_safe(ri,c)).strip() for c in range(min(_sh.ncols,62))
+                                    if str(_safe(ri,c)).strip() not in ("","0","0.0","nan","None")]
+
+                        all_rows = []; cur_mach = None; cur_flute = None
+                        i = 8
+                        while i < _sh.nrows:
+                            texts = _row_texts(i)
+                            if not texts: i+=1; continue
+                            ca = str(_safe(i,0)).strip()
+                            cd = str(_safe(i,3)).strip() if _sh.ncols>3 else ""
+                            # Machine name row
+                            if ca and ca not in ("","nan","None") and not _has_numeric(i):
+                                if "%" not in ca and "gross" not in ca.lower():
+                                    cur_mach = ca; cur_flute = None; i+=1; continue
+                            # Flute name row (col D)
+                            if cd and cd not in ("","nan","None") and not _has_numeric(i):
+                                if "%" not in cd:
+                                    cur_flute = cd; i+=1; continue
+                            # Skip % gross rows
+                            if any("%" in t and "gross" in t.lower() for t in texts):
+                                i+=1; continue
+                            # Data / total row
+                            if _has_numeric(i) and cur_mach:
+                                rec = {"Machine": cur_mach,
+                                       "Flute Type": cur_flute if cur_flute else "TOTAL",
+                                       "Row Type": "Data" if cur_flute else "Total"}
+                                for cn, ci in COL_MAP.items():
+                                    v = _safe(i, ci)
+                                    rec[cn] = float(v) if isinstance(v,(int,float)) else None
+                                if cur_flute: cur_flute = None
+                                all_rows.append(rec)
+                            i+=1
+
+                        df_flute = pd.DataFrame(all_rows)
+                        st.session_state["fi_flute_df"] = df_flute
+                except Exception as e:
+                    st.error(f"Speed by Flute Error: {e}")
+
+            if "fi_flute_df" in st.session_state:
+                df_flute = st.session_state["fi_flute_df"]
+                _fl_m = df_flute["Machine"].unique().tolist()
+                st.success(f"✅ {len(df_flute)} rows across {len(_fl_m)} machines")
+
+                _sel_m = st.selectbox("Select Machine", ["All"]+_fl_m, key="fi_flute_mach")
+                _dffl  = df_flute[df_flute["Machine"]==_sel_m] if _sel_m!="All" else df_flute.copy()
+                _data  = _dffl[_dffl["Row Type"]=="Data"]
+                _flutes_all = df_flute[df_flute["Row Type"]=="Data"]["Flute Type"].unique().tolist()
+                _machs  = df_flute[df_flute["Row Type"]=="Data"]["Machine"].unique().tolist()
+                _pal    = ["#006394","#C1A02E","#D8C37D","#9B59B6","#27AE60"]
+
+                st.markdown("#### Extracted Data")
+                st.dataframe(_dffl, use_container_width=True, hide_index=True)
+
+                def _flute_bar_chart(metric, ylabel):
+                    fig, ax = plt.subplots(figsize=(13.33,5),dpi=150)
+                    x = np.arange(len(_flutes_all))
+                    w = 0.8/max(len(_machs),1)
+                    for mi, mach in enumerate(_machs):
+                        mdf = df_flute[(df_flute["Machine"]==mach)&(df_flute["Row Type"]=="Data")]
+                        vals = []
+                        for f in _flutes_all:
+                            sub = mdf[mdf["Flute Type"]==f]
+                            vals.append(float(sub[metric].iloc[0]) if not sub.empty and pd.notna(sub[metric].iloc[0]) else 0)
+                        offset = (mi - len(_machs)/2 + 0.5)*w
+                        bars = ax.bar(x+offset, vals, w, color=_pal[mi%len(_pal)], label=mach, alpha=0.9)
+                        for bar, val in zip(bars, vals):
+                            if val>0:
+                                ax.text(bar.get_x()+bar.get_width()/2, bar.get_height()+max(vals)*0.01,
+                                        f"{val:.0f}", ha="center", va="bottom", fontsize=8, color="#000000")
+                    ax.set_xticks(x); ax.set_xticklabels(_flutes_all, rotation=30, ha="right", fontsize=9)
+                    ax.set_ylabel(ylabel)
+                    ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False); ax.grid(False)
+                    ax.legend(loc="upper center", bbox_to_anchor=(0.5,-0.15), ncol=len(_machs), frameon=False, fontsize=9)
+                    plt.tight_layout(rect=[0,0.08,1,1])
+                    buf = io.BytesIO(); fig.savefig(buf,format="png",dpi=150,bbox_inches="tight")
+                    buf.seek(0); plt.close(fig); return buf
+
+                if "Avg Speed" in df_flute.columns:
+                    st.divider(); st.markdown("#### Avg Speed by Flute Type")
+                    st.image(_flute_bar_chart("Avg Speed","Avg Speed (m/min)"))
+                if "Waste %" in df_flute.columns:
+                    st.divider(); st.markdown("#### Waste % by Flute Type")
+                    st.image(_flute_bar_chart("Waste %","Waste %"))
+
+                st.divider()
+                _bfe = io.BytesIO(); df_flute.to_excel(_bfe, index=False, engine="openpyxl"); _bfe.seek(0)
+                st.download_button("📥 Download Speed by Flute Table (.xlsx)", data=_bfe,
+                    file_name=f"Speed_by_Flute_{flute_file.name.replace('.xls','')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="fi_flute_dl")
