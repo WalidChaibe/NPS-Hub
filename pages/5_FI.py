@@ -60,9 +60,9 @@ def _oee_bar_chart(machines_df, oee_col, section_colors):
                       if k in machines_df["Section"].values]
     legend_patches.append(plt.Line2D([0],[0], color="#DE201B", linewidth=1.5,
                                      linestyle="--", label="Target 85%"))
-    ax.legend(handles=legend_patches, loc="upper center", bbox_to_anchor=(0.5,-0.22),
-              ncol=5, frameon=False, fontsize=9)
-    plt.tight_layout(rect=[0,0.10,1,1])
+    ax.legend(handles=legend_patches, loc="upper center", bbox_to_anchor=(0.5,-0.30),
+              ncol=4, frameon=False, fontsize=9)
+    plt.tight_layout(rect=[0,0.15,1,1])
     buf = io.BytesIO(); fig.savefig(buf, format="png", dpi=150, bbox_inches="tight")
     buf.seek(0); plt.close(fig); return buf
 
@@ -83,8 +83,35 @@ def _arq_chart(machines_df, avl_col, rate_col, qual_col):
     ax.set_xticklabels(machines_df[machine_col].tolist(), rotation=35, ha="right", fontsize=9)
     ax.set_ylabel("%"); ax.set_ylim(0, 115)
     ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False); ax.grid(False)
-    ax.legend(loc="upper center", bbox_to_anchor=(0.5,-0.22), ncol=3, frameon=False, fontsize=10)
-    plt.tight_layout(rect=[0,0.10,1,1])
+    ax.legend(loc="upper center", bbox_to_anchor=(0.5,-0.30), ncol=3, frameon=False, fontsize=10)
+    plt.tight_layout(rect=[0,0.15,1,1])
+    buf = io.BytesIO(); fig.savefig(buf, format="png", dpi=150, bbox_inches="tight")
+    buf.seek(0); plt.close(fig); return buf
+
+def _capacity_chart(machines_df, avl_col, shift_col, machine_col_name):
+    df_cap = machines_df.copy()
+    df_cap["_cap_util"] = (df_cap[avl_col] / df_cap[shift_col] * 100).where(df_cap[shift_col] > 0, 0)
+    fig, ax = plt.subplots(figsize=(13.33, 5), dpi=150)
+    x = np.arange(len(df_cap))
+    colors = ["#006394" if v >= 95 else "#E74C3C" for v in df_cap["_cap_util"].fillna(0)]
+    bars = ax.bar(x, df_cap["_cap_util"].fillna(0), color=colors, width=0.6, alpha=0.9)
+    for bar, val in zip(bars, df_cap["_cap_util"].fillna(0)):
+        ax.text(bar.get_x()+bar.get_width()/2, bar.get_height()+0.5,
+                f"{val:.1f}%", ha="center", va="bottom", fontsize=9, color="#000000")
+    ax.axhline(95, color="#DE201B", linewidth=1.5, linestyle="--", label="Target 95%")
+    ax.set_xticks(x)
+    ax.set_xticklabels(df_cap[machine_col_name].tolist(), rotation=35, ha="right", fontsize=9)
+    ax.set_ylabel("Capacity Utilization (%)"); ax.set_ylim(0, 115)
+    ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False); ax.grid(False)
+    from matplotlib.patches import Patch
+    legend_patches = [
+        Patch(facecolor="#006394", label="≥ 95% (On Target)"),
+        Patch(facecolor="#E74C3C", label="< 95% (Below Target)"),
+        plt.Line2D([0],[0], color="#DE201B", linewidth=1.5, linestyle="--", label="Target 95%"),
+    ]
+    ax.legend(handles=legend_patches, loc="upper center", bbox_to_anchor=(0.5,-0.30),
+              ncol=3, frameon=False, fontsize=9)
+    plt.tight_layout(rect=[0,0.15,1,1])
     buf = io.BytesIO(); fig.savefig(buf, format="png", dpi=150, bbox_inches="tight")
     buf.seek(0); plt.close(fig); return buf
 
@@ -131,6 +158,39 @@ def _build_excel(df, title, header_color="006394"):
         ws.column_dimensions[get_column_letter(ci)].width = max(12, len(str(h))+2)
     ws.column_dimensions["A"].width = 10; ws.column_dimensions["B"].width = 24
     buf = io.BytesIO(); wb.save(buf); buf.seek(0); return buf
+
+def _capacity_chart(machines_df, avail_col, shift_col):
+    machine_col = "Machine" if "Machine" in machines_df.columns else "Machine Name"
+    # Calculate capacity utilization
+    df_cap = machines_df.copy()
+    df_cap["Cap Util %"] = (df_cap[avail_col].fillna(0) / df_cap[shift_col].replace(0, np.nan)) * 100
+    n = len(df_cap)
+    fig_w = max(13.33, n * 0.7)
+    fig, ax = plt.subplots(figsize=(fig_w, 6), dpi=150)
+    x = np.arange(n)
+    colors = ["#006394" if v >= 95 else "#C1A02E" if v >= 85 else "#DE201B"
+              for v in df_cap["Cap Util %"].fillna(0)]
+    bars = ax.bar(x, df_cap["Cap Util %"].fillna(0), color=colors, width=0.55, alpha=0.9)
+    for bar, val in zip(bars, df_cap["Cap Util %"].fillna(0)):
+        ax.text(bar.get_x()+bar.get_width()/2, bar.get_height()+0.5,
+                f"{val:.1f}%", ha="center", va="bottom", fontsize=9, fontweight="bold", color="#000000")
+    ax.axhline(95, color="#DE201B", linewidth=1.5, linestyle="--")
+    ax.text(x[-1]+0.5, 95.5, "Target 95%", color="#DE201B", fontsize=9, va="bottom")
+    ax.set_xticks(x)
+    ax.set_xticklabels(df_cap[machine_col].tolist(), rotation=40, ha="right", fontsize=9)
+    ax.set_ylabel("Capacity Utilization (%)"); ax.set_ylim(0, 115)
+    ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False); ax.grid(False)
+    from matplotlib.patches import Patch
+    legend_patches = [
+        Patch(facecolor="#006394", label="≥ 95% (On Target)"),
+        Patch(facecolor="#C1A02E", label="85–95% (Near Target)"),
+        Patch(facecolor="#DE201B", label="< 85% (Below Target)"),
+    ]
+    ax.legend(handles=legend_patches, loc="upper center", bbox_to_anchor=(0.5, -0.28),
+              ncol=3, frameon=False, fontsize=9)
+    plt.tight_layout(rect=[0, 0.12, 1, 1])
+    buf = io.BytesIO(); fig.savefig(buf, format="png", dpi=150, bbox_inches="tight")
+    buf.seek(0); plt.close(fig); return buf
 
 # ── Corrugator parser ──
 CORR_SECTIONS = {"BHS", "FOSBER", "SINGLE FACER"}
@@ -188,7 +248,7 @@ def parse_corrugator(file_bytes):
 CONV_MAP = {
     "BOBST 160-II":"Die Cutters","BOBST 203":"Die Cutters",
     "BOBST MASTERCUT 1":"Die Cutters","BOBST MASTERCUT 2":"Die Cutters",
-    "BOBST 924":"FFG","LMC FFG":"FFG","MARTIN 616":"FFG","SATURN":"FFG",
+    "BOBST 924":"FFG","LMC FFG":"FFG","LMC  FFG":"FFG","LMC   FFG":"FFG","MARTIN 616":"FFG","SATURN":"FFG",
     "IPACK":"Printer","VEGA 2":"Folder Gluers","BAHMÜLLER TURBOX":"Folder Gluers",
     "BAHMULLER STITCHER":"Stitcher","JUMBO":"Jumbo",
     "SINGLE FACER":"Single Facer","SHRINK-WRAPPER":"Shrink Wrapper",
@@ -312,6 +372,12 @@ with tab1:
                     st.image(_oee_bar_chart(_corr_m, "OEE (%)", CORR_COLORS))
                     st.markdown("#### Availability / Rate / Quality")
                     st.image(_arq_chart(_corr_m, "Availability (%)","Rate (%)","Quality (%)"))
+                    if "Available Time (Hrs)" in _corr_m.columns and "Shift Time" in _corr_m.columns:
+                        st.markdown("#### Capacity Utilization (Available Time / Shift Time)")
+                        st.image(_capacity_chart(_corr_m, "Available Time (Hrs)", "Shift Time"))
+                if not _corr_m.empty and "Available Time (Hrs)" in _corr_m.columns and "Shift Time" in _corr_m.columns:
+                    st.markdown("#### Capacity Utilization (Available Time / Shift Time) — Target 95%")
+                    st.image(_capacity_chart(_corr_m, "Available Time (Hrs)", "Shift Time", "Machine"))
 
                 st.markdown("#### Export")
                 st.download_button("📥 Download Corrugator OEE (.xlsx)",
@@ -377,6 +443,12 @@ with tab1:
                     st.image(_oee_bar_chart(_conv_m, "OEE %", CONV_COLORS))
                     st.markdown("#### Availability / Rate / Quality")
                     st.image(_arq_chart(_conv_m, "Availability %","Rate %","Quality %"))
+                    if "Available Time (Hrs)" in _conv_m.columns and "Shift Time (Hrs)" in _conv_m.columns:
+                        st.markdown("#### Capacity Utilization (Available Time / Shift Time)")
+                        st.image(_capacity_chart(_conv_m, "Available Time (Hrs)", "Shift Time (Hrs)"))
+                if not _conv_m.empty and "Available Time (Hrs)" in _conv_m.columns and "Shift Time (Hrs)" in _conv_m.columns:
+                    st.markdown("#### Capacity Utilization (Available Time / Shift Time) — Target 95%")
+                    st.image(_capacity_chart(_conv_m, "Available Time (Hrs)", "Shift Time (Hrs)", "Machine Name"))
 
                 st.markdown("#### Export")
                 st.download_button("📥 Download Converting OEE (.xlsx)",
