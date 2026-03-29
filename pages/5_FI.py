@@ -447,13 +447,13 @@ with tab1:
                                 i+=1; continue
                             # Data / total row
                             if _has_numeric(i) and cur_mach:
-                                rec = {"Machine": cur_mach,
-                                       "Flute Type": cur_flute if cur_flute else "TOTAL",
-                                       "Row Type": "Data" if cur_flute else "Total"}
+                                if not cur_flute:
+                                    i+=1; continue  # skip total rows
+                                rec = {"Machine": cur_mach, "Flute Type": cur_flute, "Row Type": "Data"}
                                 for cn, ci in COL_MAP.items():
                                     v = _safe(i, ci)
                                     rec[cn] = float(v) if isinstance(v,(int,float)) else None
-                                if cur_flute: cur_flute = None
+                                cur_flute = None
                                 all_rows.append(rec)
                             i+=1
 
