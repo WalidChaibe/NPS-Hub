@@ -545,7 +545,7 @@ with tab1:
                                           value=85, step=1, key="fi_av_pct")
 
                 _avail_time = _shift_hrs * (_cu_pct/100) * (_av_pct/100)
-                _si2.caption(f"Available Run Time: **{_avail_time:,.1f} hrs**")
+                _si2.caption(f"Run Time: **{_avail_time:,.1f} hrs**")
 
                 st.divider()
 
@@ -661,25 +661,37 @@ with tab1:
 
                 # ── Summary metrics ──
                 _total_run_time  = sim_df["Time at Proposed Speed (hrs)"].sum()
-                _net_run_time    = sim_df["Net Run Time (hrs)"].sum()  # sum of LM/(250×60) per flute
-                _required_oee    = (_net_run_time / _avail_time * 100) if _avail_time > 0 else 0
-                _feasible_all    = _required_oee <= 100
+                _net_run_time    = sim_df["Net Run Time (hrs)"].sum()
+                # Performance Rate = Net Run Time / Total Run Time at proposed speed
+                _perf_rate       = (_net_run_time / _total_run_time * 100) if _total_run_time > 0 else 0
+                # OEE = Performance Rate × Availability %
+                _required_oee    = _perf_rate * (_av_pct / 100)
+                # Feasibility = total run time must fit within available run time
+                _feasible_all    = _total_run_time <= _avail_time
+                _gap             = _avail_time - _total_run_time
 
-                _sm1, _sm2, _sm3, _sm4, _sm5 = st.columns(5)
-                _sm1.metric("Total Run Time Needed",  f"{_total_run_time:,.2f} hrs")
-                _sm2.metric("Net Run Time",            f"{_net_run_time:,.4f} hrs")
-                _sm3.metric("Available Time",          f"{_avail_time:,.1f} hrs")
-                _sm4.metric("Required OEE",            f"{_required_oee:.1f}%",
-                            delta=f"{100-_required_oee:.1f}% headroom" if _feasible_all else f"{_required_oee-100:.1f}% over",
+                _sm1, _sm2, _sm3, _sm4, _sm5, _sm6 = st.columns(6)
+                _sm1.metric("Total Run Time Needed",  f"{_total_run_time:,.1f} hrs")
+                _sm2.metric("Net Run Time",            f"{_net_run_time:,.1f} hrs")
+                _sm3.metric("Run Time Available",      f"{_avail_time:,.1f} hrs")
+                _sm4.metric("Performance Rate",        f"{_perf_rate:.1f}%")
+                _sm5.metric("Required OEE",            f"{_required_oee:.1f}%")
+                _sm6.metric("Achievable?",             "✅ Yes" if _feasible_all else "❌ No",
+                            delta=f"{_gap:+.1f} hrs",
                             delta_color="normal" if _feasible_all else "inverse")
-                _sm5.metric("Achievable?", "✅ Yes" if _feasible_all else "❌ No")
 
                 if not _feasible_all:
-                    st.warning(f"⚠️ Required OEE is **{_required_oee:.1f}%** — exceeds 100%. "
-                               f"Try increasing speed or availability.")
+                    st.warning(
+                        f"⚠️ Total run time needed **{_total_run_time:,.1f} hrs** exceeds "
+                        f"available run time **{_avail_time:,.1f} hrs** by **{abs(_gap):,.1f} hrs**. "
+                        f"Try increasing speed or availability %."
+                    )
                 else:
-                    st.success(f"✅ Target achievable at **{_required_oee:.1f}% OEE** — "
-                               f"{100-_required_oee:.1f}% headroom remaining.")
+                    st.success(
+                        f"✅ Target achievable — **{_gap:,.1f} hrs** of run time remaining. "
+                        f"Performance Rate: **{_perf_rate:.1f}%** × Availability: **{_av_pct}%** "
+                        f"= Required OEE: **{_required_oee:.1f}%**"
+                    )
 
                 # ── Results table ──
                 st.dataframe(sim_df, use_container_width=True, hide_index=True)
