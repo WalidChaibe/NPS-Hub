@@ -467,6 +467,11 @@ with tab1:
                 _fl_m = df_flute["Machine"].unique().tolist()
                 st.success(f"✅ {len(df_flute)} rows across {len(_fl_m)} machines")
 
+                # Debug: show raw % Dist MT values
+                with st.expander("🔍 Debug — Raw % Dist MT values from file"):
+                    st.dataframe(df_flute[["Machine","Flute Type","% Dist MT","Avg Speed","GSM","Roll Size"]],
+                                 use_container_width=True, hide_index=True)
+
                 _sel_m = st.selectbox("Select Machine", ["All"]+_fl_m, key="fi_flute_mach")
                 _dffl  = df_flute[df_flute["Machine"]==_sel_m] if _sel_m!="All" else df_flute.copy()
                 _data  = _dffl[_dffl["Row Type"]=="Data"]
