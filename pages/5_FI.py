@@ -514,3 +514,172 @@ with tab1:
                     file_name=f"Speed_by_Flute_{flute_file.name.replace('.xls','')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     key="fi_flute_dl")
+
+                # ══ TARGET SIMULATION ══
+                st.divider()
+                st.markdown("## 🎯 Production Target Simulation")
+                st.caption("Simulate whether the BHS can achieve the MT target given current or adjusted parameters.")
+
+                _df_data = df_flute[df_flute["Row Type"]=="Data"].copy()
+
+                # ── User inputs ──
+                _si1, _si2, _si3 = st.columns(3)
+                _mt_target = _si1.number_input("Company MT Target", min_value=0.0, value=1000.0,
+                                                step=10.0, key="fi_mt_target")
+                _waste_pct  = 10.0  # fixed
+                _gross_target = _mt_target * (1 + _waste_pct/100)
+                _si1.caption(f"Gross MT Target (incl. {_waste_pct}% waste): **{_gross_target:,.1f} MT**")
+
+                _shift_hrs = _si2.number_input("Shift Time (hrs/month)", min_value=1.0,
+                                                value=720.0, step=10.0, key="fi_shift_hrs")
+                _cu_pct    = _si3.slider("Capacity Utilization %", min_value=50, max_value=100,
+                                          value=95, step=1, key="fi_cu_pct")
+                _av_pct    = _si3.slider("Availability %", min_value=50, max_value=100,
+                                          value=85, step=1, key="fi_av_pct")
+
+                _avail_time = _shift_hrs * (_cu_pct/100) * (_av_pct/100)
+                _si2.caption(f"Available Run Time: **{_avail_time:,.1f} hrs**")
+
+                st.divider()
+
+                # ── Consolidate flutes across machines (BHS + FOSBER → BHS load) ──
+                # Sum % distribution by flute type across all machines
+                _dist_by_flute = _df_data.groupby("Flute Type")["% Dist MT"].sum().reset_index()
+                _dist_by_flute.columns = ["Flute Type","Total % Dist"]
+
+                # For each flute, take weighted avg of GSM, Roll Size, Avg Speed from BHS preferably
+                # If flute exists on BHS use BHS values, else use available machine values
+                _flute_params = []
+                for _, frow in _dist_by_flute.iterrows():
+                    ft = frow["Flute Type"]
+                    _fdf = _df_data[_df_data["Flute Type"]==ft]
+                    _bhs = _fdf[_fdf["Machine"].str.upper().str.contains("BHS")]
+                    _src = _bhs if not _bhs.empty else _fdf
+                    _gsm       = _src["GSM"].mean()
+                    _roll_w    = _src["Roll Size"].mean()
+                    _avg_spd   = _src["Avg Speed"].mean()
+                    _flute_params.append({
+                        "Flute Type":     ft,
+                        "Total % Dist":   frow["Total % Dist"],
+                        "GSM (avg)":      _gsm,
+                        "Roll Width cm (avg)": _roll_w,
+                        "Avg Speed m/min (avg)": _avg_spd,
+                    })
+                _fp_df = pd.DataFrame(_flute_params)
+
+                # ── Speed sliders per flute ──
+                st.markdown("#### ⚡ Speed Simulation (adjust per flute)")
+                _speed_overrides = {}
+                _scols = st.columns(min(4, len(_fp_df)))
+                for i, (_, frow) in enumerate(_fp_df.iterrows()):
+                    ft = frow["Flute Type"]
+                    default_spd = frow["Avg Speed m/min (avg)"]
+                    default_spd = float(default_spd) if pd.notna(default_spd) else 100.0
+                    _speed_overrides[ft] = _scols[i % len(_scols)].slider(
+                        f"{ft} Speed (m/min)",
+                        min_value=50, max_value=400,
+                        value=int(default_spd), step=5,
+                        key=f"fi_spd_{ft}"
+                    )
+
+                # ── Calculate per flute ──
+                st.divider()
+                st.markdown("#### 📊 Simulation Results")
+
+                sim_rows = []
+                for _, frow in _fp_df.iterrows():
+                    ft       = frow["Flute Type"]
+                    dist_pct = frow["Total % Dist"] or 0
+                    gsm      = frow["GSM (avg)"]
+                    roll_w   = frow["Roll Width cm (avg)"]
+                    spd      = _speed_overrides.get(ft, frow["Avg Speed m/min (avg)"] or 100)
+
+                    # Step 1: Gross MT for this flute
+                    gross_mt = _gross_target * (dist_pct / 100) if dist_pct else 0
+
+                    # Step 2: Expected SQM
+                    exp_sqm = (gross_mt * 1_000_000) / gsm if gsm and gsm > 0 else 0
+
+                    # Step 3: Expected LM
+                    roll_m = (roll_w or 0) * 0.01  # cm → m
+                    exp_lm = exp_sqm / roll_m if roll_m > 0 else 0
+
+                    # Step 4: Time needed (hrs)
+                    time_needed = (exp_lm / (spd * 60)) if spd and spd > 0 else 0
+
+                    # Step 5: OEE needed
+                    oee_needed = (time_needed / _avail_time * 100) if _avail_time > 0 else 0
+
+                    # Step 6: Feasibility
+                    feasible = oee_needed <= 100
+
+                    sim_rows.append({
+                        "Flute Type":          ft,
+                        "% Distribution":      round(dist_pct, 2),
+                        "Gross MT":            round(gross_mt, 1),
+                        "Expected SQM":        round(exp_sqm, 0),
+                        "Expected LM":         round(exp_lm, 0),
+                        "Speed Used (m/min)":  spd,
+                        "Time Needed (hrs)":   round(time_needed, 2),
+                        "Available Time (hrs)":round(_avail_time, 2),
+                        "OEE Needed %":        round(oee_needed, 1),
+                        "Feasible":            "✅ Yes" if feasible else "❌ No",
+                    })
+
+                sim_df = pd.DataFrame(sim_rows)
+
+                # ── Summary metrics ──
+                _total_time = sim_df["Time Needed (hrs)"].sum()
+                _overall_oee = (_total_time / _avail_time * 100) if _avail_time > 0 else 0
+                _feasible_all = _overall_oee <= 100
+
+                _sm1, _sm2, _sm3, _sm4 = st.columns(4)
+                _sm1.metric("Total Time Needed", f"{_total_time:,.1f} hrs")
+                _sm2.metric("Available Time",    f"{_avail_time:,.1f} hrs")
+                _sm3.metric("Overall OEE Needed",f"{_overall_oee:.1f}%",
+                            delta=f"{100-_overall_oee:.1f}% headroom" if _feasible_all else f"{_overall_oee-100:.1f}% over capacity",
+                            delta_color="normal" if _feasible_all else "inverse")
+                _sm4.metric("Achievable?", "✅ Yes" if _feasible_all else "❌ No")
+
+                if not _feasible_all:
+                    st.warning(f"⚠️ At current settings, the target requires **{_overall_oee:.1f}% OEE** which exceeds 100%. "
+                               f"Try increasing speed or availability.")
+                else:
+                    st.success(f"✅ Target is achievable at **{_overall_oee:.1f}% OEE** with "
+                               f"{100-_overall_oee:.1f}% headroom remaining.")
+
+                # ── Results table ──
+                st.dataframe(
+                    sim_df.style.apply(
+                        lambda row: ["background-color:#d4edda" if row["Feasible"]=="✅ Yes"
+                                     else "background-color:#f8d7da" for _ in row], axis=1
+                    ),
+                    use_container_width=True, hide_index=True
+                )
+
+                # ── OEE Needed bar chart ──
+                _fig_sim, _ax_sim = plt.subplots(figsize=(13.33, 5), dpi=150)
+                _xs = np.arange(len(sim_df))
+                _bar_colors = ["#006394" if float(v)<=100 else "#DE201B" for v in sim_df["OEE Needed %"]]
+                _bars_sim = _ax_sim.bar(_xs, sim_df["OEE Needed %"], color=_bar_colors, width=0.6, alpha=0.9)
+                for _bar, _val in zip(_bars_sim, sim_df["OEE Needed %"]):
+                    _ax_sim.text(_bar.get_x()+_bar.get_width()/2, _bar.get_height()+0.5,
+                                 f"{_val:.1f}%", ha="center", va="bottom", fontsize=9, color="#000000")
+                _ax_sim.axhline(100, color="#DE201B", linewidth=1.5, linestyle="--", label="100% Limit")
+                _ax_sim.set_xticks(_xs)
+                _ax_sim.set_xticklabels(sim_df["Flute Type"].tolist(), rotation=30, ha="right", fontsize=9)
+                _ax_sim.set_ylabel("OEE Needed (%)")
+                _ax_sim.spines["top"].set_visible(False); _ax_sim.spines["right"].set_visible(False)
+                _ax_sim.grid(False)
+                _ax_sim.legend(frameon=False, fontsize=10)
+                plt.tight_layout()
+                _buf_sim = io.BytesIO()
+                _fig_sim.savefig(_buf_sim, format="png", dpi=150, bbox_inches="tight")
+                _buf_sim.seek(0); st.image(_buf_sim); plt.close(_fig_sim)
+
+                # ── Download simulation ──
+                _buf_simx = io.BytesIO(); sim_df.to_excel(_buf_simx, index=False, engine="openpyxl"); _buf_simx.seek(0)
+                st.download_button("📥 Download Simulation Results (.xlsx)", data=_buf_simx,
+                    file_name="OEE_Target_Simulation.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="fi_sim_dl")
