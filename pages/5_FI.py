@@ -638,7 +638,7 @@ with tab1:
                 sim_df = pd.DataFrame(sim_rows)
 
                 # ── Summary metrics ──
-                _total_time = sim_df["Time Needed (hrs)"].sum()
+                _total_time = sim_df["Time at Proposed Speed (hrs)"].sum()
                 _overall_oee = (_total_time / _avail_time * 100) if _avail_time > 0 else 0
                 _feasible_all = _overall_oee <= 100
 
