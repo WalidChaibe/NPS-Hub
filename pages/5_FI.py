@@ -16,7 +16,6 @@ os.environ["MPLCONFIGDIR"] = os.path.join(os.getcwd(), ".mplconfig")
 from utils.supabase_client import get_supabase
 
 st.set_page_config(page_title="FI Pillar", page_icon="💡", layout="wide")
-
 if "user" not in st.session_state:
     st.switch_page("app.py")
 
@@ -35,172 +34,103 @@ with col3:
         st.switch_page("pages/1_Home.py")
 
 st.divider()
-
-tab1, = st.tabs(["📊 OEE Report & Analysis"])
-
 mpl.rcParams["font.family"] = "DejaVu Sans"
 mpl.rcParams["font.size"]   = 11
 
-def _oee_bar_chart(machines_df, oee_col, section_colors):
+tab1, = st.tabs(["📊 OEE Report & Analysis"])
+
+# ════════════════════════════════════════
+# SHARED CHART HELPERS
+# ════════════════════════════════════════
+def _oee_bar_chart(df, oee_col, section_colors, machine_col):
     fig, ax = plt.subplots(figsize=(13.33, 5), dpi=150)
-    x = np.arange(len(machines_df))
-    machine_col = "Machine" if "Machine" in machines_df.columns else "Machine Name"
-    colors = [section_colors.get(str(s), "#AAAAAA") for s in machines_df["Section"].fillna("")]
-    bars = ax.bar(x, machines_df[oee_col].fillna(0), color=colors, width=0.6, alpha=0.9)
-    for bar, val in zip(bars, machines_df[oee_col].fillna(0)):
+    x = np.arange(len(df))
+    colors = [section_colors.get(str(s), "#AAAAAA") for s in df["Section"].fillna("")]
+    bars = ax.bar(x, df[oee_col].fillna(0), color=colors, width=0.6, alpha=0.9)
+    for bar, val in zip(bars, df[oee_col].fillna(0)):
         ax.text(bar.get_x()+bar.get_width()/2, bar.get_height()+0.5,
                 f"{val:.1f}%", ha="center", va="bottom", fontsize=9, color="#000000")
     ax.axhline(85, color="#DE201B", linewidth=1.5, linestyle="--", label="Target 85%")
-    ax.set_xticks(x)
-    ax.set_xticklabels(machines_df[machine_col].tolist(), rotation=35, ha="right", fontsize=9)
+    ax.set_xticks(x); ax.set_xticklabels(df[machine_col].tolist(), rotation=35, ha="right", fontsize=9)
     ax.set_ylabel("OEE (%)"); ax.set_ylim(0, 115)
     ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False); ax.grid(False)
     from matplotlib.patches import Patch
-    legend_patches = [Patch(facecolor=v, label=k) for k,v in section_colors.items()
-                      if k in machines_df["Section"].values]
-    legend_patches.append(plt.Line2D([0],[0], color="#DE201B", linewidth=1.5,
-                                     linestyle="--", label="Target 85%"))
-    ax.legend(handles=legend_patches, loc="upper center", bbox_to_anchor=(0.5,-0.30),
-              ncol=4, frameon=False, fontsize=9)
-    plt.tight_layout(rect=[0,0.15,1,1])
+    patches = [Patch(facecolor=v, label=k) for k,v in section_colors.items() if k in df["Section"].values]
+    patches.append(plt.Line2D([0],[0], color="#DE201B", linewidth=1.5, linestyle="--", label="Target 85%"))
+    ax.legend(handles=patches, loc="upper center", bbox_to_anchor=(0.5,-0.22), ncol=5, frameon=False, fontsize=9)
+    plt.tight_layout(rect=[0,0.10,1,1])
     buf = io.BytesIO(); fig.savefig(buf, format="png", dpi=150, bbox_inches="tight")
     buf.seek(0); plt.close(fig); return buf
 
-def _arq_chart(machines_df, avl_col, rate_col, qual_col):
-    machine_col = "Machine" if "Machine" in machines_df.columns else "Machine Name"
+def _arq_chart(df, avl_col, rate_col, qual_col, machine_col):
     fig, ax = plt.subplots(figsize=(13.33, 5), dpi=150)
-    x = np.arange(len(machines_df)); w = 0.25
-    b1 = ax.bar(x-w, machines_df[avl_col].fillna(0),  w, color="#006394", label="Availability")
-    b2 = ax.bar(x,   machines_df[rate_col].fillna(0), w, color="#C1A02E", label="Rate")
-    b3 = ax.bar(x+w, machines_df[qual_col].fillna(0), w, color="#D8C37D", label="Quality")
+    x = np.arange(len(df)); w = 0.25
+    b1 = ax.bar(x-w, df[avl_col].fillna(0),  w, color="#006394", label="Availability")
+    b2 = ax.bar(x,   df[rate_col].fillna(0), w, color="#C1A02E", label="Rate")
+    b3 = ax.bar(x+w, df[qual_col].fillna(0), w, color="#D8C37D", label="Quality")
     for b in [b1,b2,b3]:
         for bar in b:
             h = bar.get_height()
             if h > 0:
                 ax.text(bar.get_x()+bar.get_width()/2, h+0.5, f"{h:.1f}%",
                         ha="center", va="bottom", fontsize=8, color="#000000")
-    ax.set_xticks(x)
-    ax.set_xticklabels(machines_df[machine_col].tolist(), rotation=35, ha="right", fontsize=9)
+    ax.set_xticks(x); ax.set_xticklabels(df[machine_col].tolist(), rotation=35, ha="right", fontsize=9)
     ax.set_ylabel("%"); ax.set_ylim(0, 115)
     ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False); ax.grid(False)
-    ax.legend(loc="upper center", bbox_to_anchor=(0.5,-0.30), ncol=3, frameon=False, fontsize=10)
-    plt.tight_layout(rect=[0,0.15,1,1])
-    buf = io.BytesIO(); fig.savefig(buf, format="png", dpi=150, bbox_inches="tight")
-    buf.seek(0); plt.close(fig); return buf
-
-def _capacity_chart(machines_df, avl_col, shift_col, machine_col_name):
-    df_cap = machines_df.copy()
-    df_cap["_cap_util"] = (df_cap[avl_col] / df_cap[shift_col] * 100).where(df_cap[shift_col] > 0, 0)
-    fig, ax = plt.subplots(figsize=(13.33, 5), dpi=150)
-    x = np.arange(len(df_cap))
-    colors = ["#006394" if v >= 95 else "#E74C3C" for v in df_cap["_cap_util"].fillna(0)]
-    bars = ax.bar(x, df_cap["_cap_util"].fillna(0), color=colors, width=0.6, alpha=0.9)
-    for bar, val in zip(bars, df_cap["_cap_util"].fillna(0)):
-        ax.text(bar.get_x()+bar.get_width()/2, bar.get_height()+0.5,
-                f"{val:.1f}%", ha="center", va="bottom", fontsize=9, color="#000000")
-    ax.axhline(95, color="#DE201B", linewidth=1.5, linestyle="--", label="Target 95%")
-    ax.set_xticks(x)
-    ax.set_xticklabels(df_cap[machine_col_name].tolist(), rotation=35, ha="right", fontsize=9)
-    ax.set_ylabel("Capacity Utilization (%)"); ax.set_ylim(0, 115)
-    ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False); ax.grid(False)
-    from matplotlib.patches import Patch
-    legend_patches = [
-        Patch(facecolor="#006394", label="≥ 95% (On Target)"),
-        Patch(facecolor="#E74C3C", label="< 95% (Below Target)"),
-        plt.Line2D([0],[0], color="#DE201B", linewidth=1.5, linestyle="--", label="Target 95%"),
-    ]
-    ax.legend(handles=legend_patches, loc="upper center", bbox_to_anchor=(0.5,-0.30),
-              ncol=3, frameon=False, fontsize=9)
-    plt.tight_layout(rect=[0,0.15,1,1])
+    ax.legend(loc="upper center", bbox_to_anchor=(0.5,-0.22), ncol=3, frameon=False, fontsize=10)
+    plt.tight_layout(rect=[0,0.10,1,1])
     buf = io.BytesIO(); fig.savefig(buf, format="png", dpi=150, bbox_inches="tight")
     buf.seek(0); plt.close(fig); return buf
 
 def _build_excel(df, title, header_color="006394"):
     wb = Workbook(); ws = wb.active; ws.title = title
-    header_fill  = PatternFill("solid", fgColor=header_color)
-    header_font  = Font(bold=True, color="FFFFFF", size=10)
-    section_fill = PatternFill("solid", fgColor="EAF4FB")
-    section_font = Font(bold=True, size=10)
-    total_fill   = PatternFill("solid", fgColor="FFF9E6")
-    total_font   = Font(bold=True, size=9)
-    normal_font  = Font(size=9)
-    center_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
-    left_align   = Alignment(horizontal="left",   vertical="center")
-    thin = Border(left=Side(style="thin"), right=Side(style="thin"),
-                  top=Side(style="thin"),  bottom=Side(style="thin"))
-    skip_label_cols = {"Capacity Utilization %","PM & Cleaning (label)","Micro-Stop (label)"}
-    headers = [c for c in df.columns if c not in skip_label_cols]
+    hf = PatternFill("solid", fgColor=header_color)
+    sf = PatternFill("solid", fgColor="EAF4FB")
+    tf = PatternFill("solid", fgColor="FFF9E6")
+    ca = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    la = Alignment(horizontal="left",   vertical="center")
+    th = Border(left=Side(style="thin"), right=Side(style="thin"),
+                top=Side(style="thin"),  bottom=Side(style="thin"))
+    skip = {"Capacity Utilization %","PM & Cleaning (label)","Micro-Stop (label)"}
+    headers = [c for c in df.columns if c not in skip]
     for ci, h in enumerate(headers, 1):
         cell = ws.cell(row=1, column=ci, value=h)
-        cell.fill = header_fill; cell.font = header_font
-        cell.alignment = center_align; cell.border = thin
+        cell.fill = hf; cell.font = Font(bold=True, color="FFFFFF", size=10)
+        cell.alignment = ca; cell.border = th
     ws.row_dimensions[1].height = 30
-    data_row = 2; current_section = None
+    dr = 2; cur_sec = None
     for _, row in df.iterrows():
         sec = str(row.get("Section",""))
-        if sec != current_section and sec not in ("TOTAL","Unknown",""):
-            current_section = sec
-            cell = ws.cell(row=data_row, column=1, value=f"── {sec} ──")
-            cell.fill = section_fill; cell.font = section_font; cell.alignment = left_align
-            ws.merge_cells(start_row=data_row, start_column=1,
-                           end_row=data_row, end_column=len(headers))
-            ws.row_dimensions[data_row].height = 18; data_row += 1
-        is_total = row.get("Row Type") == "Total"
+        if sec != cur_sec and sec not in ("TOTAL","Unknown",""):
+            cur_sec = sec
+            cell = ws.cell(row=dr, column=1, value=f"── {sec} ──")
+            cell.fill = sf; cell.font = Font(bold=True, size=10); cell.alignment = la
+            ws.merge_cells(start_row=dr, start_column=1, end_row=dr, end_column=len(headers))
+            ws.row_dimensions[dr].height = 18; dr += 1
+        is_tot = row.get("Row Type") == "Total"
         for ci, h in enumerate(headers, 1):
-            val  = row.get(h)
-            cell = ws.cell(row=data_row, column=ci, value=val)
-            cell.border = thin
-            cell.alignment = center_align if ci > 2 else left_align
-            cell.fill = total_fill if is_total else PatternFill()
-            cell.font = total_font if is_total else normal_font
-        ws.row_dimensions[data_row].height = 16; data_row += 1
+            val = row.get(h)
+            cell = ws.cell(row=dr, column=ci, value=val)
+            cell.border = th; cell.alignment = ca if ci > 2 else la
+            cell.fill = tf if is_tot else PatternFill()
+            cell.font = Font(bold=True, size=9) if is_tot else Font(size=9)
+        ws.row_dimensions[dr].height = 16; dr += 1
     for ci, h in enumerate(headers, 1):
         ws.column_dimensions[get_column_letter(ci)].width = max(12, len(str(h))+2)
     ws.column_dimensions["A"].width = 10; ws.column_dimensions["B"].width = 24
     buf = io.BytesIO(); wb.save(buf); buf.seek(0); return buf
 
-def _capacity_chart(machines_df, avail_col, shift_col):
-    machine_col = "Machine" if "Machine" in machines_df.columns else "Machine Name"
-    # Calculate capacity utilization
-    df_cap = machines_df.copy()
-    df_cap["Cap Util %"] = (df_cap[avail_col].fillna(0) / df_cap[shift_col].replace(0, np.nan)) * 100
-    n = len(df_cap)
-    fig_w = max(13.33, n * 0.7)
-    fig, ax = plt.subplots(figsize=(fig_w, 6), dpi=150)
-    x = np.arange(n)
-    colors = ["#006394" if v >= 95 else "#C1A02E" if v >= 85 else "#DE201B"
-              for v in df_cap["Cap Util %"].fillna(0)]
-    bars = ax.bar(x, df_cap["Cap Util %"].fillna(0), color=colors, width=0.55, alpha=0.9)
-    for bar, val in zip(bars, df_cap["Cap Util %"].fillna(0)):
-        ax.text(bar.get_x()+bar.get_width()/2, bar.get_height()+0.5,
-                f"{val:.1f}%", ha="center", va="bottom", fontsize=9, fontweight="bold", color="#000000")
-    ax.axhline(95, color="#DE201B", linewidth=1.5, linestyle="--")
-    ax.text(x[-1]+0.5, 95.5, "Target 95%", color="#DE201B", fontsize=9, va="bottom")
-    ax.set_xticks(x)
-    ax.set_xticklabels(df_cap[machine_col].tolist(), rotation=40, ha="right", fontsize=9)
-    ax.set_ylabel("Capacity Utilization (%)"); ax.set_ylim(0, 115)
-    ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False); ax.grid(False)
-    from matplotlib.patches import Patch
-    legend_patches = [
-        Patch(facecolor="#006394", label="≥ 95% (On Target)"),
-        Patch(facecolor="#C1A02E", label="85–95% (Near Target)"),
-        Patch(facecolor="#DE201B", label="< 85% (Below Target)"),
-    ]
-    ax.legend(handles=legend_patches, loc="upper center", bbox_to_anchor=(0.5, -0.28),
-              ncol=3, frameon=False, fontsize=9)
-    plt.tight_layout(rect=[0, 0.12, 1, 1])
-    buf = io.BytesIO(); fig.savefig(buf, format="png", dpi=150, bbox_inches="tight")
-    buf.seek(0); plt.close(fig); return buf
-
-# ── Corrugator parser ──
-CORR_SECTIONS = {"BHS", "FOSBER", "SINGLE FACER"}
-CORR_MACHINE_COLS = [
+# ════════════════════════════════════════
+# CORRUGATOR PARSER
+# ════════════════════════════════════════
+CORR_SECTIONS = {"BHS","FOSBER","SINGLE FACER"}
+CORR_M_COLS = [
     "Shift Time","Run Duration (Hrs)","Stop Duration Hrs","Idle Duration Hrs",
     "# of Stops","# of Change Over","# of Quality Change",
     "Linear Meters","Standard Output M","Square Meters",
     "Availability (%)","Rate (%)","Quality (%)","OEE (%)","Avg Max Speed"
 ]
-CORR_TOTAL_COLS = [
+CORR_T_COLS = [
     "Shift Time","Run Duration (Hrs)","Stop Duration Hrs","Idle Duration Hrs",
     "# of Stops","# of Change Over","# of Quality Change",
     "Linear Meters","Standard Output M","Square Meters",
@@ -210,75 +140,76 @@ CORR_TOTAL_COLS = [
 def parse_corrugator(file_bytes):
     wb = xlrd.open_workbook(file_contents=file_bytes)
     sh = wb.sheet_by_index(0)
-    current_section = None; all_rows = []
-    for row_idx in range(sh.nrows):
-        row   = [sh.cell_value(row_idx, c) for c in range(sh.ncols)]
-        col_a = str(row[0]).strip()
-        if col_a in CORR_SECTIONS:
-            current_section = col_a; continue
+    cur_sec = None; rows = []
+    for ri in range(sh.nrows):
+        row = [sh.cell_value(ri, c) for c in range(sh.ncols)]
+        ca  = str(row[0]).strip()
+        if ca in CORR_SECTIONS: cur_sec = ca; continue
         if not any(str(v).strip() for v in row): continue
-        if isinstance(row[0], str) and col_a and col_a not in CORR_SECTIONS:
-            rec = {"Section": current_section, "Machine": col_a, "Row Type": "Machine"}
-            for i, cn in enumerate(CORR_MACHINE_COLS):
-                rec[cn] = row[i+1] if (i+1) < len(row) else None
-            for idx, key in [(15,"Available Time (Hrs)"),(17,"Average Length/Run"),(19,"Average SQM/Run"),
-                             (21,"PM & Cleaning"),(22,"MT"),(23,"Speed Value"),(25,"Average Width/Run"),
-                             (27,"Average SQM/Hrs"),(28,"Operator"),(30,"Average Sheet Length"),(32,"Average Sheet Width")]:
-                rec[key] = row[idx] if idx < len(row) else None
-            all_rows.append(rec)
-        elif isinstance(row[0], (int, float)) and col_a:
-            rec = {"Section": current_section, "Machine": "TOTAL", "Row Type": "Total"}
-            for i, cn in enumerate(CORR_TOTAL_COLS):
-                rec[cn] = row[i] if i < len(row) else None
-            for idx, key in [(15,"Available Time (Hrs)"),(17,"PM & Cleaning"),(19,"Average Length/Run"),
-                             (21,"Average SQM/Run"),(22,"MT"),(24,"Average Width/Run"),(26,"Average SQM/Hrs"),
-                             (27,"Speed Value"),(29,"# of ProgramID"),(31,"Average Sheet Length"),(33,"Average Sheet Width"),
-                             (35,"# of Change Overs"),(37,"Capacity Utilization (%)"),(39,"# of Quality Changes"),
-                             (41,"% of Quality Changes"),(43,"Planning Efficiency")]:
-                rec[key] = row[idx] if idx < len(row) else None
-            all_rows.append(rec)
-    df = pd.DataFrame(all_rows)
+        if isinstance(row[0], str) and ca and ca not in CORR_SECTIONS:
+            rec = {"Section": cur_sec, "Machine": ca, "Row Type": "Machine"}
+            for i, cn in enumerate(CORR_M_COLS):
+                rec[cn] = row[i+1] if (i+1)<len(row) else None
+            extras = [(15,"Available Time (Hrs)"),(17,"Average Length/Run"),(19,"Average SQM/Run"),
+                      (21,"PM & Cleaning"),(22,"MT"),(23,"Speed Value"),(25,"Average Width/Run"),
+                      (27,"Average SQM/Hrs"),(28,"Operator"),(30,"Average Sheet Length"),(32,"Average Sheet Width")]
+            for idx, key in extras:
+                rec[key] = row[idx] if idx<len(row) else None
+            rows.append(rec)
+        elif isinstance(row[0], (int, float)) and ca:
+            rec = {"Section": cur_sec, "Machine": "TOTAL", "Row Type": "Total"}
+            for i, cn in enumerate(CORR_T_COLS):
+                rec[cn] = row[i] if i<len(row) else None
+            extras = [(15,"Available Time (Hrs)"),(17,"PM & Cleaning"),(19,"Average Length/Run"),
+                      (21,"Average SQM/Run"),(22,"MT"),(24,"Average Width/Run"),(26,"Average SQM/Hrs"),
+                      (27,"Speed Value"),(29,"# of ProgramID"),(31,"Average Sheet Length"),(33,"Average Sheet Width"),
+                      (35,"# of Change Overs"),(37,"Capacity Utilization (%)"),(39,"# of Quality Changes"),
+                      (41,"% of Quality Changes"),(43,"Planning Efficiency")]
+            for idx, key in extras:
+                rec[key] = row[idx] if idx<len(row) else None
+            rows.append(rec)
+    df = pd.DataFrame(rows)
     skip = {"Section","Machine","Row Type","Operator"}
     for col in df.columns:
         if col not in skip:
             df[col] = pd.to_numeric(df[col], errors="coerce")
     return df
 
-# ── Converting parser ──
+# ════════════════════════════════════════
+# CONVERTING PARSER
+# ════════════════════════════════════════
 CONV_MAP = {
     "BOBST 160-II":"Die Cutters","BOBST 203":"Die Cutters",
     "BOBST MASTERCUT 1":"Die Cutters","BOBST MASTERCUT 2":"Die Cutters",
-    "BOBST 924":"FFG","LMC FFG":"FFG","LMC  FFG":"FFG","LMC   FFG":"FFG","MARTIN 616":"FFG","SATURN":"FFG",
+    "BOBST 924":"FFG","LMC FFG":"FFG","MARTIN 616":"FFG","SATURN":"FFG",
     "IPACK":"Printer","VEGA 2":"Folder Gluers","BAHMÜLLER TURBOX":"Folder Gluers",
     "BAHMULLER STITCHER":"Stitcher","JUMBO":"Jumbo",
     "SINGLE FACER":"Single Facer","SHRINK-WRAPPER":"Shrink Wrapper",
 }
-CONV_MAP_NORM = {k.upper().strip(): v for k,v in CONV_MAP.items()}
+CONV_NORM = {k.upper().strip(): v for k,v in CONV_MAP.items()}
 
 def parse_converting(file_bytes, filename=""):
     if filename.lower().endswith(".xlsx"):
         import openpyxl
         wb2 = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
         ws2 = wb2.active
-        rows_raw = [[c if c is not None else "" for c in row]
-                    for row in ws2.iter_rows(values_only=True)]
+        rows_raw = [[c if c is not None else "" for c in row] for row in ws2.iter_rows(values_only=True)]
     else:
         wb2 = xlrd.open_workbook(file_contents=file_bytes)
         ws2 = wb2.sheet_by_index(0)
         rows_raw = [[ws2.cell_value(r,c) for c in range(ws2.ncols)] for r in range(ws2.nrows)]
 
-    all_rows = []; total_weight = None; full_qty_weight = None
+    rows = []; tw = None; fqw = None
     for row in rows_raw[2:]:
-        col_a = str(row[0]).strip() if row else ""
-        if not col_a: continue
-        if "total weight" in col_a.lower():
-            total_weight    = row[1] if len(row)>1 else None
-            full_qty_weight = row[2] if len(row)>2 else None
+        ca = str(row[0]).strip() if row else ""
+        if not ca: continue
+        if "total weight" in ca.lower():
+            tw  = row[1] if len(row)>1 else None
+            fqw = row[2] if len(row)>2 else None
             break
-        if col_a.lower().startswith("page"): continue
-        section = CONV_MAP_NORM.get(col_a.upper(), "Unknown")
-        data_cells = [v for v in row[1:] if str(v).strip() not in ("","0","0.0")]
-        if len(data_cells) < 3: continue
+        if ca.lower().startswith("page"): continue
+        sec = CONV_NORM.get(ca.upper(), "Unknown")
+        if len([v for v in row[1:] if str(v).strip() not in ("","0","0.0")]) < 3: continue
         col_map = {
             "Hits / Hour":1,"Standard Hits (Rhr)":2,
             "Capacity Utilization %":3,"Capacity Utilization Value":4,
@@ -292,18 +223,15 @@ def parse_converting(file_bytes, filename=""):
             "Micro-Stop (label)":25,"Micro Stop (min)":26,
             "Unknown Value":27,"Full Qty Weight":28,
         }
-        rec = {"Section": section, "Machine Name": col_a, "Row Type": "Machine"}
+        rec = {"Section": sec, "Machine Name": ca, "Row Type": "Machine"}
         for cn, idx in col_map.items():
-            rec[cn] = row[idx] if idx < len(row) else None
-        all_rows.append(rec)
-
-    if total_weight is not None:
-        all_rows.append({
-            "Section":"TOTAL","Machine Name":"TOTAL","Row Type":"Total",
-            "FG Produced": pd.to_numeric(total_weight, errors="coerce"),
-            "Full Qty Weight": pd.to_numeric(full_qty_weight, errors="coerce"),
-        })
-    df = pd.DataFrame(all_rows)
+            rec[cn] = row[idx] if idx<len(row) else None
+        rows.append(rec)
+    if tw is not None:
+        rows.append({"Section":"TOTAL","Machine Name":"TOTAL","Row Type":"Total",
+                     "FG Produced": pd.to_numeric(tw, errors="coerce"),
+                     "Full Qty Weight": pd.to_numeric(fqw, errors="coerce")})
+    df = pd.DataFrame(rows)
     skip = {"Section","Machine Name","Row Type","Capacity Utilization %",
             "PM & Cleaning (label)","Micro-Stop (label)"}
     for col in df.columns:
@@ -312,7 +240,7 @@ def parse_converting(file_bytes, filename=""):
     return df
 
 # ════════════════════════════════════════
-# TAB 1 — OEE REPORT & ANALYSIS
+# TAB 1
 # ════════════════════════════════════════
 with tab1:
     st.markdown("### 📊 OEE Report & Analysis")
@@ -323,7 +251,6 @@ with tab1:
                                     type=["xls","xlsx"], key="fi_oee_file")
     conv_file = _uc2.file_uploader("📂 Converting OEE Report (.xls/.xlsx)",
                                     type=["xls","xlsx"], key="fi_conv_file")
-
     if not oee_file and not conv_file:
         st.info("⬆️ Upload at least one OEE report file above.")
 
@@ -339,45 +266,41 @@ with tab1:
             try:
                 with st.spinner("Parsing Corrugator file..."):
                     df_corr = parse_corrugator(oee_file.getvalue())
-                _corr_m = df_corr[df_corr["Row Type"]=="Machine"]
-                st.success(f"✅ Corrugator: {len(_corr_m)} machines extracted")
+                _cm = df_corr[df_corr["Row Type"]=="Machine"]
+                st.success(f"✅ Corrugator: {len(_cm)} machines extracted")
 
                 _cc1, _cc2 = st.columns([2,5])
-                _sel_cs  = _cc1.selectbox("Filter Section",
-                               ["All"]+sorted(df_corr["Section"].dropna().unique().tolist()),
-                               key="fi_corr_sec")
-                _sel_ct  = _cc2.multiselect("Row Type", ["Machine","Total"],
-                               default=["Machine","Total"], key="fi_corr_type")
+                _scs = _cc1.selectbox("Filter Section",
+                    ["All"]+sorted(df_corr["Section"].dropna().unique().tolist()), key="fi_corr_sec")
+                _sct = _cc2.multiselect("Row Type", ["Machine","Total"],
+                    default=["Machine","Total"], key="fi_corr_type")
                 _dfcv = df_corr.copy()
-                if _sel_cs != "All": _dfcv = _dfcv[_dfcv["Section"]==_sel_cs]
-                if _sel_ct:         _dfcv = _dfcv[_dfcv["Row Type"].isin(_sel_ct)]
+                if _scs != "All": _dfcv = _dfcv[_dfcv["Section"]==_scs]
+                if _sct:          _dfcv = _dfcv[_dfcv["Row Type"].isin(_sct)]
 
+                # Summary
                 st.markdown("#### OEE Summary")
                 _ct = df_corr[df_corr["Row Type"]=="Total"]
                 if not _ct.empty:
                     _tcols = st.columns(len(_ct))
                     for i,(_, tr) in enumerate(_ct.iterrows()):
                         _tcols[i].markdown(f"**{tr.get('Section','')}**")
-                        _tcols[i].metric("OEE",          f"{tr.get('OEE (%)',0) or 0:.1f}%")
-                        _tcols[i].metric("Availability", f"{tr.get('Availability (%)',0) or 0:.1f}%")
-                        _tcols[i].metric("Rate",         f"{tr.get('Rate (%)',0) or 0:.1f}%")
-                        _tcols[i].metric("Quality",      f"{tr.get('Quality (%)',0) or 0:.1f}%")
+                        _tcols[i].metric("OEE",                  f"{tr.get('OEE (%)',0) or 0:.1f}%")
+                        _tcols[i].metric("Availability",          f"{tr.get('Availability (%)',0) or 0:.1f}%")
+                        _tcols[i].metric("Rate",                  f"{tr.get('Rate (%)',0) or 0:.1f}%")
+                        _tcols[i].metric("Quality",               f"{tr.get('Quality (%)',0) or 0:.1f}%")
+                        cap = tr.get("Capacity Utilization (%)", None)
+                        _tcols[i].metric("Capacity Utilization",  f"{cap:.1f}%" if pd.notna(cap) else "—")
 
                 st.markdown("#### Extracted Data")
                 st.dataframe(_dfcv, use_container_width=True, hide_index=True)
 
                 CORR_COLORS = {"BHS":"#006394","FOSBER":"#C1A02E","SINGLE FACER":"#D8C37D"}
-                if not _corr_m.empty and "OEE (%)" in _corr_m.columns:
+                if not _cm.empty and "OEE (%)" in _cm.columns:
                     st.markdown("#### OEE by Machine")
-                    st.image(_oee_bar_chart(_corr_m, "OEE (%)", CORR_COLORS))
+                    st.image(_oee_bar_chart(_cm, "OEE (%)", CORR_COLORS, "Machine"))
                     st.markdown("#### Availability / Rate / Quality")
-                    st.image(_arq_chart(_corr_m, "Availability (%)","Rate (%)","Quality (%)"))
-                    if "Available Time (Hrs)" in _corr_m.columns and "Shift Time" in _corr_m.columns:
-                        st.markdown("#### Capacity Utilization (Available Time / Shift Time)")
-                        st.image(_capacity_chart(_corr_m, "Available Time (Hrs)", "Shift Time"))
-                if not _corr_m.empty and "Available Time (Hrs)" in _corr_m.columns and "Shift Time" in _corr_m.columns:
-                    st.markdown("#### Capacity Utilization (Available Time / Shift Time) — Target 95%")
-                    st.image(_capacity_chart(_corr_m, "Available Time (Hrs)", "Shift Time", "Machine"))
+                    st.image(_arq_chart(_cm, "Availability (%)","Rate (%)","Quality (%)", "Machine"))
 
                 st.markdown("#### Export")
                 st.download_button("📥 Download Corrugator OEE (.xlsx)",
@@ -395,29 +318,29 @@ with tab1:
             try:
                 with st.spinner("Parsing Converting file..."):
                     df_conv = parse_converting(conv_file.getvalue(), conv_file.name)
-                _conv_m = df_conv[df_conv["Row Type"]=="Machine"]
-                st.success(f"✅ Converting: {len(_conv_m)} machines extracted")
+                _vm = df_conv[df_conv["Row Type"]=="Machine"]
+                st.success(f"✅ Converting: {len(_vm)} machines extracted")
 
-                _vc1, = st.columns([1])
-                _sel_vs = _vc1.selectbox("Filter Section",
+                _vs = st.selectbox("Filter Section",
                     ["All"]+sorted([s for s in df_conv["Section"].dropna().unique()
-                                    if s not in ("TOTAL","Unknown")]),
-                    key="fi_conv_sec")
-                _dfvv = _conv_m.copy()
-                if _sel_vs != "All": _dfvv = _dfvv[_dfvv["Section"]==_sel_vs]
+                                    if s not in ("TOTAL","Unknown")]), key="fi_conv_sec")
+                _dfvv = _vm.copy()
+                if _vs != "All": _dfvv = _dfvv[_dfvv["Section"]==_vs]
 
+                # Summary
                 st.markdown("#### OEE Summary by Section")
                 _sec_ord = ["Die Cutters","FFG","Printer","Folder Gluers",
                             "Stitcher","Jumbo","Single Facer","Shrink Wrapper"]
                 _scols = st.columns(min(4, len(_sec_ord)))
                 _si = 0
                 for _sec in _sec_ord:
-                    _sdf = _conv_m[_conv_m["Section"]==_sec]
+                    _sdf = _vm[_vm["Section"]==_sec]
                     if _sdf.empty: continue
                     _sc = _scols[_si % len(_scols)]
                     _sc.markdown(f"**{_sec}**")
                     for metric, col in [("OEE","OEE %"),("Availability","Availability %"),
-                                        ("Rate","Rate %"),("Quality","Quality %")]:
+                                        ("Rate","Rate %"),("Quality","Quality %"),
+                                        ("Cap. Util.","Capacity Utilization Value")]:
                         _v = _sdf[col].mean() if col in _sdf.columns else None
                         _sc.metric(metric, f"{_v:.1f}%" if pd.notna(_v) else "—")
                     _si += 1
@@ -438,17 +361,11 @@ with tab1:
                     "Folder Gluers":"#D8C37D","Stitcher":"#E74C3C","Jumbo":"#27AE60",
                     "Single Facer":"#1ABC9C","Shrink Wrapper":"#E67E22","Unknown":"#AAAAAA",
                 }
-                if not _conv_m.empty and "OEE %" in _conv_m.columns:
+                if not _vm.empty and "OEE %" in _vm.columns:
                     st.markdown("#### OEE by Machine")
-                    st.image(_oee_bar_chart(_conv_m, "OEE %", CONV_COLORS))
+                    st.image(_oee_bar_chart(_vm, "OEE %", CONV_COLORS, "Machine Name"))
                     st.markdown("#### Availability / Rate / Quality")
-                    st.image(_arq_chart(_conv_m, "Availability %","Rate %","Quality %"))
-                    if "Available Time (Hrs)" in _conv_m.columns and "Shift Time (Hrs)" in _conv_m.columns:
-                        st.markdown("#### Capacity Utilization (Available Time / Shift Time)")
-                        st.image(_capacity_chart(_conv_m, "Available Time (Hrs)", "Shift Time (Hrs)"))
-                if not _conv_m.empty and "Available Time (Hrs)" in _conv_m.columns and "Shift Time (Hrs)" in _conv_m.columns:
-                    st.markdown("#### Capacity Utilization (Available Time / Shift Time) — Target 95%")
-                    st.image(_capacity_chart(_conv_m, "Available Time (Hrs)", "Shift Time (Hrs)", "Machine Name"))
+                    st.image(_arq_chart(_vm, "Availability %","Rate %","Quality %", "Machine Name"))
 
                 st.markdown("#### Export")
                 st.download_button("📥 Download Converting OEE (.xlsx)",
