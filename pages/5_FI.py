@@ -544,8 +544,12 @@ with tab1:
 
                 # ── Consolidate flutes across machines (BHS + FOSBER → BHS load) ──
                 # Sum % distribution by flute type across all machines
+                # Sum % Dist MT by flute (already decimal e.g. 0.179 = 17.9%)
                 _dist_by_flute = _df_data.groupby("Flute Type")["% Dist MT"].sum().reset_index()
                 _dist_by_flute.columns = ["Flute Type","Total % Dist"]
+                # Sanity check: if values look like whole numbers (>1) divide by 100
+                if _dist_by_flute["Total % Dist"].max() > 1.5:
+                    _dist_by_flute["Total % Dist"] = _dist_by_flute["Total % Dist"] / 100
 
                 # For each flute, take weighted avg of GSM, Roll Size, Avg Speed from BHS preferably
                 # If flute exists on BHS use BHS values, else use available machine values
@@ -619,7 +623,8 @@ with tab1:
                     spd      = _speed_overrides.get(ft, frow["Avg Speed m/min (avg)"] or 100)
 
                     # Step 1: Gross MT for this flute
-                    gross_mt = _gross_target * (dist_pct / 100) if dist_pct else 0
+                    # % Dist MT is stored as decimal in Excel (0.179 = 17.9%) — use directly
+                    gross_mt = _gross_target * dist_pct if dist_pct else 0
 
                     # Step 2: Expected SQM
                     exp_sqm = (gross_mt * 1_000_000) / gsm if gsm and gsm > 0 else 0
@@ -636,7 +641,7 @@ with tab1:
                 _cur_spd = float(frow["Avg Speed m/min (avg)"]) if pd.notna(frow["Avg Speed m/min (avg)"]) and frow["Avg Speed m/min (avg)"] > 0 else 0
                 sim_rows.append({
                         "Flute Type":                  ft,
-                        "% Distribution":              round(dist_pct, 2),
+                        "% Distribution":              round(dist_pct * 100, 2),
                         "Expected Metric Ton":         round(gross_mt, 1),
                         "Expected SQM":                round(exp_sqm, 0),
                         "Expected LM":                 round(exp_lm, 0),
