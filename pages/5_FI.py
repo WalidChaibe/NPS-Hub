@@ -461,7 +461,6 @@ with tab1:
 
                         df_flute = pd.DataFrame(all_rows)
                         st.session_state["fi_flute_df"] = df_flute
-                        st.write(f"DEBUG: parsed {len(all_rows)} rows, machines: {list(set(r['Machine'] for r in all_rows))}, flutes: {list(set(r['Flute Type'] for r in all_rows))}")
                 except Exception as e:
                     st.error(f"Speed by Flute Error: {e}")
 
@@ -643,9 +642,9 @@ with tab1:
                     time_needed = (exp_lm / (spd * 60)) if spd and spd > 0 else 0
 
                     # Net Run Time = LM / (optimal 250 m/min × 60 sec) — time at perfect speed
-                net_run_time_flute = exp_lm / (250 * 60) if exp_lm > 0 else 0
-                _cur_spd = float(frow["Avg Speed m/min (avg)"]) if pd.notna(frow["Avg Speed m/min (avg)"]) and frow["Avg Speed m/min (avg)"] > 0 else 0
-                sim_rows.append({
+                    net_run_time_flute = exp_lm / (250 * 60) if exp_lm > 0 else 0
+                    _cur_spd = float(frow["Avg Speed m/min (avg)"]) if pd.notna(frow["Avg Speed m/min (avg)"]) and frow["Avg Speed m/min (avg)"] > 0 else 0
+                    sim_rows.append({
                         "Flute Type":                  ft,
                         "% Distribution":              round(dist_pct, 2),
                         "Expected Metric Ton":         round(gross_mt, 1),
