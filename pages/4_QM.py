@@ -522,23 +522,35 @@ with tab2:
 
                 # ── Export processed data ──
                 st.subheader("📥 Export Processed Data")
-                st.caption("Download the processed FINAL file with pipeline-added columns: Year, Month, Is_Valid, Complaint_Category. Use this to compare against your manual file.")
+                st.caption("Download processed files with pipeline-added columns: Year, Month, Is_Valid, Type. Use to verify against manual data.")
+                _exp_c1, _exp_c2 = st.columns(2)
 
-                export_cols = [c for c in df_final.columns if c not in ["Base_Date"]]
-                export_df = final_pkg["cleaned_flagged"][export_cols].copy()
-                # Rename for clarity
-                export_df = export_df.rename(columns={"Complaint_Category": "Type_Pipeline", "Is_Valid": "Valid_Pipeline"})
-
-                import io as _io
-                _buf = _io.BytesIO()
-                export_df.to_excel(_buf, index=False, engine="openpyxl")
-                _buf.seek(0)
-                st.download_button(
+                _final_exp_cols = [c for c in df_final.columns if c not in ["Base_Date"]]
+                _final_exp_df = final_pkg["cleaned_flagged"][_final_exp_cols].copy().rename(
+                    columns={"Complaint_Category":"Type_Pipeline","Is_Valid":"Valid_Pipeline"})
+                _buf_final = io.BytesIO()
+                _final_exp_df.to_excel(_buf_final, index=False, engine="openpyxl")
+                _buf_final.seek(0)
+                _exp_c1.download_button(
                     label="📥 Download Processed FINAL file",
-                    data=_buf,
+                    data=_buf_final,
                     file_name=f"FINAL_processed_{selected_year}_{selected_month:02d}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     key="dl_final_processed"
+                )
+
+                _issued_exp_cols = [c for c in df_issued.columns if c not in ["Base_Date"]]
+                _issued_exp_df = issued_pkg["cleaned_flagged"][_issued_exp_cols].copy().rename(
+                    columns={"Complaint_Category":"Type_Pipeline","Is_Valid":"Valid_Pipeline"})
+                _buf_issued = io.BytesIO()
+                _issued_exp_df.to_excel(_buf_issued, index=False, engine="openpyxl")
+                _buf_issued.seek(0)
+                _exp_c2.download_button(
+                    label="📥 Download Processed ISSUED file",
+                    data=_buf_issued,
+                    file_name=f"ISSUED_processed_{selected_year}_{selected_month:02d}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="dl_issued_processed"
                 )
                 st.divider()
 
