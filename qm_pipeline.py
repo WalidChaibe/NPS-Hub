@@ -13,7 +13,7 @@ REASON_TYPE_COL       = "Reason Type"
 COST_COL              = "Cost Amount"
 
 GEN_CAT_ALLOWED       = {"Customer Complaint", "Customer Return", "Process Improvement"}
-PHYS_STATUS_BLOCKLIST = {"Baled Waste", "Plastic/Wood Waste"}
+PHYS_STATUS_BLOCKLIST = {"baled waste", "plastic/wood waste"}
 
 _CRM_DELETE_MAP_DEFAULT = {
     "EPAK-CRM-10376": 14, "EPAK-CRM-10439": 10, "EPAK-CRM-10452": 3,
@@ -125,7 +125,7 @@ def add_date_and_flags_final_issued(df, date_col, df_name="df", classifier=None)
     df["Month"] = df["Base_Date"].dt.month
     reason      = df[REASON_COL].map(_clean_text)
     gen_cat     = df[GEN_CAT_COL].map(_clean_text)
-    phys_status = df[PHYS_STATUS_COL].map(_clean_text)
+    phys_status = df[PHYS_STATUS_COL].map(_clean_text).str.lower()
     u_raw = df[REASON_TYPE_COL]
     u_num = pd.to_numeric(u_raw, errors="coerce")
     u_str = u_raw.map(_clean_text)
