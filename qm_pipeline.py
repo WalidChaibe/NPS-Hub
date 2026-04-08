@@ -8,7 +8,7 @@ FINAL_APPROVAL_COL    = "Final Approval Date"
 CREATION_DATETIME_COL = "Creation Date Time"
 REASON_COL            = "Reason"
 GEN_CAT_COL           = "Gen Categories"
-PHYS_STATUS_COL       = "Physical Status"
+PHYS_STATUS_COL       = "Box Style"
 REASON_TYPE_COL       = "Reason Type"
 COST_COL              = "Cost Amount"
 
