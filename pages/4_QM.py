@@ -266,12 +266,12 @@ with tab2:
                             preserveAspectRatio=True, mask="auto")
             except Exception:
                 pass
-        # Blue horizontal bar — from right edge of logo to right edge of slide
-        # Logo starts at x=18, width=280, so right edge = 298
+        # Blue horizontal bar — from LEFT edge of logo to right edge of slide
+        # Logo starts at x=18
         line_y = H - 125
-        logo_right = 298
+        logo_left = 18
         c.setFillColor(HexColor("#0C5595"))
-        c.rect(logo_right, line_y, W - logo_right, 4, fill=1, stroke=0)
+        c.rect(logo_left, line_y, W - logo_left, 4, fill=1, stroke=0)
         # Thin vertical red bar — flush with left edge, top to blue line
         c.setFillColor(HexColor("#DE201B"))
         c.rect(0, line_y, 4, H - line_y, fill=1, stroke=0)
