@@ -236,45 +236,70 @@ with tab2:
     _NAPCO_LOGO_URL = "https://sjcwzbftzpfylwdqiknh.supabase.co/storage/v1/object/public/asset/branding/napco_logo.png"
     _napco_logo_reader = None
     try:
-        import urllib.request as _ur, tempfile as _tf
+        import urllib.request as _ur, tempfile as _tf, ssl as _ssl
+        _ctx = _ssl.create_default_context()
+        _ctx.check_hostname = False; _ctx.verify_mode = _ssl.CERT_NONE
+        _req = _ur.Request(_NAPCO_LOGO_URL, headers={"User-Agent":"Mozilla/5.0"})
+        _resp = _ur.urlopen(_req, context=_ctx)
         _tmp = _tf.NamedTemporaryFile(delete=False, suffix=".png")
-        _ur.urlretrieve(_NAPCO_LOGO_URL, _tmp.name)
+        _tmp.write(_resp.read()); _tmp.flush()
         _napco_logo_reader = ImageReader(_tmp.name)
     except Exception:
         _napco_logo_reader = None
+
+    def _draw_separator_lines(c, W, y):
+        # Red short line on left
+        c.setFillColor(HexColor("#DE201B"))
+        c.rect(40, y, 110, 4, fill=1, stroke=0)
+        # Blue long line continuing right
+        c.setFillColor(HexColor("#0C5595"))
+        c.rect(155, y, W - 195, 4, fill=1, stroke=0)
 
     def draw_cover_slide(c, W, H, title_text, subtitle_text, date_text):
         # White background
         c.setFillColorRGB(1, 1, 1)
         c.rect(0, 0, W, H, fill=1, stroke=0)
-        # Logo top left
+        # Logo top left — same position as original slide
         if _napco_logo_reader:
             try:
-                c.drawImage(_napco_logo_reader, 40, H-160, width=280, height=130,
+                c.drawImage(_napco_logo_reader, 40, H - 170, width=320, height=150,
                             preserveAspectRatio=True, mask="auto")
             except Exception:
                 pass
-        # Red short line
-        c.setFillColor(HexColor("#DE201B"))
-        c.rect(40, H*0.42, 120, 4, fill=1, stroke=0)
-        # Blue long line
-        c.setFillColor(HexColor("#0C5595"))
-        c.rect(165, H*0.42, W-205, 4, fill=1, stroke=0)
-        # Title
-        c.setFillColor(HexColor("#006394"))
-        c.setFont("Helvetica-Bold", 40)
-        title_w = c.stringWidth(title_text, "Helvetica-Bold", 40)
-        c.drawString((W - title_w) / 2, H*0.42 - 65, title_text)
-        # Subtitle
-        c.setFillColor(HexColor("#444444"))
-        c.setFont("Helvetica", 22)
-        sub_w = c.stringWidth(subtitle_text, "Helvetica", 22)
-        c.drawString((W - sub_w) / 2, H*0.42 - 105, subtitle_text)
+        # Red + Blue separator lines — just below logo area
+        _draw_separator_lines(c, W, H - 185)
+        # Title — below lines
+        c.setFillColor(HexColor("#0E5E86"))
+        c.setFont("Helvetica-Bold", 44)
+        title_w = c.stringWidth(title_text, "Helvetica-Bold", 44)
+        title_y = H - 300
+        c.drawString((W - title_w) / 2, title_y, title_text)
+        # Grey horizontal line between title and subtitle
+        c.setStrokeColor(HexColor("#AAAAAA"))
+        c.setLineWidth(1)
+        c.line(80, title_y - 18, W - 80, title_y - 18)
+        # Subtitle — below grey line
+        c.setFillColor(HexColor("#555555"))
+        c.setFont("Helvetica-Oblique", 22)
+        sub_w = c.stringWidth(subtitle_text, "Helvetica-Oblique", 22)
+        c.drawString((W - sub_w) / 2, title_y - 52, subtitle_text)
         # Date bottom right
         c.setFillColor(HexColor("#888888"))
         c.setFont("Helvetica-Oblique", 14)
         date_w = c.stringWidth(date_text, "Helvetica-Oblique", 14)
-        c.drawString(W - date_w - 40, 30, date_text)
+        c.drawString(W - date_w - 40, 28, date_text)
+
+    def draw_section_slide(c, W, H, section_text):
+        # White background
+        c.setFillColorRGB(1, 1, 1)
+        c.rect(0, 0, W, H, fill=1, stroke=0)
+        # Red + Blue separator lines — upper third
+        _draw_separator_lines(c, W, H * 0.58)
+        # Section title centered — below lines
+        c.setFillColor(HexColor("#0E5E86"))
+        c.setFont("Helvetica-Bold", 40)
+        txt_w = c.stringWidth(section_text, "Helvetica-Bold", 40)
+        c.drawString((W - txt_w) / 2, H * 0.58 - 70, section_text)
 
     def build_ppt_pdf(slides, dpi=300):
         W, H = 960, 540
@@ -286,6 +311,8 @@ with tab2:
                     s.get("title", "Quality Indicators Report"),
                     s.get("subtitle", ""),
                     s.get("date", ""))
+            elif s.get("section"):
+                draw_section_slide(c, W, H, s.get("title", ""))
             else:
                 ppt_slide_title_bar(c, s["title"], W, H)
                 img = ImageReader(fig_to_png_bytes(s["fig"], dpi=dpi))
@@ -1653,7 +1680,7 @@ with tab2:
                 pdf_slides.append({"title": "Total Complaints Issued — YoY", "fig": slide_issued_valid_count_fig(selected_year, selected_month)})
 
                 # Intro slide — Month overview
-                pdf_slides.append({"title": month_name, "fig": make_intro_slide(month_name, "Monthly Overview")})
+                pdf_slides.append({"title": month_name, "section": True})
 
                 # 8 - Breakdown Quality Complaints Issued CM
                 pdf_slides.append({"title": f"Breakdown of Quality Complaints Issued — {month_name}", "fig": slide_issued_quality_reason_current_month_fig(selected_year, selected_month, TOPN_QUALITY_CM)})
@@ -1672,7 +1699,7 @@ with tab2:
                     pdf_slides.append({"title": f"Root Cause of Service Complaints Issued — {month_name}", "fig": _fig_rcs})
 
                 # Intro slide — Quality Complaints Overview
-                pdf_slides.append({"title": "Quality Complaints Overview", "fig": make_intro_slide("Quality Complaints Overview")})
+                pdf_slides.append({"title": "Quality Complaints Overview", "section": True})
 
                 # 12 - Valid Quality Complaints Count
                 pdf_slides.append({"title": "Valid Quality Complaints Count — To Date", "fig": slide_3_valid_quality_count_fig(selected_year, selected_month)})
@@ -1701,7 +1728,7 @@ with tab2:
                 pdf_slides.append({"title": "NCR and CRM Correlation — YTD", "fig": slide_ncr_vs_crm_correlation_ytd_fig(selected_year, selected_month, TOPN_CORRELATION)})
 
                 # Intro slide — Service Complaints Overview
-                pdf_slides.append({"title": "Service Complaints Overview", "fig": make_intro_slide("Service Complaints Overview")})
+                pdf_slides.append({"title": "Service Complaints Overview", "section": True})
 
                 # 21 - Valid Service Count
                 pdf_slides.append({"title": "Valid Service Complaints Count", "fig": slide_s1_valid_service_count_fig(selected_year, selected_month)})
@@ -1715,7 +1742,7 @@ with tab2:
                 except Exception: pass
 
                 # Intro slide — Cost of Quality
-                pdf_slides.append({"title": "Cost of Quality", "fig": make_intro_slide("Cost of Quality")})
+                pdf_slides.append({"title": "Cost of Quality", "section": True})
 
                 # 24 - COQ CM (single month bar — reuse breakdown fig)
                 if coq_ready:
