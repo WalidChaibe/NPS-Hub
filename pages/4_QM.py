@@ -225,12 +225,15 @@ with tab2:
         plt.close(fig)
 
     def ppt_slide_title_bar(c, title, W, H):
-        c.setFillColor(HexColor("#006394"))
-        c.setFont("Helvetica-Bold", 26)
-        c.drawString(40, H - 58, title)
-        c.setStrokeColor(HexColor("#006394"))
-        c.setLineWidth(4)
-        c.line(40, H - 78, W - 40, H - 78)
+        # Title text
+        c.setFillColor(HexColor("#0E5E86"))
+        c.setFont("Helvetica-Bold", 22)
+        c.drawString(40, H - 52, title)
+        # Red short line + Blue long line at same position as old blue bar
+        c.setFillColor(HexColor("#DE201B"))
+        c.rect(40, H - 68, 110, 4, fill=1, stroke=0)
+        c.setFillColor(HexColor("#0C5595"))
+        c.rect(155, H - 68, W - 195, 4, fill=1, stroke=0)
 
     # Load Napco logo from Supabase storage
     _NAPCO_LOGO_URL = "https://sjcwzbftzpfylwdqiknh.supabase.co/storage/v1/object/public/asset/branding/napco_logo.png"
