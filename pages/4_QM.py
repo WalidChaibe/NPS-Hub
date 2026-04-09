@@ -259,9 +259,9 @@ with tab2:
         # White background
         c.setFillColorRGB(1, 1, 1)
         c.rect(0, 0, W, H, fill=1, stroke=0)
-        # Thin vertical red bar — far top-left edge (narrower: 4px wide)
+        # Thin vertical red bar — from top of slide down to exactly the red/blue line level
         c.setFillColor(HexColor("#DE201B"))
-        c.rect(0, H - 175, 4, 175, fill=1, stroke=0)
+        c.rect(0, H - 148, 4, 148, fill=1, stroke=0)
         # Logo — pushed to top (y closer to H)
         if _napco_logo_reader:
             try:
