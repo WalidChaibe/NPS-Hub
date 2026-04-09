@@ -266,10 +266,10 @@ with tab2:
                             preserveAspectRatio=True, mask="auto")
             except Exception:
                 pass
-        # Single blue horizontal bar (no red short segment on cover)
+        # Blue horizontal bar — same width as before (not full width)
         line_y = H - 125
         c.setFillColor(HexColor("#0C5595"))
-        c.rect(0, line_y, W, 4, fill=1, stroke=0)
+        c.rect(155, line_y, W - 195, 4, fill=1, stroke=0)
         # Thin vertical red bar — flush with left edge, top to blue line
         c.setFillColor(HexColor("#DE201B"))
         c.rect(0, line_y, 4, H - line_y, fill=1, stroke=0)
