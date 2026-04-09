@@ -259,32 +259,41 @@ with tab2:
         # White background
         c.setFillColorRGB(1, 1, 1)
         c.rect(0, 0, W, H, fill=1, stroke=0)
-        # Small vertical red bar — far top-left edge
+        # Thin vertical red bar — far top-left edge (narrower: 4px wide)
         c.setFillColor(HexColor("#DE201B"))
-        c.rect(0, H - 200, 8, 200, fill=1, stroke=0)
-        # Logo top left
+        c.rect(0, H - 175, 4, 175, fill=1, stroke=0)
+        # Logo — pushed to top (y closer to H)
         if _napco_logo_reader:
             try:
-                c.drawImage(_napco_logo_reader, 40, H - 170, width=320, height=150,
+                c.drawImage(_napco_logo_reader, 18, H - 135, width=280, height=120,
                             preserveAspectRatio=True, mask="auto")
             except Exception:
                 pass
-        # Red + Blue separator lines — just below logo area
-        _draw_separator_lines(c, W, H - 185)
-        # Title — centered, below lines
+        # Red + Blue separator lines — just below logo
+        _draw_separator_lines(c, W, H - 148)
+        # Layout: title block centered in remaining space (below lines to above date)
+        # Available vertical space: H-148 (lines) to 50 (date area) = H-198
+        # Center of remaining space:
+        remaining_center = (H - 148 + 50) / 2  # ~midpoint between lines and bottom
+        title_font_size = 44
+        subtitle_font_size = 20
+        gap = 28  # gap between title bottom and red line, and red line and subtitle top
+        # Title y — above center
+        title_y = remaining_center + gap + 10
         c.setFillColor(HexColor("#0E5E86"))
-        c.setFont("Helvetica-Bold", 44)
-        title_w = c.stringWidth(title_text, "Helvetica-Bold", 44)
-        title_y = H - 310
+        c.setFont("Helvetica-Bold", title_font_size)
+        title_w = c.stringWidth(title_text, "Helvetica-Bold", title_font_size)
         c.drawString((W - title_w) / 2, title_y, title_text)
-        # Red horizontal line under title
+        # Red line — centered between title baseline and subtitle top
+        line_y = title_y - gap
         c.setFillColor(HexColor("#DE201B"))
-        c.rect(80, title_y - 14, W - 160, 2, fill=1, stroke=0)
-        # Subtitle — below red line
+        c.rect(80, line_y, W - 160, 2, fill=1, stroke=0)
+        # Subtitle — same gap below red line
+        sub_y = line_y - gap - 4
         c.setFillColor(HexColor("#555555"))
-        c.setFont("Helvetica-Oblique", 22)
-        sub_w = c.stringWidth(subtitle_text, "Helvetica-Oblique", 22)
-        c.drawString((W - sub_w) / 2, title_y - 52, subtitle_text)
+        c.setFont("Helvetica-Oblique", subtitle_font_size)
+        sub_w = c.stringWidth(subtitle_text, "Helvetica-Oblique", subtitle_font_size)
+        c.drawString((W - sub_w) / 2, sub_y, subtitle_text)
         # Date bottom right
         c.setFillColor(HexColor("#888888"))
         c.setFont("Helvetica-Oblique", 14)
@@ -1682,7 +1691,7 @@ with tab2:
                 pdf_slides.append({"title": "Total Complaints Issued — YoY", "fig": slide_issued_valid_count_fig(selected_year, selected_month)})
 
                 # Intro slide — Month overview
-                pdf_slides.append({"title": month_name, "section": True})
+                pdf_slides.append({"title": f"{month_name} Overview", "section": True})
 
                 # 8 - Breakdown Quality Complaints Issued CM
                 pdf_slides.append({"title": f"Breakdown of Quality Complaints Issued — {month_name}", "fig": slide_issued_quality_reason_current_month_fig(selected_year, selected_month, TOPN_QUALITY_CM)})
