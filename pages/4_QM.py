@@ -232,16 +232,66 @@ with tab2:
         c.setLineWidth(4)
         c.line(40, H - 78, W - 40, H - 78)
 
+    # Load Napco logo from Supabase storage
+    _NAPCO_LOGO_URL = "https://sjcwzbftzpfylwdqiknh.supabase.co/storage/v1/object/public/asset/branding/napco_logo.png"
+    _napco_logo_reader = None
+    try:
+        import urllib.request as _ur, tempfile as _tf
+        _tmp = _tf.NamedTemporaryFile(delete=False, suffix=".png")
+        _ur.urlretrieve(_NAPCO_LOGO_URL, _tmp.name)
+        _napco_logo_reader = ImageReader(_tmp.name)
+    except Exception:
+        _napco_logo_reader = None
+
+    def draw_cover_slide(c, W, H, title_text, subtitle_text, date_text):
+        # White background
+        c.setFillColorRGB(1, 1, 1)
+        c.rect(0, 0, W, H, fill=1, stroke=0)
+        # Logo top left
+        if _napco_logo_reader:
+            try:
+                c.drawImage(_napco_logo_reader, 40, H-160, width=280, height=130,
+                            preserveAspectRatio=True, mask="auto")
+            except Exception:
+                pass
+        # Red short line
+        c.setFillColor(HexColor("#DE201B"))
+        c.rect(40, H*0.42, 120, 4, fill=1, stroke=0)
+        # Blue long line
+        c.setFillColor(HexColor("#0C5595"))
+        c.rect(165, H*0.42, W-205, 4, fill=1, stroke=0)
+        # Title
+        c.setFillColor(HexColor("#006394"))
+        c.setFont("Helvetica-Bold", 40)
+        title_w = c.stringWidth(title_text, "Helvetica-Bold", 40)
+        c.drawString((W - title_w) / 2, H*0.42 - 65, title_text)
+        # Subtitle
+        c.setFillColor(HexColor("#444444"))
+        c.setFont("Helvetica", 22)
+        sub_w = c.stringWidth(subtitle_text, "Helvetica", 22)
+        c.drawString((W - sub_w) / 2, H*0.42 - 105, subtitle_text)
+        # Date bottom right
+        c.setFillColor(HexColor("#888888"))
+        c.setFont("Helvetica-Oblique", 14)
+        date_w = c.stringWidth(date_text, "Helvetica-Oblique", 14)
+        c.drawString(W - date_w - 40, 30, date_text)
+
     def build_ppt_pdf(slides, dpi=300):
         W, H = 960, 540
         pdf_buf = io.BytesIO()
         c = canvas.Canvas(pdf_buf, pagesize=(W, H))
         for s in slides:
-            ppt_slide_title_bar(c, s["title"], W, H)
-            img = ImageReader(fig_to_png_bytes(s["fig"], dpi=dpi))
-            c.drawImage(img, 40, 40, width=W-80, height=H-92-40, preserveAspectRatio=True, anchor="c")
+            if s.get("cover"):
+                draw_cover_slide(c, W, H,
+                    s.get("title", "Quality Indicators Report"),
+                    s.get("subtitle", ""),
+                    s.get("date", ""))
+            else:
+                ppt_slide_title_bar(c, s["title"], W, H)
+                img = ImageReader(fig_to_png_bytes(s["fig"], dpi=dpi))
+                c.drawImage(img, 40, 40, width=W-80, height=H-92-40, preserveAspectRatio=True, anchor="c")
+                plt.close(s["fig"])
             c.showPage()
-            plt.close(s["fig"])
         c.save()
         pdf_buf.seek(0)
         return pdf_buf
@@ -1571,6 +1621,16 @@ with tab2:
 
                 # ── Build ordered PDF ──
                 pdf_slides = []
+
+                # Cover slide
+                _month_full = pd.to_datetime(f"{selected_year}-{selected_month:02d}-01").strftime("%B %Y")
+                _today_str  = pd.Timestamp.now().strftime("%d \u2013 %B - %Y")
+                pdf_slides.append({
+                    "cover":    True,
+                    "title":    "Quality Indicators Report",
+                    "subtitle": f"Easternpak \u2013 {_month_full}",
+                    "date":     _today_str,
+                })
 
                 # 1 - Total Complaints Issued (ISSUED donut)
                 pdf_slides.append({"title": "Total Complaints Issued", "fig": slide_issued_1_donuts_fig(selected_year, selected_month)})
