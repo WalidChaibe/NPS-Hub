@@ -259,22 +259,23 @@ with tab2:
         # White background
         c.setFillColorRGB(1, 1, 1)
         c.rect(0, 0, W, H, fill=1, stroke=0)
-        # Thin vertical red bar — from top of slide down to exactly the red/blue line level
-        c.setFillColor(HexColor("#DE201B"))
-        c.rect(0, H - 148, 4, 148, fill=1, stroke=0)
-        # Logo — pushed to top (y closer to H)
+        # Logo — pushed higher
         if _napco_logo_reader:
             try:
-                c.drawImage(_napco_logo_reader, 18, H - 135, width=280, height=120,
+                c.drawImage(_napco_logo_reader, 18, H - 115, width=280, height=110,
                             preserveAspectRatio=True, mask="auto")
             except Exception:
                 pass
-        # Red + Blue separator lines — just below logo
-        _draw_separator_lines(c, W, H - 148)
+        # Single blue horizontal bar (no red short segment on cover)
+        line_y = H - 125
+        c.setFillColor(HexColor("#0C5595"))
+        c.rect(0, line_y, W, 4, fill=1, stroke=0)
+        # Thin vertical red bar — flush with left edge, top to blue line
+        c.setFillColor(HexColor("#DE201B"))
+        c.rect(0, line_y, 4, H - line_y, fill=1, stroke=0)
         # Layout: title block centered in remaining space (below lines to above date)
-        # Available vertical space: H-148 (lines) to 50 (date area) = H-198
-        # Center of remaining space:
-        remaining_center = (H - 148 + 50) / 2  # ~midpoint between lines and bottom
+        # line is at H-125, remaining space down to 50
+        remaining_center = (H - 125 + 50) / 2  # midpoint between blue line and bottom
         title_font_size = 44
         subtitle_font_size = 20
         gap = 28  # gap between title bottom and red line, and red line and subtitle top
