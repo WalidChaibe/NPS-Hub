@@ -898,7 +898,7 @@ with tab6:
             _logo_path = None
 
         # ── HEADER ROW 1: Logo | Title ──
-        hdr_h = 70
+        hdr_h = 45
         hdr_y = H - M - hdr_h
         logo_w = 150
 
@@ -921,19 +921,19 @@ with tab6:
         c.setFillColor(_opl_hc("#D9D9D9"))
         c.rect(title_x, hdr_y, title_w, hdr_h, fill=1, stroke=1)
         c.setFillColor(black)
-        c.setFont("Helvetica-Bold", 24)
-        c.drawCentredString(title_x + title_w/2, hdr_y + hdr_h/2 - 8, "ONE POINT LESSON")
+        c.setFont("Helvetica-Bold", 20)
+        c.drawCentredString(title_x + title_w/2, hdr_y + hdr_h/2 - 7, "ONE POINT LESSON")
 
         # ── HEADER ROW 2: OPL label | Subject / Type ──
-        r2_h = 55
+        r2_h = 38
         r2_y = hdr_y - r2_h
 
         # OPL blue box
         c.setFillColor(_opl_hc("#1F4E79"))
         c.rect(M, r2_y, logo_w, r2_h, fill=1, stroke=0)
         c.setFillColor(white)
-        c.setFont("Helvetica-Bold", 20)
-        c.drawCentredString(M + logo_w/2, r2_y + r2_h/2 - 7, "OPL")
+        c.setFont("Helvetica-Bold", 16)
+        c.drawCentredString(M + logo_w/2, r2_y + r2_h/2 - 6, "OPL")
 
         # Subject / Type box
         sub_x = M + logo_w
