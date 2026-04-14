@@ -922,9 +922,9 @@ with tab6:
             _logo_path = None
 
         # ── HEADER ROW 1: Logo | Title ──
-        hdr_h = 45
+        hdr_h = 40
         hdr_y = H - M - hdr_h
-        logo_w = 150
+        logo_w = 140
 
         # Logo cell
         c.setStrokeColor(_opl_hc("#CCCCCC"))
@@ -932,8 +932,8 @@ with tab6:
         c.rect(M, hdr_y, logo_w, hdr_h, fill=1, stroke=1)
         if _logo_path:
             try:
-                c.drawImage(_opl_ir(_logo_path), M+4, hdr_y+6,
-                            width=logo_w-8, height=hdr_h-12,
+                c.drawImage(_opl_ir(_logo_path), M+4, hdr_y+4,
+                            width=logo_w-8, height=hdr_h-8,
                             preserveAspectRatio=True, mask="auto")
             except Exception:
                 c.setFillColor(black); c.setFont("Helvetica-Bold",8)
@@ -946,64 +946,80 @@ with tab6:
         c.rect(title_x, hdr_y, title_w, hdr_h, fill=1, stroke=1)
         c.setFillColor(black)
         c.setFont("Helvetica-Bold", 20)
-        c.drawCentredString(title_x + title_w/2, hdr_y + hdr_h/2 - 7, "ONE POINT LESSON")
+        c.drawCentredString(title_x + title_w/2, hdr_y + 13, "ONE POINT LESSON")
 
         # ── HEADER ROW 2: OPL label | Subject / Type ──
-        r2_h = 38
+        r2_h = 34
         r2_y = hdr_y - r2_h
 
         # OPL blue box
         c.setFillColor(_opl_hc("#1F4E79"))
         c.rect(M, r2_y, logo_w, r2_h, fill=1, stroke=0)
         c.setFillColor(white)
-        c.setFont("Helvetica-Bold", 16)
-        c.drawCentredString(M + logo_w/2, r2_y + r2_h/2 - 6, "OPL")
+        c.setFont("Helvetica-Bold", 15)
+        c.drawCentredString(M + logo_w/2, r2_y + 10, "OPL")
 
-        # Subject / Type box
+        # Subject / Type — single row each with label above value
         sub_x = M + logo_w
         sub_w = W - M - logo_w - M
         half_sub = sub_w / 2
+        lbl_h = 13
+        val_h = r2_h - lbl_h
+
+        # Subject label
+        c.setFillColor(_opl_hc("#F7F7F7"))
+        c.setStrokeColor(_opl_hc("#AAAAAA"))
+        c.rect(sub_x, r2_y + val_h, half_sub, lbl_h, fill=1, stroke=1)
+        c.setFillColor(_opl_hc("#555555"))
+        c.setFont("Helvetica", 7)
+        c.drawString(sub_x + 4, r2_y + val_h + 3, "Subject:")
+
+        # Subject value
         c.setFillColor(white)
-        c.setStrokeColor(black)
-        # Labels row
-        c.rect(sub_x, r2_y + r2_h/2, half_sub, r2_h/2, fill=0, stroke=1)
-        c.rect(sub_x + half_sub, r2_y + r2_h/2, half_sub, r2_h/2, fill=0, stroke=1)
-        c.setFillColor(_opl_hc("#444444"))
-        c.setFont("Helvetica", 8)
-        c.drawString(sub_x + 4, r2_y + r2_h*0.85, "Subject:")
-        c.drawString(sub_x + half_sub + 4, r2_y + r2_h*0.85, "Type")
-        # Values row
-        c.rect(sub_x, r2_y, half_sub, r2_h/2, fill=0, stroke=1)
-        c.rect(sub_x + half_sub, r2_y, half_sub, r2_h/2, fill=0, stroke=1)
+        c.rect(sub_x, r2_y, half_sub, val_h, fill=1, stroke=1)
         c.setFillColor(black)
-        c.setFont("Helvetica-Bold", 10)
-        c.drawString(sub_x + 4, r2_y + 10, opl.get("subject","")[:60])
-        c.drawString(sub_x + half_sub + 4, r2_y + 10, opl.get("opl_type","")[:30])
+        c.setFont("Helvetica-Bold", 9)
+        c.drawString(sub_x + 4, r2_y + 5, opl.get("subject","")[:55])
+
+        # Type label
+        c.setFillColor(_opl_hc("#F7F7F7"))
+        c.rect(sub_x + half_sub, r2_y + val_h, half_sub, lbl_h, fill=1, stroke=1)
+        c.setFillColor(_opl_hc("#555555"))
+        c.setFont("Helvetica", 7)
+        c.drawString(sub_x + half_sub + 4, r2_y + val_h + 3, "Type:")
+
+        # Type value
+        c.setFillColor(white)
+        c.rect(sub_x + half_sub, r2_y, half_sub, val_h, fill=1, stroke=1)
+        c.setFillColor(black)
+        c.setFont("Helvetica-Bold", 9)
+        c.drawString(sub_x + half_sub + 4, r2_y + 5, opl.get("opl_type","")[:30])
 
         # ── HEADER ROW 3: OPL ID | Category | Machine | Pillar | Plant ──
-        r3_h = 24
+        r3_h = 22
         r3_y = r2_y - r3_h
         meta_fields = [
             ("OPL ID",    opl.get("opl_id","")),
             ("Category",  opl.get("category","")),
-            ("Machine",   opl.get("machine","")),
+            ("Machine",   opl.get("machine","") or "—"),
             ("Pillar",    opl.get("pillar","")),
-            ("Plant",     opl.get("plant","")),
+            ("Plant",     opl.get("plant","Easternpak")),
         ]
         mf_w = (W - 2*M) / len(meta_fields)
         for mi, (lbl, val) in enumerate(meta_fields):
             mx = M + mi * mf_w
-            c.setFillColor(_opl_hc("#F0F0F0"))
+            c.setFillColor(_opl_hc("#EEF2F7"))
+            c.setStrokeColor(_opl_hc("#AAAAAA"))
             c.rect(mx, r3_y, mf_w, r3_h, fill=1, stroke=1)
             c.setFillColor(_opl_hc("#666666"))
-            c.setFont("Helvetica", 7)
-            c.drawString(mx + 3, r3_y + r3_h - 9, lbl + ":")
+            c.setFont("Helvetica", 6)
+            c.drawString(mx + 3, r3_y + r3_h - 8, lbl)
             c.setFillColor(black)
             c.setFont("Helvetica-Bold", 8)
-            c.drawString(mx + 3, r3_y + 4, str(val)[:22])
+            c.drawString(mx + 3, r3_y + 3, str(val)[:24])
 
         # ── BODY: Bad | Good columns ──
-        footer_h = 80
+        footer_h = 56
         body_top = r3_y
         body_bot = M + footer_h
         body_h = body_top - body_bot
@@ -1108,47 +1124,50 @@ with tab6:
                   opl.get("good_text_2",""), _save_img(opl.get("good_image_2")))
 
         # ── FOOTER ──
-        fy = M + footer_h
+        footer_top = M + footer_h
         col_fw = (W - 2*M) / 3
+        row1_h = 16  # label+name row
+        row2_h = 14  # date row
+        row3_h = 18  # seen & understood
 
-        # Prepared / Approved / Administered
+        # Prepared / Approved / Administered — compact single row each
         for i, (lbl, by_key, dt_key) in enumerate([
-            ("Prepared By",    "prepared_by",    "prepared_date"),
-            ("Approved by",    "approved_by",    "approved_date"),
-            ("Administered by","administered_by","administered_date"),
+            ("Prepared By",     "prepared_by",    "prepared_date"),
+            ("Approved by",     "approved_by",    "approved_date"),
+            ("Administered by", "administered_by","administered_date"),
         ]):
             fx = M + i * col_fw
-            # Label row
+            # Name row: label left, value right
             c.setFillColor(white); c.setStrokeColor(black)
-            c.rect(fx, fy - 14, col_fw, 14, fill=0, stroke=1)
-            c.setFillColor(black); c.setFont("Helvetica-Bold", 8)
-            c.drawString(fx+3, fy-10, lbl)
-            val = opl.get(by_key,"")
-            if val:
-                c.setFont("Helvetica", 8)
-                c.drawString(fx + col_fw*0.45, fy-10, val[:25])
-            # Date row
-            c.rect(fx, fy - 28, col_fw, 14, fill=0, stroke=1)
+            c.rect(fx, footer_top - row1_h, col_fw, row1_h, fill=0, stroke=1)
+            c.setFillColor(black); c.setFont("Helvetica-Bold", 7)
+            c.drawString(fx+3, footer_top - row1_h + 4, lbl)
             c.setFont("Helvetica", 8)
-            c.drawString(fx+3, fy-24, f"Date: {opl.get(dt_key,'')}")
+            c.drawString(fx + col_fw*0.42, footer_top - row1_h + 4, opl.get(by_key,"")[:22])
+            # Date row
+            c.rect(fx, footer_top - row1_h - row2_h, col_fw, row2_h, fill=0, stroke=1)
+            c.setFont("Helvetica", 7)
+            c.drawString(fx+3, footer_top - row1_h - row2_h + 3,
+                         f"Date: {opl.get(dt_key,'')}")
 
         # Seen & understood row
         ops_raw = opl.get("operators","")
         ops = [o.strip() for o in ops_raw.split(",") if o.strip()]
-        label_w = 110
-        c.rect(M, fy - 44, label_w, 16, fill=0, stroke=1)
+        label_w = 100
+        fy3 = footer_top - row1_h - row2_h - row3_h
+        c.rect(M, fy3, label_w, row3_h, fill=0, stroke=1)
         c.setFont("Helvetica-Bold", 7)
-        c.drawString(M+3, fy-38, "Seen & understood by:")
+        c.drawString(M+3, fy3 + 5, "Seen & understood by:")
 
         if ops:
             op_cell_w = (W - 2*M - label_w) / max(len(ops), 1)
-            for j, op in enumerate(ops[:6]):
+            for j, op in enumerate(ops[:8]):
                 ox = M + label_w + j * op_cell_w
-                c.rect(ox, fy-44, op_cell_w, 16, fill=0, stroke=1)
-                c.setFont("Helvetica-Bold", 7)
-                c.drawString(ox+3, fy-34, "Operator")
+                c.rect(ox, fy3, op_cell_w, row3_h, fill=0, stroke=1)
+                c.setFont("Helvetica-Bold", 6)
+                c.drawString(ox+2, fy3 + row3_h - 7, "Operator")
                 c.setFont("Helvetica", 7)
-                c.drawString(ox+3, fy-42, op[:20])
+                c.drawString(ox+2, fy3 + 3, op[:18])
 
         c.save()
         buf.seek(0)
