@@ -880,10 +880,11 @@ with tab6:
     # ── PDF Generator ──
     def generate_opl_pdf(opl):
         import tempfile as _tmp
-        # Portrait A4
-        W, H = 595, 842
+        # Landscape A4
+        from reportlab.lib.pagesizes import A4, landscape as _landscape
+        W, H = _landscape(A4)
         buf = _opl_io.BytesIO()
-        c = _opl_canvas.Canvas(buf, pagesize=(W, H))
+        c = _opl_canvas.Canvas(buf, pagesize=_landscape(A4))
         M = 20  # margin
 
         # ── Save logo to temp file ──
@@ -993,27 +994,28 @@ with tab6:
                 return None
 
         def draw_side(cx, cw, text1, img1, text2, img2):
-            # Each side: up to 2 slots stacked vertically
-            # Determine how many slots we have
+            # Build slot list — only slots with content
             slots = []
             if text1 or img1: slots.append((text1, img1))
             if text2 or img2: slots.append((text2, img2))
             if not slots: return
 
+            n = len(slots)
             avail_h = body_h - 28
-            slot_h = avail_h / max(len(slots), 1)
+            # If only 1 slot, use full height — image will be large and clear
+            slot_h = avail_h / n
+            inner_pad = 6
 
             for i, (txt, img_path) in enumerate(slots):
                 slot_top = body_top - 22 - i * slot_h
                 slot_bot = slot_top - slot_h
-                inner_pad = 6
+                txt_h = 0
 
-                # Text above image
+                # Text above image — compact
                 txt_y = slot_top - inner_pad - 10
                 if txt:
                     c.setFillColor(black)
                     c.setFont("Helvetica", 8)
-                    # Word wrap
                     avail_w = cw - inner_pad*2
                     words = txt.split()
                     lines = []; line = ""
@@ -1025,13 +1027,12 @@ with tab6:
                             if line: lines.append(line)
                             line = word
                     if line: lines.append(line)
-                    for ln in lines[:4]:
+                    for ln in lines[:3]:
                         c.drawString(cx + inner_pad, txt_y, ln)
                         txt_y -= 11
-                else:
-                    txt_y -= 6
+                        txt_h += 11
 
-                # Image below text
+                # Image fills remaining slot height
                 if img_path:
                     try:
                         img_top = txt_y - 4
@@ -1039,7 +1040,8 @@ with tab6:
                         img_w = cw - inner_pad*2
                         if img_h > 20 and img_w > 20:
                             c.drawImage(_opl_ir(img_path),
-                                        cx + inner_pad, slot_bot + inner_pad,
+                                        cx + inner_pad,
+                                        slot_bot + inner_pad,
                                         width=img_w, height=img_h,
                                         preserveAspectRatio=True, mask="auto")
                     except Exception:
