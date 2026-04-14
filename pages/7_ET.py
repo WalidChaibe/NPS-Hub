@@ -888,9 +888,11 @@ with tab6:
           }}
 
           window.saveCanvas = function() {{
-            const data = canvas.toDataURL('image/jpeg', 0.92).split(',')[1];
-            document.getElementById('result_{key}').value = data;
-            alert('✅ Annotation saved!');
+            const data = canvas.toDataURL('image/jpeg', 0.92);
+            const link = document.createElement('a');
+            link.download = 'annotated_image_{key}.jpg';
+            link.href = data;
+            link.click();
           }};
         }})();
         </script>
