@@ -722,6 +722,30 @@ with tab6:
         "Equipment Handling", "Safety", "Quality", "Maintenance",
         "Environment", "Process", "Cleaning & Inspection", "Other"
     ]
+    OPL_CATEGORIES = ["General Knowledge", "Problem", "Improvement"]
+    OPL_MACHINES = [
+        "BHS", "Fosber", "CI4", "CI6", "BAHMULLER STITCHER",
+        "Bahmüller TURBOX", "VEGA 2", "BOBST 160-II", "BOBST 203",
+        "BOBST MASTERCUT 1", "BOBST MASTERCUT 2", "IPACK", "JUMBO",
+        "LMC FFG", "MARTIN 616", "924", "SATURN", "QuickSet", "Other"
+    ]
+    OPL_PILLARS = ["AM", "FI", "PM", "QM", "E&T", "HSE"]
+    OPL_PLANT   = "Easternpak"
+
+    def _gen_opl_id(pillar):
+        try:
+            existing = supabase.table("et_opls").select("opl_id").execute()
+            ids = [r.get("opl_id","") for r in (existing.data or []) if r.get("opl_id","").startswith(f"OPL-{pillar}-")]
+            nums = []
+            for oid in ids:
+                parts = oid.split("-")
+                if len(parts)==3 and parts[2].isdigit():
+                    nums.append(int(parts[2]))
+            next_num = max(nums)+1 if nums else 1
+            return f"OPL-{pillar}-{next_num:03d}"
+        except Exception:
+            import random
+            return f"OPL-{pillar}-{random.randint(1,999):03d}" 
 
     # ── Annotation canvas component ──
     def annotation_canvas(image_bytes, key):
@@ -953,30 +977,59 @@ with tab6:
         c.rect(sub_x + half_sub, r2_y, half_sub, r2_h/2, fill=0, stroke=1)
         c.setFillColor(black)
         c.setFont("Helvetica-Bold", 10)
-        c.drawString(sub_x + 4, r2_y + 10, opl.get("subject","")[:50])
+        c.drawString(sub_x + 4, r2_y + 10, opl.get("subject","")[:60])
         c.drawString(sub_x + half_sub + 4, r2_y + 10, opl.get("opl_type","")[:30])
+
+        # ── HEADER ROW 3: OPL ID | Category | Machine | Pillar | Plant ──
+        r3_h = 24
+        r3_y = r2_y - r3_h
+        meta_fields = [
+            ("OPL ID",    opl.get("opl_id","")),
+            ("Category",  opl.get("category","")),
+            ("Machine",   opl.get("machine","")),
+            ("Pillar",    opl.get("pillar","")),
+            ("Plant",     opl.get("plant","")),
+        ]
+        mf_w = (W - 2*M) / len(meta_fields)
+        for mi, (lbl, val) in enumerate(meta_fields):
+            mx = M + mi * mf_w
+            c.setFillColor(_opl_hc("#F0F0F0"))
+            c.rect(mx, r3_y, mf_w, r3_h, fill=1, stroke=1)
+            c.setFillColor(_opl_hc("#666666"))
+            c.setFont("Helvetica", 7)
+            c.drawString(mx + 3, r3_y + r3_h - 9, lbl + ":")
+            c.setFillColor(black)
+            c.setFont("Helvetica-Bold", 8)
+            c.drawString(mx + 3, r3_y + 4, str(val)[:22])
 
         # ── BODY: Bad | Good columns ──
         footer_h = 80
-        body_top = r2_y
+        body_top = r3_y
         body_bot = M + footer_h
         body_h = body_top - body_bot
         mid_x = M + (W - 2*M) / 2
         col_w = (W - 2*M) / 2 - 2
 
-        # Bad header
-        c.setFillColor(_opl_hc("#FFCCCC"))
-        c.rect(M, body_top - 22, col_w, 22, fill=1, stroke=1)
-        c.setFillColor(_opl_hc("#CC0000"))
-        c.setFont("Helvetica-Bold", 16)
-        c.drawCentredString(M + col_w/2, body_top - 15, "X")
+        # Bad / Left header
+        _is_gk = opl.get("layout_mode","bad_good") == "general_knowledge"
+        left_label  = "Images & Observations" if _is_gk else "X"
+        right_label = "Comments & Explanation" if _is_gk else "✓"
+        left_bg  = _opl_hc("#D0E8FF") if _is_gk else _opl_hc("#FFCCCC")
+        right_bg = _opl_hc("#D0E8FF") if _is_gk else _opl_hc("#CCFFCC")
+        left_fg  = _opl_hc("#003366") if _is_gk else _opl_hc("#CC0000")
+        right_fg = _opl_hc("#003366") if _is_gk else _opl_hc("#006400")
 
-        # Good header
-        c.setFillColor(_opl_hc("#CCFFCC"))
+        c.setFillColor(left_bg)
+        c.rect(M, body_top - 22, col_w, 22, fill=1, stroke=1)
+        c.setFillColor(left_fg)
+        c.setFont("Helvetica-Bold", 11 if _is_gk else 16)
+        c.drawCentredString(M + col_w/2, body_top - 14, left_label)
+
+        c.setFillColor(right_bg)
         c.rect(mid_x + 2, body_top - 22, col_w, 22, fill=1, stroke=1)
-        c.setFillColor(_opl_hc("#006400"))
-        c.setFont("Helvetica-Bold", 16)
-        c.drawCentredString(mid_x + 2 + col_w/2, body_top - 15, "✓")
+        c.setFillColor(right_fg)
+        c.setFont("Helvetica-Bold", 11 if _is_gk else 16)
+        c.drawCentredString(mid_x + 2 + col_w/2, body_top - 14, right_label)
 
         # Body column frames
         c.setStrokeColor(_opl_hc("#999999"))
@@ -1116,7 +1169,7 @@ with tab6:
             st.info("No OPLs created yet.")
         else:
             for opl in opl_list:
-                with st.expander(f"📝 {opl['subject']} — {opl['opl_type']} | {opl.get('status','Draft')}", expanded=False):
+                with st.expander(f"📝 [{opl.get('opl_id','—')}] {opl['subject']} — {opl['opl_type']} | {opl.get('category','')} | {opl.get('pillar','')} | {opl.get('status','Draft')}", expanded=False):
                     c1, c2, c3 = st.columns([3,1,1])
                     c1.caption(f"Created by {opl.get('created_by','')} on {str(opl.get('created_at',''))[:10]}")
 
@@ -1167,27 +1220,46 @@ with tab6:
             st.markdown("#### ➕ New One Point Lesson")
 
             with st.form("opl_create_form"):
-                fc1, fc2 = st.columns(2)
-                opl_subject = fc1.text_input("Subject *", placeholder="e.g. Motor Shafts")
-                opl_type    = fc2.selectbox("Type *", OPL_TYPES)
+                # ── Header fields ──
+                fc1, fc2, fc3 = st.columns(3)
+                opl_subject  = fc1.text_input("Subject *", placeholder="e.g. Motor Shafts")
+                opl_type     = fc2.selectbox("Type *", OPL_TYPES)
+                opl_category = fc3.selectbox("Category *", OPL_CATEGORIES)
+                fm1, fm2, fm3 = st.columns(3)
+                opl_machine  = fm1.selectbox("Machine", ["— Select —"] + OPL_MACHINES)
+                opl_pillar   = fm2.selectbox("Pillar", OPL_PILLARS)
+                opl_plant    = fm3.text_input("Plant", value=OPL_PLANT, disabled=True)
+                layout_mode  = st.radio("Layout Mode", ["Bad / Good Practice", "General Knowledge"],
+                                         horizontal=True, key="opl_layout_mode")
 
                 st.divider()
-                st.markdown("### ❌ Bad Side")
-                b1c1, b1c2 = st.columns([1,2])
-                bad_text_1  = b1c1.text_area("Description 1", key="bad_t1", height=100)
-                bad_file_1  = b1c2.file_uploader("Image 1 (Bad)", type=["jpg","jpeg","png"], key="bad_f1")
-                b2c1, b2c2  = st.columns([1,2])
-                bad_text_2  = b2c1.text_area("Description 2", key="bad_t2", height=100)
-                bad_file_2  = b2c2.file_uploader("Image 2 (Bad)", type=["jpg","jpeg","png"], key="bad_f2")
-
-                st.divider()
-                st.markdown("### ✅ Good Side")
-                g1c1, g1c2 = st.columns([1,2])
-                good_text_1 = g1c1.text_area("Description 1", key="good_t1", height=100)
-                good_file_1 = g1c2.file_uploader("Image 1 (Good)", type=["jpg","jpeg","png"], key="good_f1")
-                g2c1, g2c2  = st.columns([1,2])
-                good_text_2 = g2c1.text_area("Description 2", key="good_t2", height=100)
-                good_file_2 = g2c2.file_uploader("Image 2 (Good)", type=["jpg","jpeg","png"], key="good_f2")
+                if layout_mode == "Bad / Good Practice":
+                    st.markdown("### ❌ Bad Practice")
+                    b1c1, b1c2 = st.columns([1,2])
+                    bad_text_1  = b1c1.text_area("Description 1", key="bad_t1", height=100)
+                    bad_file_1  = b1c2.file_uploader("Image 1 (Bad)", type=["jpg","jpeg","png"], key="bad_f1")
+                    b2c1, b2c2  = st.columns([1,2])
+                    bad_text_2  = b2c1.text_area("Description 2", key="bad_t2", height=100)
+                    bad_file_2  = b2c2.file_uploader("Image 2 (Bad)", type=["jpg","jpeg","png"], key="bad_f2")
+                    st.divider()
+                    st.markdown("### ✅ Good Practice")
+                    g1c1, g1c2 = st.columns([1,2])
+                    good_text_1 = g1c1.text_area("Description 1", key="good_t1", height=100)
+                    good_file_1 = g1c2.file_uploader("Image 1 (Good)", type=["jpg","jpeg","png"], key="good_f1")
+                    g2c1, g2c2  = st.columns([1,2])
+                    good_text_2 = g2c1.text_area("Description 2", key="good_t2", height=100)
+                    good_file_2 = g2c2.file_uploader("Image 2 (Good)", type=["jpg","jpeg","png"], key="good_f2")
+                else:
+                    st.markdown("### 📸 General Knowledge — Images & Comments")
+                    gk1c1, gk1c2 = st.columns([2,1])
+                    bad_file_1   = gk1c1.file_uploader("Image 1", type=["jpg","jpeg","png"], key="bad_f1")
+                    bad_text_1   = gk1c2.text_area("Comment on Image 1", key="bad_t1", height=100)
+                    gk2c1, gk2c2 = st.columns([2,1])
+                    bad_file_2   = gk2c1.file_uploader("Image 2", type=["jpg","jpeg","png"], key="bad_f2")
+                    bad_text_2   = gk2c2.text_area("Comment on Image 2", key="bad_t2", height=100)
+                    st.markdown("**Right side — Additional explanation / text**")
+                    good_text_1 = st.text_area("Explanation / Key points", key="good_t1", height=150)
+                    good_file_1 = None; good_text_2 = ""; good_file_2 = None
 
                 st.divider()
                 st.markdown("### 📋 Footer")
@@ -1209,9 +1281,16 @@ with tab6:
                             if f is None: return None
                             return _opl_b64.b64encode(f.getvalue()).decode()
                         try:
+                            _new_opl_id = _gen_opl_id(opl_pillar)
                             supabase.table("et_opls").insert({
+                                "opl_id":           _new_opl_id,
                                 "subject":          opl_subject,
                                 "opl_type":         opl_type,
+                                "category":         opl_category,
+                                "machine":          opl_machine if opl_machine != "— Select —" else None,
+                                "pillar":           opl_pillar,
+                                "plant":            OPL_PLANT,
+                                "layout_mode":      "general_knowledge" if layout_mode == "General Knowledge" else "bad_good",
                                 "bad_text_1":       bad_text_1,
                                 "bad_image_1":      _to_b64(bad_file_1),
                                 "bad_text_2":       bad_text_2,
