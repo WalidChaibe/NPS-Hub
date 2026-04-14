@@ -1168,7 +1168,36 @@ with tab6:
         if not opl_list:
             st.info("No OPLs created yet.")
         else:
-            for opl in opl_list:
+            # ── Filters ──
+            st.markdown("#### 🔍 Filter OPLs")
+            _fc1, _fc2, _fc3, _fc4, _fc5 = st.columns(5)
+
+            _all_categories = ["All"] + sorted(list(set(o.get("category","") for o in opl_list if o.get("category",""))))
+            _all_machines   = ["All"] + sorted(list(set(o.get("machine","") for o in opl_list if o.get("machine",""))))
+            _all_pillars    = ["All"] + sorted(list(set(o.get("pillar","") for o in opl_list if o.get("pillar",""))))
+            _all_types      = ["All"] + sorted(list(set(o.get("opl_type","") for o in opl_list if o.get("opl_type",""))))
+            _all_layouts    = ["All", "Bad / Good Practice", "General Knowledge"]
+
+            _filt_cat    = _fc1.selectbox("Category",  _all_categories, key="opl_f_cat")
+            _filt_mach   = _fc2.selectbox("Machine",   _all_machines,   key="opl_f_mach")
+            _filt_pillar = _fc3.selectbox("Pillar",    _all_pillars,    key="opl_f_pillar")
+            _filt_type   = _fc4.selectbox("Type",      _all_types,      key="opl_f_type")
+            _filt_layout = _fc5.selectbox("Layout",    _all_layouts,    key="opl_f_layout")
+
+            # Apply filters
+            filtered_opls = opl_list
+            if _filt_cat    != "All": filtered_opls = [o for o in filtered_opls if o.get("category","")   == _filt_cat]
+            if _filt_mach   != "All": filtered_opls = [o for o in filtered_opls if o.get("machine","")    == _filt_mach]
+            if _filt_pillar != "All": filtered_opls = [o for o in filtered_opls if o.get("pillar","")     == _filt_pillar]
+            if _filt_type   != "All": filtered_opls = [o for o in filtered_opls if o.get("opl_type","")   == _filt_type]
+            if _filt_layout != "All":
+                _lm_val = "general_knowledge" if _filt_layout == "General Knowledge" else "bad_good"
+                filtered_opls = [o for o in filtered_opls if o.get("layout_mode","bad_good") == _lm_val]
+
+            st.caption(f"Showing **{len(filtered_opls)}** of **{len(opl_list)}** OPLs")
+            st.divider()
+
+            for opl in filtered_opls:
                 with st.expander(f"📝 [{opl.get('opl_id','—')}] {opl['subject']} — {opl['opl_type']} | {opl.get('category','')} | {opl.get('pillar','')} | {opl.get('status','Draft')}", expanded=False):
                     c1, c2, c3 = st.columns([3,1,1])
                     c1.caption(f"Created by {opl.get('created_by','')} on {str(opl.get('created_at',''))[:10]}")
@@ -1219,6 +1248,16 @@ with tab6:
         else:
             st.markdown("#### ➕ New One Point Lesson")
 
+            # Layout mode selected OUTSIDE form so it controls form content
+            st.markdown("#### Select OPL Layout Type")
+            layout_mode = st.radio(
+                "What type of OPL are you creating?",
+                ["Bad / Good Practice", "General Knowledge"],
+                horizontal=True, key="opl_layout_mode",
+                help="Bad/Good Practice: shows ❌ bad and ✅ good examples. General Knowledge: shows images with comments."
+            )
+            st.divider()
+
             with st.form("opl_create_form"):
                 # ── Header fields ──
                 fc1, fc2, fc3 = st.columns(3)
@@ -1229,11 +1268,10 @@ with tab6:
                 opl_machine  = fm1.selectbox("Machine", ["— Select —"] + OPL_MACHINES)
                 opl_pillar   = fm2.selectbox("Pillar", OPL_PILLARS)
                 opl_plant    = fm3.text_input("Plant", value=OPL_PLANT, disabled=True)
-                layout_mode  = st.radio("Layout Mode", ["Bad / Good Practice", "General Knowledge"],
-                                         horizontal=True, key="opl_layout_mode")
 
+                st.info(f"Layout: **{layout_mode}**")
                 st.divider()
-                if layout_mode == "Bad / Good Practice":
+                if st.session_state.get("opl_layout_mode","Bad / Good Practice") == "Bad / Good Practice":
                     st.markdown("### ❌ Bad Practice")
                     b1c1, b1c2 = st.columns([1,2])
                     bad_text_1  = b1c1.text_area("Description 1", key="bad_t1", height=100)
@@ -1290,7 +1328,7 @@ with tab6:
                                 "machine":          opl_machine if opl_machine != "— Select —" else None,
                                 "pillar":           opl_pillar,
                                 "plant":            OPL_PLANT,
-                                "layout_mode":      "general_knowledge" if layout_mode == "General Knowledge" else "bad_good",
+                                "layout_mode":      "general_knowledge" if st.session_state.get("opl_layout_mode","Bad / Good Practice") == "General Knowledge" else "bad_good",
                                 "bad_text_1":       bad_text_1,
                                 "bad_image_1":      _to_b64(bad_file_1),
                                 "bad_text_2":       bad_text_2,
