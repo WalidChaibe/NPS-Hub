@@ -149,12 +149,13 @@ with col3:
 st.divider()
 
 # ── Tabs ──
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "📊 Maturity Level",
     "🔬 Competency Analysis",
     "📁 Documents",
     "📋 Request Training",
-    "🎯 Action Plans"
+    "🎯 Action Plans",
+    "📝 One Point Lessons"
 ])
 
 # ════════════════════════════════════════
@@ -703,3 +704,476 @@ with tab5:
                     st.rerun()
                 except Exception as e:
                     st.error(f"Error: {str(e)}")
+
+# ════════════════════════════════════════
+# TAB 6 — ONE POINT LESSONS (OPL)
+# ════════════════════════════════════════
+with tab6:
+    import io as _opl_io
+    import base64 as _opl_b64
+    import json as _opl_json
+    from reportlab.pdfgen import canvas as _opl_canvas
+    from reportlab.lib.utils import ImageReader as _opl_ir
+    from reportlab.lib.colors import HexColor as _opl_hc, black, white, red, green
+
+    st.markdown("### 📝 One Point Lessons")
+
+    OPL_TYPES = [
+        "Equipment Handling", "Safety", "Quality", "Maintenance",
+        "Environment", "Process", "Cleaning & Inspection", "Other"
+    ]
+
+    # ── Annotation canvas component ──
+    def annotation_canvas(image_bytes, key):
+        """Returns annotated image bytes or None"""
+        if not image_bytes:
+            return None
+        img_b64 = _opl_b64.b64encode(image_bytes).decode()
+        canvas_html = f"""
+        <div style="position:relative;display:inline-block;">
+          <canvas id="canvas_{key}" style="border:2px solid #006394;cursor:crosshair;max-width:100%;"></canvas>
+          <br/>
+          <div style="margin:6px 0;">
+            <button onclick="setTool('circle')" style="margin:2px;padding:4px 10px;background:#006394;color:white;border:none;border-radius:4px;cursor:pointer;">⭕ Circle</button>
+            <button onclick="setTool('arrow')" style="margin:2px;padding:4px 10px;background:#C1A02E;color:white;border:none;border-radius:4px;cursor:pointer;">➡️ Arrow</button>
+            <button onclick="setTool('rect')" style="margin:2px;padding:4px 10px;background:#DE201B;color:white;border:none;border-radius:4px;cursor:pointer;">🟥 Rectangle</button>
+            <button onclick="undoLast()" style="margin:2px;padding:4px 10px;background:#888;color:white;border:none;border-radius:4px;cursor:pointer;">↩ Undo</button>
+            <button onclick="clearAll()" style="margin:2px;padding:4px 10px;background:#333;color:white;border:none;border-radius:4px;cursor:pointer;">🗑 Clear</button>
+            <button onclick="saveCanvas()" style="margin:2px;padding:4px 10px;background:#27AE60;color:white;border:none;border-radius:4px;cursor:pointer;">💾 Save Annotation</button>
+          </div>
+          <input type="hidden" id="result_{key}" value=""/>
+        </div>
+        <script>
+        (function() {{
+          const canvas = document.getElementById('canvas_{key}');
+          const ctx = canvas.getContext('2d');
+          const img = new Image();
+          img.onload = function() {{
+            canvas.width = img.width;
+            canvas.height = img.height;
+            ctx.drawImage(img, 0, 0);
+          }};
+          img.src = 'data:image/jpeg;base64,{img_b64}';
+
+          let tool = 'circle';
+          let drawing = false;
+          let startX, startY;
+          let shapes = [];
+          let snapshot;
+
+          function setTool(t) {{ tool = t; }}
+          window.setTool = setTool;
+
+          canvas.addEventListener('mousedown', e => {{
+            const r = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / r.width;
+            const scaleY = canvas.height / r.height;
+            startX = (e.clientX - r.left) * scaleX;
+            startY = (e.clientY - r.top) * scaleY;
+            drawing = true;
+            snapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          }});
+
+          canvas.addEventListener('mousemove', e => {{
+            if (!drawing) return;
+            const r = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / r.width;
+            const scaleY = canvas.height / r.height;
+            const x = (e.clientX - r.left) * scaleX;
+            const y = (e.clientY - r.top) * scaleY;
+            ctx.putImageData(snapshot, 0, 0);
+            ctx.strokeStyle = '#DE201B';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            if (tool === 'circle') {{
+              const rx = Math.abs(x - startX) / 2;
+              const ry = Math.abs(y - startY) / 2;
+              const cx = startX + (x - startX) / 2;
+              const cy = startY + (y - startY) / 2;
+              ctx.ellipse(cx, cy, rx, ry, 0, 0, 2 * Math.PI);
+              ctx.stroke();
+            }} else if (tool === 'rect') {{
+              ctx.strokeRect(startX, startY, x - startX, y - startY);
+            }} else if (tool === 'arrow') {{
+              ctx.moveTo(startX, startY);
+              ctx.lineTo(x, y);
+              ctx.stroke();
+              const angle = Math.atan2(y - startY, x - startX);
+              const len = 15;
+              ctx.beginPath();
+              ctx.moveTo(x, y);
+              ctx.lineTo(x - len * Math.cos(angle - 0.4), y - len * Math.sin(angle - 0.4));
+              ctx.lineTo(x - len * Math.cos(angle + 0.4), y - len * Math.sin(angle + 0.4));
+              ctx.closePath();
+              ctx.fillStyle = '#DE201B';
+              ctx.fill();
+            }}
+          }});
+
+          canvas.addEventListener('mouseup', e => {{
+            if (!drawing) return;
+            drawing = false;
+            const r = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / r.width;
+            const scaleY = canvas.height / r.height;
+            const x = (e.clientX - r.left) * scaleX;
+            const y = (e.clientY - r.top) * scaleY;
+            shapes.push({{tool, startX, startY, x, y}});
+          }});
+
+          window.undoLast = function() {{
+            shapes.pop();
+            redraw();
+          }};
+
+          window.clearAll = function() {{
+            shapes = [];
+            redraw();
+          }};
+
+          function redraw() {{
+            ctx.putImageData(snapshot, 0, 0);
+            shapes.forEach(s => {{
+              ctx.strokeStyle = '#DE201B';
+              ctx.lineWidth = 3;
+              ctx.beginPath();
+              if (s.tool === 'circle') {{
+                const rx = Math.abs(s.x - s.startX) / 2;
+                const ry = Math.abs(s.y - s.startY) / 2;
+                const cx = s.startX + (s.x - s.startX) / 2;
+                const cy = s.startY + (s.y - s.startY) / 2;
+                ctx.ellipse(cx, cy, rx, ry, 0, 0, 2 * Math.PI);
+                ctx.stroke();
+              }} else if (s.tool === 'rect') {{
+                ctx.strokeRect(s.startX, s.startY, s.x - s.startX, s.y - s.startY);
+              }} else if (s.tool === 'arrow') {{
+                ctx.moveTo(s.startX, s.startY);
+                ctx.lineTo(s.x, s.y);
+                ctx.stroke();
+                const angle = Math.atan2(s.y - s.startY, s.x - s.startX);
+                const len = 15;
+                ctx.beginPath();
+                ctx.moveTo(s.x, s.y);
+                ctx.lineTo(s.x - len * Math.cos(angle - 0.4), s.y - len * Math.sin(angle - 0.4));
+                ctx.lineTo(s.x - len * Math.cos(angle + 0.4), s.y - len * Math.sin(angle + 0.4));
+                ctx.closePath();
+                ctx.fillStyle = '#DE201B';
+                ctx.fill();
+              }}
+            }});
+          }}
+
+          window.saveCanvas = function() {{
+            const data = canvas.toDataURL('image/jpeg', 0.92).split(',')[1];
+            document.getElementById('result_{key}').value = data;
+            alert('✅ Annotation saved!');
+          }};
+        }})();
+        </script>
+        """
+        st.components.v1.html(canvas_html, height=500, scrolling=True)
+        return None  # annotation saved via JS — user clicks Save then we read from session
+
+    # ── PDF Generator ──
+    def generate_opl_pdf(opl):
+        W, H = 792, 612  # landscape A4 in points
+        buf = _opl_io.BytesIO()
+        c = _opl_canvas.Canvas(buf, pagesize=(W, H))
+
+        # ── Header ──
+        # Company logo box
+        c.setFillColor(_opl_hc("#DDDDDD"))
+        c.rect(20, H-60, 120, 50, fill=1, stroke=1)
+        c.setFillColor(black)
+        c.setFont("Helvetica-Bold", 8)
+        c.drawCentredString(80, H-40, "Company Logo")
+
+        # Title
+        c.setFillColor(_opl_hc("#DDDDDD"))
+        c.rect(140, H-60, 512, 50, fill=1, stroke=1)
+        c.setFillColor(black)
+        c.setFont("Helvetica-Bold", 22)
+        c.drawCentredString(396, H-32, "ONE POINT LESSON")
+
+        # OPL label box
+        c.setFillColor(_opl_hc("#1F4E79"))
+        c.rect(20, H-95, 120, 35, fill=1, stroke=0)
+        c.setFillColor(white)
+        c.setFont("Helvetica-Bold", 16)
+        c.drawCentredString(80, H-78, "OPL")
+
+        # Subject / Type row
+        c.setFillColor(white)
+        c.rect(140, H-95, 512, 18, fill=0, stroke=1)
+        c.setFillColor(black)
+        c.setFont("Helvetica", 7)
+        c.drawString(145, H-84, "Subject:")
+        c.drawString(530, H-84, "Type")
+
+        c.rect(140, H-113, 512, 18, fill=0, stroke=1)
+        c.setFont("Helvetica-Bold", 9)
+        c.drawString(145, H-106, opl.get("subject",""))
+        c.drawString(530, H-106, opl.get("opl_type",""))
+
+        # ── Body divider ──
+        body_top = H - 115
+        body_bot = 120
+        body_h = body_top - body_bot
+        mid_x = W / 2
+
+        # Bad side header (❌)
+        c.setFillColor(_opl_hc("#FFCCCC"))
+        c.rect(20, body_top - 22, mid_x - 25, 22, fill=1, stroke=1)
+        c.setFillColor(red)
+        c.setFont("Helvetica-Bold", 18)
+        c.drawCentredString((20 + mid_x - 25) / 2, body_top - 15, "✗")
+
+        # Good side header (✓)
+        c.setFillColor(_opl_hc("#CCFFCC"))
+        c.rect(mid_x + 5, body_top - 22, mid_x - 25, 22, fill=1, stroke=1)
+        c.setFillColor(green)
+        c.setFont("Helvetica-Bold", 18)
+        c.drawCentredString(mid_x + 5 + (mid_x - 25) / 2, body_top - 15, "✓")
+
+        # Body frames
+        c.setStrokeColor(black)
+        c.rect(20, body_bot, mid_x - 45, body_h - 22, fill=0, stroke=1)
+        c.rect(mid_x + 5, body_bot, mid_x - 25, body_h - 22, fill=0, stroke=1)
+
+        def draw_side(x_start, w, texts, image_paths):
+            """Draw bad or good side content"""
+            y_cursor = body_top - 30
+            slot_h = (body_h - 30) / 2
+            for i, (txt, img_path) in enumerate(zip(texts, image_paths)):
+                slot_top = body_top - 30 - i * slot_h
+                slot_bot = slot_top - slot_h + 10
+                # Text on left ~30% of slot
+                if txt:
+                    c.setFillColor(black)
+                    c.setFont("Helvetica", 8)
+                    txt_x = x_start + 4
+                    txt_w = w * 0.28
+                    words = txt.split()
+                    lines = []
+                    line = ""
+                    for word in words:
+                        test = (line + " " + word).strip()
+                        if c.stringWidth(test, "Helvetica", 8) < txt_w:
+                            line = test
+                        else:
+                            if line: lines.append(line)
+                            line = word
+                    if line: lines.append(line)
+                    ty = slot_top - 12
+                    for ln in lines[:8]:
+                        c.drawString(txt_x, ty, ln)
+                        ty -= 10
+                # Image on right ~68%
+                if img_path:
+                    try:
+                        img_x = x_start + w * 0.30
+                        img_w = w * 0.66
+                        img_h = slot_h - 16
+                        c.drawImage(_opl_ir(img_path), img_x, slot_bot + 4,
+                                    width=img_w, height=img_h,
+                                    preserveAspectRatio=True, mask="auto")
+                    except Exception:
+                        pass
+
+        # Prepare image temp files
+        import tempfile as _tmp
+        def _save_img(b64_str):
+            if not b64_str: return None
+            try:
+                data = _opl_b64.b64decode(b64_str)
+                tf = _tmp.NamedTemporaryFile(delete=False, suffix=".jpg")
+                tf.write(data); tf.flush()
+                return tf.name
+            except Exception:
+                return None
+
+        bad_imgs = [_save_img(opl.get("bad_image_1")), _save_img(opl.get("bad_image_2"))]
+        good_imgs = [_save_img(opl.get("good_image_1")), _save_img(opl.get("good_image_2"))]
+        bad_texts = [opl.get("bad_text_1",""), opl.get("bad_text_2","")]
+        good_texts = [opl.get("good_text_1",""), opl.get("good_text_2","")]
+
+        draw_side(20, mid_x - 45, bad_texts, bad_imgs)
+        draw_side(mid_x + 5, mid_x - 25, good_texts, good_imgs)
+
+        # ── Footer ──
+        fy = 118
+        c.setFont("Helvetica-Bold", 7)
+        c.setFillColor(black)
+        col_w = (W - 40) / 3
+        for i, (label, val_name, date_name) in enumerate([
+            ("Prepared By", "prepared_by", "prepared_date"),
+            ("Approved by", "approved_by", "approved_date"),
+            ("Administered by", "administered_by", "administered_date"),
+        ]):
+            fx = 20 + i * col_w
+            c.rect(fx, fy - 12, col_w, 12, fill=0, stroke=1)
+            c.drawString(fx + 3, fy - 9, label)
+            c.rect(fx, fy - 24, col_w, 12, fill=0, stroke=1)
+            c.setFont("Helvetica", 7)
+            c.drawString(fx + 3, fy - 21, f"Date: {opl.get(date_name,'')}")
+            c.setFont("Helvetica-Bold", 7)
+
+        # Operators row
+        c.setFont("Helvetica-Bold", 7)
+        c.rect(20, fy - 38, 80, 14, fill=0, stroke=1)
+        c.drawString(23, fy - 30, "Seen & understood by:")
+        ops = opl.get("operators","").split(",")
+        op_w = (W - 100) / max(len(ops), 4)
+        for j, op in enumerate(ops[:6]):
+            ox = 100 + j * op_w
+            c.rect(ox, fy - 38, op_w, 14, fill=0, stroke=1)
+            c.setFont("Helvetica", 6)
+            c.drawString(ox + 2, fy - 28, "Operator")
+            c.drawString(ox + 2, fy - 36, op.strip()[:20])
+
+        c.save()
+        buf.seek(0)
+        return buf
+
+    # ── UI ──
+    opl_view, opl_create = st.tabs(["📋 All OPLs", "➕ Create OPL"])
+
+    # ── LIST VIEW ──
+    with opl_view:
+        try:
+            opls = supabase.table("et_opls").select("*").order("created_at", desc=True).execute()
+            opl_list = opls.data or []
+        except Exception as e:
+            st.error(f"Could not load OPLs: {e}"); opl_list = []
+
+        if not opl_list:
+            st.info("No OPLs created yet.")
+        else:
+            for opl in opl_list:
+                with st.expander(f"📝 {opl['subject']} — {opl['opl_type']} | {opl.get('status','Draft')}", expanded=False):
+                    c1, c2, c3 = st.columns([3,1,1])
+                    c1.caption(f"Created by {opl.get('created_by','')} on {str(opl.get('created_at',''))[:10]}")
+
+                    # Download PDF
+                    try:
+                        pdf_buf = generate_opl_pdf(opl)
+                        c2.download_button("📥 PDF", data=pdf_buf,
+                            file_name=f"OPL_{opl['subject'].replace(' ','_')}.pdf",
+                            mime="application/pdf", key=f"opl_dl_{opl['id']}")
+                    except Exception as e:
+                        c2.warning(f"PDF error: {e}")
+
+                    # Delete
+                    if can_edit:
+                        if c3.button("🗑️ Delete", key=f"opl_del_{opl['id']}"):
+                            supabase.table("et_opls").delete().eq("id", opl["id"]).execute()
+                            st.rerun()
+
+                    # Preview
+                    st.markdown(f"**Subject:** {opl['subject']} | **Type:** {opl['opl_type']}")
+                    col_b, col_g = st.columns(2)
+                    with col_b:
+                        st.markdown("❌ **Bad**")
+                        if opl.get("bad_text_1"): st.caption(opl["bad_text_1"])
+                        if opl.get("bad_image_1"):
+                            try: st.image(_opl_b64.b64decode(opl["bad_image_1"]), use_container_width=True)
+                            except: pass
+                        if opl.get("bad_text_2"): st.caption(opl["bad_text_2"])
+                        if opl.get("bad_image_2"):
+                            try: st.image(_opl_b64.b64decode(opl["bad_image_2"]), use_container_width=True)
+                            except: pass
+                    with col_g:
+                        st.markdown("✅ **Good**")
+                        if opl.get("good_text_1"): st.caption(opl["good_text_1"])
+                        if opl.get("good_image_1"):
+                            try: st.image(_opl_b64.b64decode(opl["good_image_1"]), use_container_width=True)
+                            except: pass
+                        if opl.get("good_text_2"): st.caption(opl["good_text_2"])
+                        if opl.get("good_image_2"):
+                            try: st.image(_opl_b64.b64decode(opl["good_image_2"]), use_container_width=True)
+                            except: pass
+
+    # ── CREATE / EDIT VIEW ──
+    with opl_create:
+        if not can_edit:
+            st.warning("🔒 Only Pillar Leader or Plant Manager can create OPLs.")
+        else:
+            st.markdown("#### ➕ New One Point Lesson")
+
+            with st.form("opl_create_form"):
+                fc1, fc2 = st.columns(2)
+                opl_subject = fc1.text_input("Subject *", placeholder="e.g. Motor Shafts")
+                opl_type    = fc2.selectbox("Type *", OPL_TYPES)
+
+                st.divider()
+                st.markdown("### ❌ Bad Side")
+                b1c1, b1c2 = st.columns([1,2])
+                bad_text_1  = b1c1.text_area("Description 1", key="bad_t1", height=100)
+                bad_file_1  = b1c2.file_uploader("Image 1 (Bad)", type=["jpg","jpeg","png"], key="bad_f1")
+                b2c1, b2c2  = st.columns([1,2])
+                bad_text_2  = b2c1.text_area("Description 2", key="bad_t2", height=100)
+                bad_file_2  = b2c2.file_uploader("Image 2 (Bad)", type=["jpg","jpeg","png"], key="bad_f2")
+
+                st.divider()
+                st.markdown("### ✅ Good Side")
+                g1c1, g1c2 = st.columns([1,2])
+                good_text_1 = g1c1.text_area("Description 1", key="good_t1", height=100)
+                good_file_1 = g1c2.file_uploader("Image 1 (Good)", type=["jpg","jpeg","png"], key="good_f1")
+                g2c1, g2c2  = st.columns([1,2])
+                good_text_2 = g2c1.text_area("Description 2", key="good_t2", height=100)
+                good_file_2 = g2c2.file_uploader("Image 2 (Good)", type=["jpg","jpeg","png"], key="good_f2")
+
+                st.divider()
+                st.markdown("### 📋 Footer")
+                ff1, ff2, ff3 = st.columns(3)
+                prepared_by     = ff1.text_input("Prepared By")
+                prepared_date   = ff1.text_input("Date", key="prep_date")
+                approved_by     = ff2.text_input("Approved By")
+                approved_date   = ff2.text_input("Date", key="appr_date")
+                administered_by = ff3.text_input("Administered By")
+                administered_date = ff3.text_input("Date", key="adm_date")
+                operators = st.text_input("Operators (comma separated)", placeholder="John, Sarah, Mike")
+
+                submitted = st.form_submit_button("💾 Save OPL", type="primary")
+                if submitted:
+                    if not opl_subject:
+                        st.error("Please enter a subject.")
+                    else:
+                        def _to_b64(f):
+                            if f is None: return None
+                            return _opl_b64.b64encode(f.getvalue()).decode()
+                        try:
+                            supabase.table("et_opls").insert({
+                                "subject":          opl_subject,
+                                "opl_type":         opl_type,
+                                "bad_text_1":       bad_text_1,
+                                "bad_image_1":      _to_b64(bad_file_1),
+                                "bad_text_2":       bad_text_2,
+                                "bad_image_2":      _to_b64(bad_file_2),
+                                "good_text_1":      good_text_1,
+                                "good_image_1":     _to_b64(good_file_1),
+                                "good_text_2":      good_text_2,
+                                "good_image_2":     _to_b64(good_file_2),
+                                "prepared_by":      prepared_by,
+                                "prepared_date":    prepared_date,
+                                "approved_by":      approved_by,
+                                "approved_date":    approved_date,
+                                "administered_by":  administered_by,
+                                "administered_date":administered_date,
+                                "operators":        operators,
+                                "created_by":       name,
+                                "status":           "Draft",
+                            }).execute()
+                            st.success("✅ OPL saved!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error saving OPL: {e}")
+
+            # ── Annotation tool (outside form) ──
+            st.divider()
+            st.markdown("#### 🎨 Annotate Images")
+            st.caption("Upload an image below, draw circles/arrows, then click Save Annotation. Copy the annotated image and re-upload it in the form above.")
+
+            ann_file = st.file_uploader("Upload image to annotate", type=["jpg","jpeg","png"], key="ann_upload")
+            if ann_file:
+                annotation_canvas(ann_file.getvalue(), key="ann_main")
