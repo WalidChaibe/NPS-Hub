@@ -70,6 +70,7 @@ MONITORING_TYPES = ["Checklist","Audit","Form","Visual Board","Other"]
 
 # ── Plant sections & machines ──
 PLANT_SECTIONS = {
+    "Corrugator":     ["BHS","Fosber"],
     "Die-Cut":        ["BOBST 160-II","BOBST 203","BOBST MASTERCUT 1","BOBST MASTERCUT 2"],
     "FFG":            ["LMC FFG","MARTIN 616","924","SATURN"],
     "Folder Gluers":  ["Bahmüller TURBOX","VEGA 2"],
@@ -589,6 +590,17 @@ def render_fi_projects_tab(supabase, role, pillar, name):
     # ── New project modal ──
     if st.session_state.get("fi_creating_project") and can_create:
         with st.expander("🆕 Create New Project", expanded=True):
+            # Section/machine selector outside form
+            _np_cols = st.columns(2)
+            _new_section = _np_cols[0].selectbox("Section / Area *", list(PLANT_SECTIONS.keys()), key="fi_new_section")
+            _new_machines = PLANT_SECTIONS.get(_new_section,[])
+            if _new_machines:
+                _new_machine = _np_cols[1].selectbox("Machine", ["— All / General —"]+_new_machines, key="fi_new_machine")
+                _new_area = f"{_new_section} — {_new_machine}" if _new_machine != "— All / General —" else _new_section
+            else:
+                _np_cols[1].caption("No sub-machines for this section")
+                _new_area = _new_section
+
             with st.form("fi_new_proj_form"):
                 np1, np2 = st.columns(2)
                 new_name    = np1.text_input("Project Name *")
@@ -615,7 +627,7 @@ def render_fi_projects_tab(supabase, role, pillar, name):
                         resp = supabase.table("fi_projects").insert({
                             "project_name": new_name,
                             "problem_statement": new_problem,
-                            "target_area": new_area,
+                            "target_area": _new_area,
                             "launch_date": str(new_launch),
                             "expected_completion_date": str(new_expected),
                             "company_kpi_link": new_kpi_link,
@@ -695,27 +707,29 @@ def render_fi_projects_tab(supabase, role, pillar, name):
 
         # ── Section A: Project Identity ──
         with st.expander("🏷️ Project Identity", expanded=True):
+            # Section selector OUTSIDE form so machine dropdown reacts dynamically
+            _cur_area = selected_project.get("target_area","") or ""
+            _cur_section = _cur_area.split(" — ")[0] if " — " in _cur_area else list(PLANT_SECTIONS.keys())[0]
+            _cur_machine = _cur_area.split(" — ")[1] if " — " in _cur_area else ""
+            _area_cols = st.columns(2)
+            setup_section = _area_cols[0].selectbox("Section / Area *",
+                list(PLANT_SECTIONS.keys()),
+                index=list(PLANT_SECTIONS.keys()).index(_cur_section) if _cur_section in PLANT_SECTIONS else 0,
+                key="fi_setup_section")
+            _machines = PLANT_SECTIONS.get(setup_section, [])
+            if _machines:
+                _mach_opts = ["— All / General —"] + _machines
+                _mach_idx  = (_machines.index(_cur_machine)+1) if _cur_machine in _machines else 0
+                setup_machine = _area_cols[1].selectbox("Machine", _mach_opts,
+                    index=_mach_idx, key="fi_setup_machine")
+                setup_area = f"{setup_section} — {setup_machine}" if setup_machine != "— All / General —" else setup_section
+            else:
+                _area_cols[1].caption("No sub-machines for this section")
+                setup_area = setup_section
+
             with st.form("fi_setup_identity"):
                 setup_name = st.text_input("Project Name *", value=selected_project.get("project_name",""))
-                # Area: section + machine
-                _area_cols = st.columns(2)
-                _cur_area = selected_project.get("target_area","") or ""
-                _cur_section = _cur_area.split(" — ")[0] if " — " in _cur_area else list(PLANT_SECTIONS.keys())[0]
-                _cur_machine = _cur_area.split(" — ")[1] if " — " in _cur_area else ""
-                setup_section = _area_cols[0].selectbox("Section / Area *",
-                    list(PLANT_SECTIONS.keys()),
-                    index=list(PLANT_SECTIONS.keys()).index(_cur_section) if _cur_section in PLANT_SECTIONS else 0,
-                    key="fi_setup_section")
-                _machines = PLANT_SECTIONS.get(setup_section, [])
-                if _machines:
-                    setup_machine = _area_cols[1].selectbox("Machine",
-                        ["— All / General —"] + _machines,
-                        index=(_machines.index(_cur_machine)+1) if _cur_machine in _machines else 0,
-                        key="fi_setup_machine")
-                    setup_area = f"{setup_section} — {setup_machine}" if setup_machine != "— All / General —" else setup_section
-                else:
-                    _area_cols[1].caption("No sub-machines for this section")
-                    setup_area = setup_section
+                st.info(f"📍 Target Area: **{setup_area}**")
 
                 setup_problem = st.text_area("Problem Statement *", value=selected_project.get("problem_statement",""), height=80)
 
