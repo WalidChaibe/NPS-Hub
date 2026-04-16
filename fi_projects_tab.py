@@ -98,7 +98,12 @@ def _gantt_chart(steps, weekly_updates, current_week):
         # Actual progress from weekly updates
         pct = 0
         for wu in weekly_updates:
-            for sp in (wu.get("step_progress") or []):
+            sp_raw = wu.get("step_progress") or []
+            if isinstance(sp_raw, str):
+                try: sp_raw = json.loads(sp_raw)
+                except: sp_raw = []
+            for sp in sp_raw:
+                if not isinstance(sp, dict): continue
                 if sp.get("step_id") == str(step.get("id","")):
                     pct = max(pct, sp.get("pct_complete",0))
         actual_w = (pe - ps) * pct / 100
@@ -169,7 +174,13 @@ def _score_project(project, team, kpi, steps, weekly_updates, actions, stab, aud
     # Q9 — steps with targets
     scores[9] = 1 if all(s.get("planned_start_week") and s.get("planned_end_week") for s in steps) else 0
     # Q10 — sub-activities exist
-    scores[10] = 1 if any((wu.get("step_progress") or []) for wu in weekly_updates) else 0
+    def _parse_sp(wu):
+        sp = wu.get("step_progress") or []
+        if isinstance(sp, str):
+            try: return json.loads(sp)
+            except: return []
+        return sp
+    scores[10] = 1 if any(_parse_sp(wu) for wu in weekly_updates) else 0
     # Q11 — RCA documented
     scores[11] = 1 if any(wu.get("rca_performed") and wu.get("rca_findings") for wu in weekly_updates) else 0
     # Q12 — causes verified
