@@ -313,7 +313,7 @@ def _score_project(project, team, kpi, steps, weekly_updates, actions, stab, aud
     # Q3 — problem + company kpi link
     scores[3] = 4 if (project.get("problem_statement") and project.get("company_kpi_link")) else 0
     # Q4 — cost/benefit (week 5+)
-    scores[4] = 4 if (project.get("cost_filled")) else 0
+    scores[4] = 0  # Q4 scored when cost/benefit section filled (checked separately)
     # Q5 — KPI baseline
     scores[5] = 1 if (kpi and kpi.get("kpi_name") and kpi.get("baseline_value") is not None) else 0
     # Q6 — KPI target
@@ -986,7 +986,6 @@ def render_fi_projects_tab(supabase, role, pillar, name):
                             supabase.table("fi_project_cost").update(cb_data).eq("id",cost["id"]).execute()
                         else:
                             supabase.table("fi_project_cost").insert(cb_data).execute()
-                        supabase.table("fi_projects").update({"cost_filled":True}).eq("id",pid).execute()
                         st.success("✅ Saved"); st.rerun()
                 if cost:
                     fig_cb, ax_cb = plt.subplots(figsize=(5,3), dpi=100)
