@@ -769,8 +769,27 @@ def render_fi_projects_tab(supabase, role, pillar, name):
         with st.expander("👥 Team Members", expanded=True):
             st.caption("Add everyone on the team with their role.")
             if team:
-                df_team = pd.DataFrame(team)[["member_name","role","department","contribution_target"]]
-                df_team.columns = ["Name","Role","Department","Contribution Target"]
+                # Show team with their KPI-assigned targets
+                _subs = []
+                if kpi:
+                    _raw = kpi.get("sub_components") or []
+                    if isinstance(_raw, str):
+                        try: _raw = json.loads(_raw)
+                        except: _raw = []
+                    _subs = [s for s in _raw if isinstance(s,dict)]
+                _owner_map = {}
+                for s in _subs:
+                    owner = s.get("owner","")
+                    if owner:
+                        _owner_map.setdefault(owner,[]).append(
+                            f"{s.get('name','')} ({s.get('baseline','')}→{s.get('target','')} {s.get('unit','')})"
+                        )
+                df_team = pd.DataFrame([{
+                    "Name": m["member_name"],
+                    "Role": m.get("role",""),
+                    "Department": m.get("department",""),
+                    "KPI Targets": " | ".join(_owner_map.get(m["member_name"],["—"]))
+                } for m in team])
                 st.dataframe(df_team, use_container_width=True, hide_index=True)
                 if can_create:
                     del_name = st.selectbox("Remove member", ["—"]+[m["member_name"] for m in team], key="fi_del_member")
@@ -781,25 +800,15 @@ def render_fi_projects_tab(supabase, role, pillar, name):
                             st.rerun()
             with st.form("fi_add_member"):
                 mc1,mc2,mc3 = st.columns(3)
-                m_name  = mc1.text_input("Name *")
-                m_role  = mc2.selectbox("Role", TEAM_ROLES)
-                m_dept  = mc3.text_input("Department")
-                # Contribution linked to KPI focus areas
-                _kpi_focus_opts = []
-                if kpi:
-                    _kf = kpi.get("sub_kpi_focus","")
-                    if _kf: _kpi_focus_opts = [s.strip() for s in _kf.split(",") if s.strip()]
-                if _kpi_focus_opts:
-                    m_cont = st.selectbox("Contribution Target (linked to project KPI focus)",
-                        [""]+_kpi_focus_opts)
-                else:
-                    m_cont = st.text_input("Contribution Target",
-                        placeholder="Define KPI focus areas first to get a dropdown here")
+                m_name = mc1.text_input("Name *")
+                m_role = mc2.selectbox("Role", TEAM_ROLES)
+                m_dept = mc3.text_input("Department")
+                st.caption("💡 Contribution targets are assigned per KPI focus area in the KPI section below.")
                 if st.form_submit_button("➕ Add Team Member"):
                     if m_name:
                         supabase.table("fi_project_team").insert({
                             "project_id":pid,"member_name":m_name,"role":m_role,
-                            "department":m_dept,"contribution_target":m_cont
+                            "department":m_dept,"contribution_target":""
                         }).execute()
                         st.rerun()
 
@@ -839,26 +848,35 @@ def render_fi_projects_tab(supabase, role, pillar, name):
                 kpi_tdate = k5.date_input("Target Achievement Date",
                     value=date.fromisoformat(str(kpi_vals.get("target_date",_auto_kpi_date))[:10]) if kpi_vals.get("target_date") else _auto_kpi_date)
 
-                # Sub-components linked to focus areas
+                # Sub-components: metric, unit, baseline, target, owner per focus area
+                UNITS = ["MT","% (Percent)","SAR","LM","SQM","GSM","Hits","Hits/Hour",
+                         "LM/Min","BD Time","Hours","Mins","Secs","K€","Count","Score"]
                 sub_components = []
                 if kpi_sub_focus:
                     st.divider()
-                    st.caption("Set baseline & target for each focus area:")
+                    st.markdown("**Set targets & assign responsible per focus area:**")
                     existing_subs = kpi_vals.get("sub_components") or []
                     if isinstance(existing_subs, str):
                         try: existing_subs = json.loads(existing_subs)
                         except: existing_subs = []
                     sub_by_name = {s.get("name",""): s for s in existing_subs if isinstance(s,dict)}
+                    _team_names = [""]+[m["member_name"] for m in team]
                     for si, focus in enumerate(kpi_sub_focus):
-                        existing = sub_by_name.get(focus,{})
-                        sc1,sc2,sc3,sc4 = st.columns(4)
-                        sc1.markdown(f"**{focus}**")
+                        ex = sub_by_name.get(focus,{})
+                        st.markdown(f"**{si+1}. {focus}**")
+                        fc1,fc2,fc3,fc4,fc5 = st.columns(5)
+                        _unit_val = ex.get("unit","% (Percent)")
+                        _unit_idx = UNITS.index(_unit_val) if _unit_val in UNITS else 1
+                        _owner_val = ex.get("owner","")
+                        _owner_idx = _team_names.index(_owner_val) if _owner_val in _team_names else 0
                         sub_components.append({
                             "name":     focus,
-                            "baseline": sc2.number_input("Baseline", value=float(existing.get("baseline",0)), key=f"sub_b_{si}"),
-                            "target":   sc3.number_input("Target",   value=float(existing.get("target",0)),   key=f"sub_t_{si}"),
-                            "owner":    sc4.selectbox("Owner", [""]+[m["member_name"] for m in team], key=f"sub_o_{si}",
-                                index=[""]+[m["member_name"] for m in team].index(existing.get("owner","")) if existing.get("owner") in [m["member_name"] for m in team] else 0),
+                            "metric":   fc1.text_input("Metric", value=ex.get("metric",focus[:20]), key=f"sub_m_{si}",
+                                            placeholder="e.g. OEE %"),
+                            "unit":     fc2.selectbox("Unit", UNITS, index=_unit_idx, key=f"sub_u_{si}"),
+                            "baseline": fc3.number_input("Baseline", value=float(ex.get("baseline",0)), key=f"sub_b_{si}"),
+                            "target":   fc4.number_input("Target",   value=float(ex.get("target",0)),   key=f"sub_t_{si}"),
+                            "owner":    fc5.selectbox("Responsible", _team_names, index=_owner_idx, key=f"sub_o_{si}"),
                         })
 
                 if st.form_submit_button("💾 Save KPI"):
