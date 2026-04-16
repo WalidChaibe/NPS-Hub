@@ -68,6 +68,99 @@ RCA_METHODS = ["5-Why","Fishbone","Pareto","FMEA","Other"]
 ACTION_STATUSES = ["Open","In Progress","Completed","Overdue"]
 MONITORING_TYPES = ["Checklist","Audit","Form","Visual Board","Other"]
 
+# ── Plant sections & machines ──
+PLANT_SECTIONS = {
+    "Die-Cut":        ["BOBST 160-II","BOBST 203","BOBST MASTERCUT 1","BOBST MASTERCUT 2"],
+    "FFG":            ["LMC FFG","MARTIN 616","924","SATURN"],
+    "Folder Gluers":  ["Bahmüller TURBOX","VEGA 2"],
+    "Stitcher":       ["BAHMULLER STITCHER"],
+    "Printer":        ["IPACK"],
+    "Pre-Print":      ["CI4","CI6"],
+    "QuickSet":       ["QuickSet"],
+    "Jumbo":          ["JUMBO"],
+    "RM Warehouse":   [],
+    "FG Warehouse":   [],
+    "Maintenance":    [],
+}
+
+# ── KPI tree ──
+KPI_TREE = {
+    "OEE Improvement": {
+        "description": "Increase Overall Equipment Effectiveness by {x}%",
+        "sub_kpis": [
+            "Decrease Planned Maintenance Time",
+            "Decrease Unplanned Breakdowns",
+            "Decrease Minor Stoppages",
+            "Decrease Setup & Changeover Time",
+            "Decrease Speed Losses",
+            "Increase Availability",
+            "Increase Performance Rate",
+            "Increase Quality Rate",
+        ]
+    },
+    "Quality Defect Reduction": {
+        "description": "Reduce quality defects / complaints by {x}%",
+        "sub_kpis": [
+            "Reduce Customer Complaints (CRM)",
+            "Reduce Internal Defects (PPM)",
+            "Reduce Rework Rate",
+            "Reduce Scrap Rate",
+            "Improve First Pass Yield",
+        ]
+    },
+    "Waste Reduction": {
+        "description": "Reduce waste by {x}%",
+        "sub_kpis": [
+            "Reduce Paper/Board Waste %",
+            "Reduce Ink Waste",
+            "Reduce Energy Consumption",
+            "Reduce Water Usage",
+            "Reduce Trim Waste",
+        ]
+    },
+    "Cost Reduction": {
+        "description": "Reduce costs by {x} K€/year",
+        "sub_kpis": [
+            "Reduce Maintenance Costs",
+            "Reduce Material Costs",
+            "Reduce Labour Costs",
+            "Reduce Energy Costs",
+            "Reduce Rework & Scrap Costs",
+        ]
+    },
+    "Safety Improvement": {
+        "description": "Improve safety performance",
+        "sub_kpis": [
+            "Reduce Near Miss Incidents",
+            "Reduce Lost Time Accidents (LTA)",
+            "Improve Safety Audit Score",
+            "Increase Near Miss Reporting Rate",
+            "Reduce Unsafe Conditions",
+        ]
+    },
+    "Delivery Performance": {
+        "description": "Improve on-time delivery by {x}%",
+        "sub_kpis": [
+            "Reduce Lead Time",
+            "Improve Schedule Adherence",
+            "Reduce Order Backlog",
+            "Improve OTIF (On Time In Full)",
+        ]
+    },
+    "5S Score Improvement": {
+        "description": "Improve 5S score from {baseline} to {target}",
+        "sub_kpis": [
+            "Improve Seiri (Sort) Score",
+            "Improve Seiton (Set in Order) Score",
+            "Improve Seiso (Shine) Score",
+            "Improve Seiketsu (Standardise) Score",
+            "Improve Shitsuke (Sustain) Score",
+        ]
+    },
+}
+
+DEFAULT_COMPANY_KPIS = ["Reduce Costs","Improve Customer Satisfaction","Increase OEE","Reduce Waste","Improve Safety","Improve Delivery Performance","Increase Productivity"]
+
 # ════════════════════════════════════════
 # HELPERS
 # ════════════════════════════════════════
@@ -498,12 +591,20 @@ def render_fi_projects_tab(supabase, role, pillar, name):
         with st.expander("🆕 Create New Project", expanded=True):
             with st.form("fi_new_proj_form"):
                 np1, np2 = st.columns(2)
-                new_name     = np1.text_input("Project Name *")
-                new_area     = np2.text_input("Target Machine / Area / Line")
+                new_name    = np1.text_input("Project Name *")
+                # Section + machine for new project
+                new_section = np2.selectbox("Section / Area *", list(PLANT_SECTIONS.keys()), key="fi_new_section")
+                _new_machines = PLANT_SECTIONS.get(new_section,[])
+                if _new_machines:
+                    new_machine = st.selectbox("Machine", ["— All / General —"]+_new_machines, key="fi_new_machine")
+                    new_area = f"{new_section} — {new_machine}" if new_machine != "— All / General —" else new_section
+                else:
+                    new_area = new_section
                 new_problem  = st.text_area("Problem Statement *", height=80)
                 nd1, nd2 = st.columns(2)
                 new_launch   = nd1.date_input("Launch Date", value=date.today())
-                new_expected = nd2.date_input("Expected Completion", value=date.today()+timedelta(weeks=12))
+                new_expected = nd2.date_input("Expected Completion (auto: 12 weeks)",
+                    value=new_launch+timedelta(weeks=12) if 'new_launch' in dir() else date.today()+timedelta(weeks=12))
                 new_kpi_link = st.text_input("Which company / plant KPI does this project support?")
                 new_kpi_imp  = st.text_area("How does this project impact that KPI?", height=60)
                 sub = st.form_submit_button("🚀 Create Project", type="primary")
@@ -527,6 +628,26 @@ def render_fi_projects_tab(supabase, role, pillar, name):
             if st.button("Cancel", key="fi_cancel_new"):
                 st.session_state["fi_creating_project"] = False
                 st.rerun()
+
+    # ── Plant Manager: Company KPI Settings ──
+    if role == "plant_manager":
+        with st.expander("⚙️ Manage Company KPIs (Plant Manager Only)", expanded=False):
+            st.caption("Add custom company KPIs that appear in the project setup dropdown.")
+            try:
+                _existing_ckpis = supabase.table("fi_company_kpis").select("*").execute().data or []
+            except Exception:
+                _existing_ckpis = []
+            if _existing_ckpis:
+                st.dataframe(pd.DataFrame(_existing_ckpis)[["kpi_name"]], use_container_width=True, hide_index=True)
+            with st.form("fi_add_company_kpi"):
+                new_ckpi = st.text_input("New Company KPI")
+                if st.form_submit_button("➕ Add"):
+                    if new_ckpi:
+                        try:
+                            supabase.table("fi_company_kpis").insert({"kpi_name":new_ckpi}).execute()
+                            st.success("✅ Added"); st.rerun()
+                        except Exception as e:
+                            st.error(f"Error: {e}")
 
     if not selected_project:
         return
@@ -575,20 +696,57 @@ def render_fi_projects_tab(supabase, role, pillar, name):
         # ── Section A: Project Identity ──
         with st.expander("🏷️ Project Identity", expanded=True):
             with st.form("fi_setup_identity"):
-                s1, s2 = st.columns(2)
-                setup_name    = s1.text_input("Project Name", value=selected_project.get("project_name",""))
-                setup_area    = s2.text_input("Target Machine / Area / Line", value=selected_project.get("target_area",""))
-                setup_problem = st.text_area("Problem Statement", value=selected_project.get("problem_statement",""), height=80)
+                setup_name = st.text_input("Project Name *", value=selected_project.get("project_name",""))
+                # Area: section + machine
+                _area_cols = st.columns(2)
+                _cur_area = selected_project.get("target_area","") or ""
+                _cur_section = _cur_area.split(" — ")[0] if " — " in _cur_area else list(PLANT_SECTIONS.keys())[0]
+                _cur_machine = _cur_area.split(" — ")[1] if " — " in _cur_area else ""
+                setup_section = _area_cols[0].selectbox("Section / Area *",
+                    list(PLANT_SECTIONS.keys()),
+                    index=list(PLANT_SECTIONS.keys()).index(_cur_section) if _cur_section in PLANT_SECTIONS else 0,
+                    key="fi_setup_section")
+                _machines = PLANT_SECTIONS.get(setup_section, [])
+                if _machines:
+                    setup_machine = _area_cols[1].selectbox("Machine",
+                        ["— All / General —"] + _machines,
+                        index=(_machines.index(_cur_machine)+1) if _cur_machine in _machines else 0,
+                        key="fi_setup_machine")
+                    setup_area = f"{setup_section} — {setup_machine}" if setup_machine != "— All / General —" else setup_section
+                else:
+                    _area_cols[1].caption("No sub-machines for this section")
+                    setup_area = setup_section
+
+                setup_problem = st.text_area("Problem Statement *", value=selected_project.get("problem_statement",""), height=80)
+
                 d1, d2 = st.columns(2)
-                setup_launch  = d1.date_input("Launch Date", value=date.fromisoformat(str(selected_project.get("launch_date", date.today()))))
-                setup_end     = d2.date_input("Expected Completion", value=date.fromisoformat(str(selected_project.get("expected_completion_date", date.today()+timedelta(weeks=12)))))
-                setup_kpi_link = st.text_input("Which company/plant KPI does this project support?", value=selected_project.get("company_kpi_link",""))
-                setup_kpi_imp  = st.text_area("How does this project impact that KPI?", value=selected_project.get("kpi_impact",""), height=60)
+                setup_launch = d1.date_input("Launch Date",
+                    value=date.fromisoformat(str(selected_project.get("launch_date", date.today()))[:10]))
+                # Expected completion auto-set to 12 weeks from launch
+                _auto_end = date.fromisoformat(str(selected_project.get("launch_date", date.today()))[:10]) + timedelta(weeks=12)
+                setup_end = d2.date_input("Expected Completion (auto: 12 weeks)",
+                    value=date.fromisoformat(str(selected_project.get("expected_completion_date", _auto_end))[:10]))
+
+                # Company KPI dropdown
+                _company_kpis = DEFAULT_COMPANY_KPIS.copy()
+                try:
+                    _custom_kpis = supabase.table("fi_company_kpis").select("kpi_name").execute().data or []
+                    _company_kpis += [k["kpi_name"] for k in _custom_kpis if k.get("kpi_name") not in _company_kpis]
+                except Exception:
+                    pass
+                _cur_kpi_link = selected_project.get("company_kpi_link","")
+                _kpi_idx = _company_kpis.index(_cur_kpi_link) if _cur_kpi_link in _company_kpis else 0
+                setup_kpi_link = st.selectbox("Which company/plant KPI does this project support?",
+                    _company_kpis, index=_kpi_idx)
+                setup_kpi_imp = st.text_area("How does this project impact that KPI?",
+                    value=selected_project.get("kpi_impact",""), height=60)
+
                 if st.form_submit_button("💾 Save Project Identity"):
                     supabase.table("fi_projects").update({
                         "project_name": setup_name, "target_area": setup_area,
                         "problem_statement": setup_problem,
-                        "launch_date": str(setup_launch), "expected_completion_date": str(setup_end),
+                        "launch_date": str(setup_launch),
+                        "expected_completion_date": str(setup_end),
                         "company_kpi_link": setup_kpi_link, "kpi_impact": setup_kpi_imp,
                     }).eq("id", pid).execute()
                     st.success("✅ Saved"); st.rerun()
@@ -612,7 +770,17 @@ def render_fi_projects_tab(supabase, role, pillar, name):
                 m_name  = mc1.text_input("Name *")
                 m_role  = mc2.selectbox("Role", TEAM_ROLES)
                 m_dept  = mc3.text_input("Department")
-                m_cont  = st.text_input("Individual contribution target (what is this person responsible for?)")
+                # Contribution linked to KPI focus areas
+                _kpi_focus_opts = []
+                if kpi:
+                    _kf = kpi.get("sub_kpi_focus","")
+                    if _kf: _kpi_focus_opts = [s.strip() for s in _kf.split(",") if s.strip()]
+                if _kpi_focus_opts:
+                    m_cont = st.selectbox("Contribution Target (linked to project KPI focus)",
+                        [""]+_kpi_focus_opts)
+                else:
+                    m_cont = st.text_input("Contribution Target",
+                        placeholder="Define KPI focus areas first to get a dropdown here")
                 if st.form_submit_button("➕ Add Team Member"):
                     if m_name:
                         supabase.table("fi_project_team").insert({
@@ -625,36 +793,65 @@ def render_fi_projects_tab(supabase, role, pillar, name):
         with st.expander("📊 KPI & Performance Indicator", expanded=True):
             kpi_vals = kpi or {}
             with st.form("fi_kpi_form"):
+                # KPI Category dropdown
+                _kpi_cats = list(KPI_TREE.keys())
+                _cur_kpi_cat = kpi_vals.get("kpi_category","OEE Improvement")
+                _kpi_cat_idx = _kpi_cats.index(_cur_kpi_cat) if _cur_kpi_cat in _kpi_cats else 0
+                kpi_category = st.selectbox("KPI Category *", _kpi_cats, index=_kpi_cat_idx)
+                st.caption(f"*{KPI_TREE[kpi_category]['description']}*")
+
+                # Sub-KPIs multiselect
+                _sub_kpi_opts = KPI_TREE[kpi_category]["sub_kpis"]
+                _cur_sub = kpi_vals.get("sub_kpi_focus","")
+                _cur_subs = [s.strip() for s in _cur_sub.split(",") if s.strip() in _sub_kpi_opts] if _cur_sub else []
+                kpi_sub_focus = st.multiselect("Focus Areas (select what this project will specifically address)",
+                    _sub_kpi_opts, default=_cur_subs)
+
                 k1,k2 = st.columns(2)
-                kpi_name = k1.text_input("KPI Name", value=kpi_vals.get("kpi_name",""), placeholder="e.g. Defects per week")
-                kpi_unit = k2.text_input("Unit of measurement", value=kpi_vals.get("unit",""), placeholder="e.g. defects, %, tons")
+                kpi_name = k1.text_input("KPI Metric Name",
+                    value=kpi_vals.get("kpi_name","") or kpi_category,
+                    placeholder="e.g. OEE %, Defects per week")
+                kpi_unit = k2.text_input("Unit of measurement",
+                    value=kpi_vals.get("unit",""),
+                    placeholder="e.g. %, defects, K€")
                 k3,k4,k5 = st.columns(3)
-                kpi_baseline = k3.number_input("Baseline / Start Value", value=float(kpi_vals.get("baseline_value",0) or 0))
-                kpi_target   = k4.number_input("Final Target Value",      value=float(kpi_vals.get("target_value",0) or 0))
-                kpi_tdate    = k5.date_input("Target Achievement Date",
-                    value=date.fromisoformat(str(kpi_vals.get("target_date",date.today()))) if kpi_vals.get("target_date") else date.today())
-                kpi_sub_toggle = st.checkbox("Break this KPI into sub-components?",
-                    value=bool(kpi_vals.get("sub_components")))
+                kpi_baseline = k3.number_input("Baseline / Current Value",
+                    value=float(kpi_vals.get("baseline_value",0) or 0))
+                kpi_target   = k4.number_input("Target Value",
+                    value=float(kpi_vals.get("target_value",0) or 0))
+                # Auto-set target date to 12 weeks from launch
+                _launch = selected_project.get("launch_date", date.today())
+                _auto_kpi_date = date.fromisoformat(str(_launch)[:10]) + timedelta(weeks=12)
+                kpi_tdate = k5.date_input("Target Achievement Date",
+                    value=date.fromisoformat(str(kpi_vals.get("target_date",_auto_kpi_date))[:10]) if kpi_vals.get("target_date") else _auto_kpi_date)
+
+                # Sub-components linked to focus areas
                 sub_components = []
-                if kpi_sub_toggle:
-                    st.caption("Add sub-components below:")
+                if kpi_sub_focus:
+                    st.divider()
+                    st.caption("Set baseline & target for each focus area:")
                     existing_subs = kpi_vals.get("sub_components") or []
                     if isinstance(existing_subs, str):
                         try: existing_subs = json.loads(existing_subs)
                         except: existing_subs = []
-                    n_subs = st.number_input("Number of sub-components", min_value=1, max_value=6, value=max(1,len(existing_subs)))
-                    for si in range(int(n_subs)):
-                        existing = existing_subs[si] if si < len(existing_subs) else {}
+                    sub_by_name = {s.get("name",""): s for s in existing_subs if isinstance(s,dict)}
+                    for si, focus in enumerate(kpi_sub_focus):
+                        existing = sub_by_name.get(focus,{})
                         sc1,sc2,sc3,sc4 = st.columns(4)
+                        sc1.markdown(f"**{focus}**")
                         sub_components.append({
-                            "name":     sc1.text_input(f"Sub-component {si+1}", value=existing.get("name",""), key=f"sub_n_{si}"),
+                            "name":     focus,
                             "baseline": sc2.number_input("Baseline", value=float(existing.get("baseline",0)), key=f"sub_b_{si}"),
-                            "target":   sc3.number_input("Target", value=float(existing.get("target",0)), key=f"sub_t_{si}"),
-                            "owner":    sc4.selectbox("Owner", [""]+[m["member_name"] for m in team], key=f"sub_o_{si}"),
+                            "target":   sc3.number_input("Target",   value=float(existing.get("target",0)),   key=f"sub_t_{si}"),
+                            "owner":    sc4.selectbox("Owner", [""]+[m["member_name"] for m in team], key=f"sub_o_{si}",
+                                index=[""]+[m["member_name"] for m in team].index(existing.get("owner","")) if existing.get("owner") in [m["member_name"] for m in team] else 0),
                         })
+
                 if st.form_submit_button("💾 Save KPI"):
                     kpi_data = {
                         "project_id":pid,"kpi_name":kpi_name,"unit":kpi_unit,
+                        "kpi_category":kpi_category,
+                        "sub_kpi_focus":",".join(kpi_sub_focus),
                         "baseline_value":kpi_baseline,"target_value":kpi_target,
                         "target_date":str(kpi_tdate),"sub_components":json.dumps(sub_components)
                     }
