@@ -37,7 +37,7 @@ st.divider()
 mpl.rcParams["font.family"] = "DejaVu Sans"
 mpl.rcParams["font.size"]   = 11
 
-tab1, = st.tabs(["📊 OEE Report & Analysis"])
+tab1, tab_projects = st.tabs(["📊 OEE Report & Analysis", "📋 FI Projects"])
 
 # ════════════════════════════════════════
 # SHARED CHART HELPERS
@@ -242,6 +242,18 @@ def parse_converting(file_bytes, filename=""):
 # ════════════════════════════════════════
 # TAB 1
 # ════════════════════════════════════════
+# ── FI Projects Tab ──
+import importlib.util as _ilu, sys as _sys, os as _os
+_fi_proj_path = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))), "fi_projects_tab.py")
+if _os.path.exists(_fi_proj_path):
+    _spec = _ilu.spec_from_file_location("fi_projects_tab", _fi_proj_path)
+    _fi_mod = _ilu.module_from_spec(_spec); _spec.loader.exec_module(_fi_mod)
+    with tab_projects:
+        _fi_mod.render_fi_projects_tab(supabase, role, pillar, name)
+else:
+    with tab_projects:
+        st.warning("fi_projects_tab.py not found in project root.")
+
 with tab1:
     st.markdown("### 📊 OEE Report & Analysis")
     st.caption("Upload one or both OEE report files, then click Generate Analysis.")
