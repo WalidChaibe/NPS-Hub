@@ -200,7 +200,7 @@ def _fig_to_png(fig):
 def _gantt_chart(steps, weekly_updates, current_week):
     if not steps: return None
     n = len(steps)
-    fig, ax = plt.subplots(figsize=(14, max(3, n*0.7+1.5)), dpi=130)
+    fig, ax = plt.subplots(figsize=(14, max(3, n*0.8+1.5)), dpi=200)
     fig.patch.set_facecolor("#FAFAFA")
     ax.set_facecolor("#FAFAFA")
 
@@ -870,111 +870,120 @@ def render_fi_projects_tab(supabase, role, pillar, name):
                         st.rerun()
 
         # ── Section C: KPI & KAI ──
-        with st.expander("📊 KPI & KAI (Key Activity Indicators)", expanded=True):
+        with st.expander("📊 KPI & KAI", expanded=True):
             kpi_vals = kpi or {}
+            _launch  = selected_project.get("launch_date", date.today())
+            _auto_dt = date.fromisoformat(str(_launch)[:10]) + timedelta(weeks=12)
 
-            # ── Step 1: KPI Category (outside form so KAI list reacts) ──
-            _kpi_cats = list(KPI_TREE.keys())
-            _cur_cat  = kpi_vals.get("kpi_category","OEE Improvement")
-            _cat_idx  = _kpi_cats.index(_cur_cat) if _cur_cat in _kpi_cats else 0
-            kpi_category = st.selectbox(
-                "📌 KPI — What is the main goal of this project?",
-                _kpi_cats, index=_cat_idx, key="fi_kpi_cat",
-                help="KPI = the single big metric this project is trying to move"
-            )
-            _kai_opts  = KPI_TREE[kpi_category]["kais"]
-            _def_unit  = KPI_TREE[kpi_category]["unit"]
-
-            # ── Step 2: KPI overall metric ──
-            st.caption(f"Default unit for this KPI: **{_def_unit}**")
-            with st.form("fi_kpi_overall"):
-                _k1,_k2,_k3,_k4,_k5 = st.columns(5)
-                kpi_name     = _k1.text_input("KPI Name",
-                    value=kpi_vals.get("kpi_name","") or kpi_category)
-                _avail_units = UNITS
-                _cur_unit    = kpi_vals.get("unit", _def_unit)
-                _unit_idx    = _avail_units.index(_cur_unit) if _cur_unit in _avail_units else 0
-                kpi_unit     = _k2.selectbox("Unit", _avail_units, index=_unit_idx)
-                kpi_baseline = _k3.number_input("Baseline", value=float(kpi_vals.get("baseline_value",0) or 0))
-                kpi_target   = _k4.number_input("Target",   value=float(kpi_vals.get("target_value",0)   or 0))
-                _launch      = selected_project.get("launch_date", date.today())
-                _auto_dt     = date.fromisoformat(str(_launch)[:10]) + timedelta(weeks=12)
-                kpi_tdate    = _k5.date_input("Target Date",
-                    value=date.fromisoformat(str(kpi_vals.get("target_date",_auto_dt))[:10])
-                    if kpi_vals.get("target_date") else _auto_dt)
-                if st.form_submit_button("💾 Save KPI"):
-                    _kdata = {
-                        "project_id":pid, "kpi_name":kpi_name, "unit":kpi_unit,
-                        "kpi_category":kpi_category,
-                        "baseline_value":kpi_baseline, "target_value":kpi_target,
-                        "target_date":str(kpi_tdate),
-                        "sub_components": kpi_vals.get("sub_components","[]")
-                    }
-                    if kpi: supabase.table("fi_project_kpi").update(_kdata).eq("id",kpi["id"]).execute()
-                    else:   supabase.table("fi_project_kpi").insert(_kdata).execute()
-                    st.success("✅ KPI saved"); st.rerun()
-
-            # ── Step 3: KAIs ──
-            st.divider()
-            st.markdown("**📋 KAIs — Key Activity Indicators**")
-            st.caption("Select the specific activities this project will address, then set metric / unit / baseline / target / responsible.")
-
-            # KAI multiselect outside form
+            # Existing KAIs
             _existing_subs = kpi_vals.get("sub_components") or []
             if isinstance(_existing_subs, str):
                 try: _existing_subs = json.loads(_existing_subs)
                 except: _existing_subs = []
+
+            # ── KPI selector OUTSIDE form so KAIs react ──
+            _kpi_cats = list(KPI_TREE.keys())
+            _cur_cat  = kpi_vals.get("kpi_category","OEE Improvement")
+            _cat_idx  = _kpi_cats.index(_cur_cat) if _cur_cat in _kpi_cats else 0
+
+            st.markdown("**Step 1 — Select the KPI this project targets:**")
+            kpi_category = st.selectbox("KPI", _kpi_cats, index=_cat_idx, key="fi_kpi_cat")
+            _def_unit    = KPI_TREE[kpi_category]["unit"]
+            _kai_opts    = KPI_TREE[kpi_category]["kais"]
+
+            # KAI selector OUTSIDE form so it reacts to KPI change
+            st.markdown("**Step 2 — Which KAIs will this project address?**")
+            st.caption(f"KAIs are the sub-activities that drive the **{kpi_category}** KPI.")
             _existing_kai_names = [s.get("name","") for s in _existing_subs if isinstance(s,dict)]
             _def_kais = [k for k in _existing_kai_names if k in _kai_opts]
-            selected_kais = st.multiselect(
-                "Select KAIs for this project",
-                _kai_opts, default=_def_kais, key="fi_kai_select",
-                help="KAI = the specific activities that will drive the KPI improvement"
-            )
+            selected_kais = st.multiselect("KAIs (select all that apply)",
+                _kai_opts, default=_def_kais, key="fi_kai_select")
 
-            if selected_kais:
-                with st.form("fi_kai_form"):
-                    _team_names = [""]+[m["member_name"] for m in team]
+            # ── Single unified form: KPI header + KAI rows ──
+            st.markdown("**Step 3 — Set baselines, targets and responsible persons:**")
+            with st.form("fi_kpi_kai_form"):
+                # KPI header row
+                st.markdown(f"##### 🎯 KPI: {kpi_category}")
+                _h1,_h2,_h3,_h4,_h5 = st.columns([3,2,1.5,1.5,2])
+                _h1.markdown("**KPI Name**")
+                _h2.markdown(f"**Unit** *(default: {_def_unit})*")
+                _h3.markdown("**Baseline**")
+                _h4.markdown("**Target**")
+                _h5.markdown("**Target Date**")
+
+                _c1,_c2,_c3,_c4,_c5 = st.columns([3,2,1.5,1.5,2])
+                kpi_name     = _c1.text_input("KPI Name", label_visibility="collapsed",
+                    value=kpi_vals.get("kpi_name","") or kpi_category)
+                _cur_unit    = kpi_vals.get("unit",_def_unit)
+                _u_idx       = UNITS.index(_cur_unit) if _cur_unit in UNITS else 0
+                kpi_unit     = _c2.selectbox("Unit", UNITS, index=_u_idx, label_visibility="collapsed")
+                kpi_baseline = _c3.number_input("Baseline", label_visibility="collapsed",
+                    value=float(kpi_vals.get("baseline_value",0) or 0))
+                kpi_target   = _c4.number_input("Target", label_visibility="collapsed",
+                    value=float(kpi_vals.get("target_value",0) or 0))
+                kpi_tdate    = _c5.date_input("Target Date", label_visibility="collapsed",
+                    value=date.fromisoformat(str(kpi_vals.get("target_date",_auto_dt))[:10])
+                    if kpi_vals.get("target_date") else _auto_dt)
+
+                # KAI rows — indented under KPI
+                kai_rows = []
+                if selected_kais:
+                    st.divider()
+                    st.markdown("**KAIs ↳**")
+                    _rh1,_rh2,_rh3,_rh4,_rh5 = st.columns([3,2,1.5,1.5,2])
+                    _rh1.caption("KAI")
+                    _rh2.caption("Unit")
+                    _rh3.caption("Baseline")
+                    _rh4.caption("Target")
+                    _rh5.caption("Responsible")
                     _sub_by_name = {s.get("name",""): s for s in _existing_subs if isinstance(s,dict)}
-                    kai_rows = []
-                    st.markdown("| KAI | Unit | Baseline | Target | Responsible |")
+                    _team_names  = [""]+[m["member_name"] for m in team]
                     for si, kai in enumerate(selected_kais):
-                        ex = _sub_by_name.get(kai,{})
-                        _c1,_c2,_c3,_c4,_c5 = st.columns([3,2,1.5,1.5,2])
-                        _c1.markdown(f"**{kai}**")
-                        _u = ex.get("unit",_def_unit)
-                        _u_idx = UNITS.index(_u) if _u in UNITS else 0
-                        _ow = ex.get("owner","")
-                        _ow_idx = _team_names.index(_ow) if _ow in _team_names else 0
+                        ex   = _sub_by_name.get(kai,{})
+                        k1,k2,k3,k4,k5 = st.columns([3,2,1.5,1.5,2])
+                        k1.markdown(f"↳ {kai}")
+                        _ku  = ex.get("unit",_def_unit)
+                        _kui = UNITS.index(_ku) if _ku in UNITS else 0
+                        _ko  = ex.get("owner","")
+                        _koi = _team_names.index(_ko) if _ko in _team_names else 0
                         kai_rows.append({
                             "name":     kai,
-                            "unit":     _c2.selectbox("Unit",     UNITS,        index=_u_idx,  key=f"kai_u_{si}"),
-                            "baseline": _c3.number_input("Baseline", value=float(ex.get("baseline",0)), key=f"kai_b_{si}"),
-                            "target":   _c4.number_input("Target",   value=float(ex.get("target",0)),   key=f"kai_t_{si}"),
-                            "owner":    _c5.selectbox("Responsible", _team_names, index=_ow_idx, key=f"kai_o_{si}"),
+                            "unit":     k2.selectbox("Unit",       UNITS,       index=_kui, key=f"kai_u_{si}", label_visibility="collapsed"),
+                            "baseline": k3.number_input("Baseline", value=float(ex.get("baseline",0)), key=f"kai_b_{si}", label_visibility="collapsed"),
+                            "target":   k4.number_input("Target",   value=float(ex.get("target",0)),   key=f"kai_t_{si}", label_visibility="collapsed"),
+                            "owner":    k5.selectbox("Responsible", _team_names, index=_koi, key=f"kai_o_{si}", label_visibility="collapsed"),
                         })
-                    if st.form_submit_button("💾 Save KAIs"):
-                        _kdata2 = {"sub_components": json.dumps(kai_rows), "sub_kpi_focus": ",".join(selected_kais)}
-                        if kpi: supabase.table("fi_project_kpi").update(_kdata2).eq("id",kpi["id"]).execute()
-                        else:
-                            # Create KPI row first with defaults
-                            _base = {"project_id":pid,"kpi_name":kpi_category,"unit":_def_unit,
-                                     "kpi_category":kpi_category,"baseline_value":0,"target_value":0,
-                                     "target_date":str(_auto_dt)}
-                            _base.update(_kdata2)
-                            supabase.table("fi_project_kpi").insert(_base).execute()
-                        st.success("✅ KAIs saved"); st.rerun()
 
-            # Show saved KAIs as clean table
-            if _existing_subs:
+                if st.form_submit_button("💾 Save KPI & KAIs", type="primary"):
+                    _save = {
+                        "project_id":   pid,
+                        "kpi_name":     kpi_name,
+                        "unit":         kpi_unit,
+                        "kpi_category": kpi_category,
+                        "sub_kpi_focus": ",".join(selected_kais),
+                        "baseline_value": kpi_baseline,
+                        "target_value":   kpi_target,
+                        "target_date":    str(kpi_tdate),
+                        "sub_components": json.dumps(kai_rows),
+                    }
+                    if kpi: supabase.table("fi_project_kpi").update(_save).eq("id",kpi["id"]).execute()
+                    else:   supabase.table("fi_project_kpi").insert(_save).execute()
+                    st.success("✅ KPI & KAIs saved"); st.rerun()
+
+            # Summary card
+            if kpi and _existing_subs:
                 st.divider()
-                st.markdown("**Current KAIs:**")
-                _kai_display = pd.DataFrame([{
-                    "KAI": s.get("name",""), "Unit": s.get("unit",""),
-                    "Baseline": s.get("baseline",""), "Target": s.get("target",""),
-                    "Responsible": s.get("owner","—")
+                st.markdown(f"**Current KPI:** {kpi_vals.get('kpi_name','')} — "
+                            f"Baseline: **{kpi_vals.get('baseline_value','')}** → "
+                            f"Target: **{kpi_vals.get('target_value','')}** {kpi_vals.get('unit','')}")
+                _kd = pd.DataFrame([{
+                    "KAI": s.get("name",""),
+                    "Unit": s.get("unit",""),
+                    "Baseline": s.get("baseline",""),
+                    "Target": s.get("target",""),
+                    "Responsible": s.get("owner","—"),
                 } for s in _existing_subs if isinstance(s,dict)])
-                st.dataframe(_kai_display, use_container_width=True, hide_index=True)
+                st.dataframe(_kd, use_container_width=True, hide_index=True)
 
         # ── Section D: Cost/Benefit (unlocks week 5) ──
         if current_week >= 5:
