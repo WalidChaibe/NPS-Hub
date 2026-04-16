@@ -137,8 +137,18 @@ def _kpi_trend_chart(kpi_data, baseline, target, weeks_data):
     return fig
 
 def _score_project(project, team, kpi, steps, weekly_updates, actions, stab, audit_records):
-    scores = {}
+    scores = {q: 0 for q in range(1, 37)}  # default all zero
+    stab = stab or {}
+    team = team or []
+    steps = steps or []
+    actions = actions or []
+    weekly_updates = weekly_updates or []
+    audit_records = audit_records or []
     wu_by_week = {w["week_number"]: w for w in weekly_updates}
+
+    def _safe_date(d):
+        try: return date.fromisoformat(str(d)[:10])
+        except: return None
 
     # Q1 — team members listed
     scores[1] = 1 if len(team) >= 1 else 0
@@ -186,7 +196,7 @@ def _score_project(project, team, kpi, steps, weekly_updates, actions, stab, aud
     recent_actions = [a for a in actions if a.get("created_week") == current_week]
     scores[21] = 2 if recent_actions else 0
     # Q22 — majority completed on time
-    past_due = [a for a in actions if a.get("target_date") and date.fromisoformat(str(a["target_date"])) < date.today()]
+    past_due = [a for a in actions if a.get("target_date") and _safe_date(a["target_date"]) and _safe_date(a["target_date"]) < date.today()]
     on_time = [a for a in past_due if a.get("status") == "Completed"]
     scores[22] = 3 if (past_due and len(on_time)/len(past_due) >= 0.5) else 0
     # Q23 — evidence uploaded
@@ -1096,8 +1106,14 @@ def render_fi_projects_tab(supabase, role, pillar, name):
             st.caption("Visible to Plant Manager and Pillar Leader only. The team never sees this.")
 
             # Refresh data for scoring
-            stab_fresh = (supabase.table("fi_stabilisation").select("*").eq("project_id",pid).execute().data or [None])[0]
-            scores, total = _score_project(selected_project, team, kpi, steps, wu_rows, actions, stab_fresh, audit_records)
+            _stab_fresh_rows = supabase.table("fi_stabilisation").select("*").eq("project_id",pid).execute().data or []
+            stab_fresh = _stab_fresh_rows[0] if _stab_fresh_rows else {}
+            try:
+                scores, total = _score_project(selected_project, team, kpi, steps, wu_rows, actions, stab_fresh, audit_records)
+            except Exception as _score_err:
+                st.error(f"Scoring error: {_score_err}")
+                scores = {q: 0 for q in QUESTIONS}
+                total = 0
 
             # Overall score
             score_color = "green" if total >= 70 else "orange" if total >= 45 else "red"
