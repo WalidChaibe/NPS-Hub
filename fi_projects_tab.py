@@ -535,7 +535,7 @@ def render_fi_projects_tab(supabase, role, pillar, name):
         actions    = (supabase.table("fi_actions").select("*").eq("project_id",pid).order("created_at").execute().data or [])
         stab_rows  = (supabase.table("fi_stabilisation").select("*").eq("project_id",pid).execute().data or [])
         stab       = stab_rows[0] if stab_rows else None
-        audit_recs = (supabase.table("fi_audit_records").select("*").eq("project_id",pid).order("week_number").execute().data or [])
+        audit_records = (supabase.table("fi_audit_records").select("*").eq("project_id",pid).order("week_number").execute().data or [])
     except Exception as e:
         st.error(f"Error loading project data: {e}"); return
 
@@ -1130,7 +1130,8 @@ def render_fi_projects_tab(supabase, role, pillar, name):
             # Score trajectory chart
             traj_weeks = sorted(TARGET_RAMP.keys())
             traj_targets = [TARGET_RAMP[w] for w in traj_weeks]
-            audit_scores_by_week = {ar["week_number"]: ar.get("total_score",0) for ar in audit_records}
+            _audit_recs_safe = audit_records or []
+            audit_scores_by_week = {ar["week_number"]: ar.get("total_score",0) for ar in _audit_recs_safe}
             actual_weeks = sorted(audit_scores_by_week.keys())
             actual_scores = [audit_scores_by_week[w] for w in actual_weeks]
             fig_traj, ax_traj = plt.subplots(figsize=(10,4), dpi=100)
