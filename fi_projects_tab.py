@@ -900,23 +900,23 @@ def render_fi_projects_tab(supabase, role, pillar, name):
                 _kai_opts, default=_def_kais, key="fi_kai_select")
 
             # ── Unified form: KPI + KAIs together ──
+            # KPI overall baseline/target — compact, outside form style
+            st.markdown(f"##### 🎯 {kpi_category}")
             with st.form("fi_kpi_kai_form"):
-                # KPI row
-                st.markdown(f"##### 🎯 {kpi_category}")
-                _h1,_h2,_h3,_h4 = st.columns([2,1.5,1.5,2])
-                _h1.caption("KPI Name"); _h2.caption(f"Unit"); _h3.caption("Baseline → Target"); _h4.caption("Target Date")
-                _c1,_c2,_c3,_c4 = st.columns([2,1.5,1.5,2])
-                kpi_name     = _c1.text_input("KPI Name", label_visibility="collapsed",
-                    value=kpi_vals.get("kpi_name","") or kpi_category)
-                _cur_unit    = kpi_vals.get("unit",_def_unit)
-                _u_idx       = UNITS.index(_cur_unit) if _cur_unit in UNITS else 0
-                kpi_unit     = _c2.selectbox("Unit", UNITS, index=_u_idx, label_visibility="collapsed")
-                _bv, _tv = st.columns([1,1]) if False else (_c3, _c3)  # reuse col
-                kpi_baseline = _c3.number_input("Baseline", label_visibility="collapsed",
-                    value=float(kpi_vals.get("baseline_value",0) or 0), key="kpi_base")
-                kpi_target   = _c3.number_input("Target", label_visibility="collapsed",
-                    value=float(kpi_vals.get("target_value",0) or 0), key="kpi_targ")
-                kpi_tdate    = _c4.date_input("Target Date", label_visibility="collapsed",
+                # KPI numbers: just baseline, target, unit, date
+                _pk1,_pk2,_pk3,_pk4 = st.columns(4)
+                _pk1.caption("Unit")
+                _pk2.caption("Baseline")
+                _pk3.caption("Target")
+                _pk4.caption("Target Date")
+                _cur_unit = kpi_vals.get("unit",_def_unit)
+                _u_idx    = UNITS.index(_cur_unit) if _cur_unit in UNITS else 0
+                kpi_unit     = _pk1.selectbox("Unit", UNITS, index=_u_idx, label_visibility="collapsed")
+                kpi_baseline = _pk2.number_input("Baseline", label_visibility="collapsed",
+                    value=float(kpi_vals.get("baseline_value",0) or 0))
+                kpi_target   = _pk3.number_input("Target", label_visibility="collapsed",
+                    value=float(kpi_vals.get("target_value",0) or 0))
+                kpi_tdate    = _pk4.date_input("Target Date", label_visibility="collapsed",
                     value=date.fromisoformat(str(kpi_vals.get("target_date",_auto_dt))[:10])
                     if kpi_vals.get("target_date") else _auto_dt)
 
@@ -925,13 +925,13 @@ def render_fi_projects_tab(supabase, role, pillar, name):
                 if selected_kais:
                     st.divider()
                     _rh1,_rh2,_rh3,_rh4,_rh5 = st.columns([3,1.5,1.2,1.2,2])
-                    _rh1.caption("↳ KAI"); _rh2.caption("Unit"); _rh3.caption("Baseline"); _rh4.caption("Target"); _rh5.caption("Responsible")
+                    _rh1.caption("KAI"); _rh2.caption("Unit"); _rh3.caption("Baseline"); _rh4.caption("Target"); _rh5.caption("Responsible")
                     _sub_by_name = {s.get("name",""): s for s in _existing_subs if isinstance(s,dict)}
                     _team_names  = [""]+[m["member_name"] for m in team]
                     for si, kai in enumerate(selected_kais):
                         ex   = _sub_by_name.get(kai,{})
                         k1,k2,k3,k4,k5 = st.columns([3,1.5,1.2,1.2,2])
-                        k1.markdown(f"↳ **{kai}**")
+                        k1.markdown(f"↳ {kai}")
                         _ku  = ex.get("unit",_def_unit)
                         _kui = UNITS.index(_ku) if _ku in UNITS else 0
                         _ko  = ex.get("owner","")
@@ -946,7 +946,7 @@ def render_fi_projects_tab(supabase, role, pillar, name):
 
                 if st.form_submit_button("💾 Save KPI & KAIs", type="primary"):
                     _save = {
-                        "project_id": pid, "kpi_name": kpi_name, "unit": kpi_unit,
+                        "project_id": pid, "kpi_name": kpi_category, "unit": kpi_unit,
                         "kpi_category": kpi_category, "sub_kpi_focus": ",".join(selected_kais),
                         "baseline_value": kpi_baseline, "target_value": kpi_target,
                         "target_date": str(kpi_tdate), "sub_components": json.dumps(kai_rows),
@@ -1069,34 +1069,42 @@ def render_fi_projects_tab(supabase, role, pillar, name):
                 PCT_OPTS = ["0%","25%","50%","75%","100%"]
                 STAT_OPTS = ["Not Started","In Progress","Completed"]
 
-                with st.form(f"fi_step_progress_{sel_week}"):
-                    new_sp = []
-                    # Max 5 steps per row
-                    _chunks = [steps[i:i+5] for i in range(0,len(steps),5)]
-                    for chunk in _chunks:
-                        cols = st.columns(len(chunk))
-                        for ci, step in enumerate(chunk):
-                            sid = str(step["id"])
-                            ex  = sp_by_id.get(sid,{})
-                            with cols[ci]:
-                                st.markdown(f"**{step['step_name']}**")
-                                st.caption(f"W{step.get('planned_start_week','')}→W{step.get('planned_end_week','')} | {step.get('owner','')}")
-                                _st_idx = STAT_OPTS.index(ex.get("status","Not Started")) if ex.get("status") in STAT_OPTS else 0
-                                _pct_str = f"{int(ex.get('pct_complete',0))}%"
-                                _pct_str = _pct_str if _pct_str in PCT_OPTS else "0%"
-                                status = st.selectbox("Status", STAT_OPTS, index=_st_idx, key=f"sp_s_{sid}", label_visibility="collapsed")
-                                pct_sel = st.selectbox("Progress", PCT_OPTS,
-                                    index=PCT_OPTS.index(_pct_str), key=f"sp_p_{sid}", label_visibility="collapsed")
-                                notes = st.text_input("Notes (optional)", value=ex.get("notes",""),
-                                    key=f"sp_n_{sid}", placeholder="Notes…", label_visibility="collapsed")
-                                new_sp.append({
-                                    "step_id": sid, "status": status,
-                                    "pct_complete": int(pct_sel.replace("%","")),
-                                    "notes": notes
-                                })
-                    if st.form_submit_button("💾 Save Step Progress", type="primary"):
-                        _save_wu({"step_progress":json.dumps(new_sp), "updated_by":name})
-                        st.rerun()
+                # Only show steps that have started by selected week
+                _due_steps = [s for s in steps if s.get("planned_start_week",1) <= sel_week]
+                _future_steps = [s for s in steps if s.get("planned_start_week",1) > sel_week]
+                if _future_steps:
+                    st.caption(f"⏳ {len(_future_steps)} step(s) not yet due — will appear in later weeks.")
+                if not _due_steps:
+                    st.info(f"No steps are due yet in Week {sel_week}.")
+                else:
+                    with st.form(f"fi_step_progress_{sel_week}"):
+                        new_sp = []
+                        _chunks = [_due_steps[i:i+5] for i in range(0,len(_due_steps),5)]
+                        for chunk in _chunks:
+                            cols = st.columns(len(chunk))
+                            for ci, step in enumerate(chunk):
+                                sid = str(step["id"])
+                                ex  = sp_by_id.get(sid,{})
+                                with cols[ci]:
+                                    st.markdown(f"**{step['step_name']}**")
+                                    st.caption(f"W{step.get('planned_start_week','')}→W{step.get('planned_end_week','')} | {step.get('owner','') or '—'}")
+                                    _pct_str = f"{int(ex.get('pct_complete',0))}%"
+                                    _pct_str = _pct_str if _pct_str in PCT_OPTS else "0%"
+                                    pct_sel = st.selectbox("Progress", PCT_OPTS,
+                                        index=PCT_OPTS.index(_pct_str), key=f"sp_p_{sid}",
+                                        label_visibility="collapsed")
+                                    notes = st.text_input("Notes", value=ex.get("notes",""),
+                                        key=f"sp_n_{sid}", placeholder="Notes…",
+                                        label_visibility="collapsed")
+                                    _pct_int = int(pct_sel.replace("%",""))
+                                    _auto_status = "Completed" if _pct_int==100 else "In Progress" if _pct_int>0 else "Not Started"
+                                    new_sp.append({
+                                        "step_id": sid, "status": _auto_status,
+                                        "pct_complete": _pct_int, "notes": notes
+                                    })
+                        if st.form_submit_button("💾 Save Step Progress", type="primary"):
+                            _save_wu({"step_progress":json.dumps(new_sp), "updated_by":name})
+                            st.rerun()
 
                 # Gantt
                 _wu_fresh = supabase.table("fi_weekly_updates").select("*").eq("project_id",pid).order("week_number").execute().data or []
@@ -1123,7 +1131,7 @@ def render_fi_projects_tab(supabase, role, pillar, name):
                 with st.form(f"fi_kpi_entry_{sel_week}"):
                     # KPI header
                     st.markdown(f"**🎯 {kpi.get('kpi_name','')}** — Baseline: {kpi.get('baseline_value','')} | Target: {kpi.get('target_value','')} {kpi.get('unit','')}")
-                    ke1,ke2,ke3 = st.columns(3)
+                    ke1,ke2 = st.columns(2)
                     kpi_val = ke1.number_input(
                         f"This week's value ({kpi.get('unit','')})",
                         value=float(wu.get("kpi_value",0) or 0))
@@ -1131,9 +1139,7 @@ def render_fi_projects_tab(supabase, role, pillar, name):
                         [m["member_name"] for m in team],
                         default=[x for x in (wu.get("kpi_collected_by","") or "").split(",")
                                  if x.strip() in [m["member_name"] for m in team]])
-                    shifts = ke3.multiselect("Shifts covered",
-                        ["Shift A","Shift B","Shift C","All"],
-                        default=[x for x in (wu.get("shifts_covered","") or "").split(",") if x.strip()])
+                    shifts = []  # removed
 
                     # KAI values — columnar, max 4 per row
                     kai_weekly = {}
