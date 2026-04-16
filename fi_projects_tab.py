@@ -655,7 +655,7 @@ def _generate_project_pdf(project, team, kpi, steps, weekly_updates, actions, st
 
     # ── Build PDF ──
     buf = io.BytesIO()
-    c = rl.Canvas(buf, pagesize=A4)
+    c = _rl_canvas.Canvas(buf, pagesize=A4)
     TOTAL_PAGES = 4
 
     # PAGE 1
