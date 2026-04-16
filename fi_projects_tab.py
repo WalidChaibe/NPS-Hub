@@ -84,81 +84,97 @@ PLANT_SECTIONS = {
     "Maintenance":    [],
 }
 
-# ── KPI tree ──
+# ── KPI → KAI tree ──
+# KPI = Key Performance Indicator (the big goal)
+# KAI = Key Activity Indicator (measurable sub-actions that drive the KPI)
 KPI_TREE = {
     "OEE Improvement": {
-        "description": "Increase Overall Equipment Effectiveness by {x}%",
-        "sub_kpis": [
-            "Decrease Planned Maintenance Time",
-            "Decrease Unplanned Breakdowns",
-            "Decrease Minor Stoppages",
-            "Decrease Setup & Changeover Time",
-            "Decrease Speed Losses",
-            "Increase Availability",
+        "unit": "%",
+        "kais": [
+            "Reduce Breakdown Time",
+            "Reduce Minor Stoppages",
+            "Reduce Setup & Changeover Time",
+            "Reduce Planned Maintenance Time",
+            "Reduce Speed Losses",
+            "Increase Availability Rate",
             "Increase Performance Rate",
             "Increase Quality Rate",
         ]
     },
     "Quality Defect Reduction": {
-        "description": "Reduce quality defects / complaints by {x}%",
-        "sub_kpis": [
-            "Reduce Customer Complaints (CRM)",
+        "unit": "%",
+        "kais": [
+            "Reduce Customer Complaints Count",
             "Reduce Internal Defects (PPM)",
             "Reduce Rework Rate",
             "Reduce Scrap Rate",
             "Improve First Pass Yield",
+            "Reduce NCR Count",
         ]
     },
     "Waste Reduction": {
-        "description": "Reduce waste by {x}%",
-        "sub_kpis": [
-            "Reduce Paper/Board Waste %",
-            "Reduce Ink Waste",
-            "Reduce Energy Consumption",
-            "Reduce Water Usage",
+        "unit": "%",
+        "kais": [
+            "Reduce Paper / Board Waste %",
             "Reduce Trim Waste",
+            "Reduce Ink & Chemical Waste",
+            "Reduce Energy Consumption",
+            "Reduce Sheet Waste",
         ]
     },
     "Cost Reduction": {
-        "description": "Reduce costs by {x} K€/year",
-        "sub_kpis": [
-            "Reduce Maintenance Costs",
+        "unit": "K€",
+        "kais": [
+            "Reduce Maintenance Spend",
             "Reduce Material Costs",
-            "Reduce Labour Costs",
+            "Reduce Labour Overtime",
             "Reduce Energy Costs",
             "Reduce Rework & Scrap Costs",
         ]
     },
     "Safety Improvement": {
-        "description": "Improve safety performance",
-        "sub_kpis": [
+        "unit": "Count",
+        "kais": [
             "Reduce Near Miss Incidents",
-            "Reduce Lost Time Accidents (LTA)",
+            "Reduce Lost Time Accidents",
             "Improve Safety Audit Score",
             "Increase Near Miss Reporting Rate",
-            "Reduce Unsafe Conditions",
+            "Eliminate Unsafe Conditions (Tags)",
         ]
     },
     "Delivery Performance": {
-        "description": "Improve on-time delivery by {x}%",
-        "sub_kpis": [
-            "Reduce Lead Time",
+        "unit": "%",
+        "kais": [
+            "Reduce Order Lead Time",
             "Improve Schedule Adherence",
+            "Improve OTIF Rate",
             "Reduce Order Backlog",
-            "Improve OTIF (On Time In Full)",
         ]
     },
     "5S Score Improvement": {
-        "description": "Improve 5S score from {baseline} to {target}",
-        "sub_kpis": [
-            "Improve Seiri (Sort) Score",
-            "Improve Seiton (Set in Order) Score",
-            "Improve Seiso (Shine) Score",
-            "Improve Seiketsu (Standardise) Score",
-            "Improve Shitsuke (Sustain) Score",
+        "unit": "Score",
+        "kais": [
+            "Improve Sort (Seiri) Score",
+            "Improve Set in Order (Seiton) Score",
+            "Improve Shine (Seiso) Score",
+            "Improve Standardise (Seiketsu) Score",
+            "Improve Sustain (Shitsuke) Score",
+        ]
+    },
+    "Throughput / Productivity": {
+        "unit": "MT",
+        "kais": [
+            "Increase Net Run Time",
+            "Increase Average Speed",
+            "Reduce Idle Time",
+            "Increase Good Boards Production",
+            "Improve Capacity Utilisation",
         ]
     },
 }
+
+UNITS = ["% (Percent)","MT","SAR","LM","SQM","GSM","Hits","Hits/Hour",
+         "LM/Min","BD Time (hrs)","Hours","Mins","Secs","K€","Count","Score"]
 
 DEFAULT_COMPANY_KPIS = ["Reduce Costs","Improve Customer Satisfaction","Increase OEE","Reduce Waste","Improve Safety","Improve Delivery Performance","Increase Productivity"]
 
@@ -183,13 +199,21 @@ def _fig_to_png(fig):
 
 def _gantt_chart(steps, weekly_updates, current_week):
     if not steps: return None
-    fig, ax = plt.subplots(figsize=(12, max(2, len(steps)*0.6+1)), dpi=120)
-    colors = {"planned":"#006394","actual":"#27AE60","future":"#CCCCCC"}
+    n = len(steps)
+    fig, ax = plt.subplots(figsize=(14, max(3, n*0.7+1.5)), dpi=130)
+    fig.patch.set_facecolor("#FAFAFA")
+    ax.set_facecolor("#FAFAFA")
+
+    bar_h = 0.5
     for i, step in enumerate(steps):
         ps = step.get("planned_start_week",1)
         pe = step.get("planned_end_week",2)
-        ax.barh(i, pe-ps, left=ps-1, height=0.4, color=colors["planned"], alpha=0.6, label="Planned" if i==0 else "")
-        # Actual progress from weekly updates
+        # Background planned bar
+        ax.barh(i, pe-ps, left=ps-1, height=bar_h,
+                color="#C8DFF0", alpha=1.0, zorder=2)
+        ax.barh(i, pe-ps, left=ps-1, height=bar_h,
+                color="none", edgecolor="#006394", linewidth=1.2, zorder=3)
+        # Actual progress
         pct = 0
         for wu in weekly_updates:
             sp_raw = wu.get("step_progress") or []
@@ -202,18 +226,51 @@ def _gantt_chart(steps, weekly_updates, current_week):
                     pct = max(pct, sp.get("pct_complete",0))
         actual_w = (pe - ps) * pct / 100
         if actual_w > 0:
-            ax.barh(i, actual_w, left=ps-1, height=0.4, color=colors["actual"], alpha=0.9, label="Actual" if i==0 else "")
-    ax.axvline(current_week-1, color="#DE201B", linewidth=2, linestyle="--", label=f"Week {current_week}")
-    ax.set_yticks(range(len(steps)))
-    ax.set_yticklabels([s.get("step_name","Step") for s in steps], fontsize=9)
+            ax.barh(i, actual_w, left=ps-1, height=bar_h,
+                    color="#006394", alpha=0.85, zorder=4)
+        # % label inside bar
+        if pct > 0:
+            ax.text(ps-1 + actual_w/2, i, f"{int(pct)}%",
+                    ha="center", va="center", fontsize=8,
+                    color="white", fontweight="bold", zorder=5)
+        # Step owner label
+        owner = step.get("owner","")
+        if owner:
+            ax.text(pe - 0.05, i + bar_h/2 + 0.05, owner,
+                    ha="right", va="bottom", fontsize=7, color="#555555", zorder=5)
+
+    # Current week line
+    ax.axvline(current_week-1, color="#DE201B", linewidth=2,
+               linestyle="--", zorder=6, label=f"Now (W{current_week})")
+    ax.text(current_week-1+0.05, n-0.3, f"W{current_week}",
+            color="#DE201B", fontsize=8, fontweight="bold", zorder=7)
+
+    # Week grid lines
+    for w in range(12):
+        ax.axvline(w, color="#DDDDDD", linewidth=0.5, zorder=1)
+
+    ax.set_yticks(range(n))
+    ax.set_yticklabels([s.get("step_name","") for s in steps], fontsize=9, fontweight="bold")
     ax.set_xticks(range(12))
-    ax.set_xticklabels([f"W{i+1}" for i in range(12)], fontsize=8)
-    ax.set_xlim(0,12); ax.set_xlabel("Week")
-    ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False)
-    handles, labels = ax.get_legend_handles_labels()
-    seen = {}; unique = [(h,l) for h,l in zip(handles,labels) if not seen.get(l) and not seen.update({l:1})]
-    ax.legend([h for h,l in unique], [l for h,l in unique], loc="upper right", fontsize=8, frameon=False)
-    plt.tight_layout()
+    ax.set_xticklabels([f"W{i+1}" for i in range(12)], fontsize=9)
+    ax.set_xlim(0, 12)
+    ax.set_ylim(-0.6, n-0.4)
+    ax.invert_yaxis()
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.spines["left"].set_visible(False)
+    ax.tick_params(left=False)
+
+    # Legend
+    from matplotlib.patches import Patch
+    legend_elements = [
+        Patch(facecolor="#C8DFF0", edgecolor="#006394", label="Planned"),
+        Patch(facecolor="#006394", label="Actual Progress"),
+        plt.Line2D([0],[0], color="#DE201B", linewidth=2, linestyle="--", label="Current Week"),
+    ]
+    ax.legend(handles=legend_elements, loc="lower right", fontsize=8,
+              frameon=True, framealpha=0.9, edgecolor="#CCCCCC")
+    plt.tight_layout(pad=1.5)
     return fig
 
 def _kpi_trend_chart(kpi_data, baseline, target, weeks_data):
@@ -812,86 +869,112 @@ def render_fi_projects_tab(supabase, role, pillar, name):
                         }).execute()
                         st.rerun()
 
-        # ── Section C: KPI ──
-        with st.expander("📊 KPI & Performance Indicator", expanded=True):
+        # ── Section C: KPI & KAI ──
+        with st.expander("📊 KPI & KAI (Key Activity Indicators)", expanded=True):
             kpi_vals = kpi or {}
-            with st.form("fi_kpi_form"):
-                # KPI Category dropdown
-                _kpi_cats = list(KPI_TREE.keys())
-                _cur_kpi_cat = kpi_vals.get("kpi_category","OEE Improvement")
-                _kpi_cat_idx = _kpi_cats.index(_cur_kpi_cat) if _cur_kpi_cat in _kpi_cats else 0
-                kpi_category = st.selectbox("KPI Category *", _kpi_cats, index=_kpi_cat_idx)
-                st.caption(f"*{KPI_TREE[kpi_category]['description']}*")
 
-                # Sub-KPIs multiselect
-                _sub_kpi_opts = KPI_TREE[kpi_category]["sub_kpis"]
-                _cur_sub = kpi_vals.get("sub_kpi_focus","")
-                _cur_subs = [s.strip() for s in _cur_sub.split(",") if s.strip() in _sub_kpi_opts] if _cur_sub else []
-                kpi_sub_focus = st.multiselect("Focus Areas (select what this project will specifically address)",
-                    _sub_kpi_opts, default=_cur_subs)
+            # ── Step 1: KPI Category (outside form so KAI list reacts) ──
+            _kpi_cats = list(KPI_TREE.keys())
+            _cur_cat  = kpi_vals.get("kpi_category","OEE Improvement")
+            _cat_idx  = _kpi_cats.index(_cur_cat) if _cur_cat in _kpi_cats else 0
+            kpi_category = st.selectbox(
+                "📌 KPI — What is the main goal of this project?",
+                _kpi_cats, index=_cat_idx, key="fi_kpi_cat",
+                help="KPI = the single big metric this project is trying to move"
+            )
+            _kai_opts  = KPI_TREE[kpi_category]["kais"]
+            _def_unit  = KPI_TREE[kpi_category]["unit"]
 
-                k1,k2 = st.columns(2)
-                kpi_name = k1.text_input("KPI Metric Name",
-                    value=kpi_vals.get("kpi_name","") or kpi_category,
-                    placeholder="e.g. OEE %, Defects per week")
-                kpi_unit = k2.text_input("Unit of measurement",
-                    value=kpi_vals.get("unit",""),
-                    placeholder="e.g. %, defects, K€")
-                k3,k4,k5 = st.columns(3)
-                kpi_baseline = k3.number_input("Baseline / Current Value",
-                    value=float(kpi_vals.get("baseline_value",0) or 0))
-                kpi_target   = k4.number_input("Target Value",
-                    value=float(kpi_vals.get("target_value",0) or 0))
-                # Auto-set target date to 12 weeks from launch
-                _launch = selected_project.get("launch_date", date.today())
-                _auto_kpi_date = date.fromisoformat(str(_launch)[:10]) + timedelta(weeks=12)
-                kpi_tdate = k5.date_input("Target Achievement Date",
-                    value=date.fromisoformat(str(kpi_vals.get("target_date",_auto_kpi_date))[:10]) if kpi_vals.get("target_date") else _auto_kpi_date)
-
-                # Sub-components: metric, unit, baseline, target, owner per focus area
-                UNITS = ["MT","% (Percent)","SAR","LM","SQM","GSM","Hits","Hits/Hour",
-                         "LM/Min","BD Time","Hours","Mins","Secs","K€","Count","Score"]
-                sub_components = []
-                if kpi_sub_focus:
-                    st.divider()
-                    st.markdown("**Set targets & assign responsible per focus area:**")
-                    existing_subs = kpi_vals.get("sub_components") or []
-                    if isinstance(existing_subs, str):
-                        try: existing_subs = json.loads(existing_subs)
-                        except: existing_subs = []
-                    sub_by_name = {s.get("name",""): s for s in existing_subs if isinstance(s,dict)}
-                    _team_names = [""]+[m["member_name"] for m in team]
-                    for si, focus in enumerate(kpi_sub_focus):
-                        ex = sub_by_name.get(focus,{})
-                        st.markdown(f"**{si+1}. {focus}**")
-                        fc1,fc2,fc3,fc4,fc5 = st.columns(5)
-                        _unit_val = ex.get("unit","% (Percent)")
-                        _unit_idx = UNITS.index(_unit_val) if _unit_val in UNITS else 1
-                        _owner_val = ex.get("owner","")
-                        _owner_idx = _team_names.index(_owner_val) if _owner_val in _team_names else 0
-                        sub_components.append({
-                            "name":     focus,
-                            "metric":   fc1.text_input("Metric", value=ex.get("metric",focus[:20]), key=f"sub_m_{si}",
-                                            placeholder="e.g. OEE %"),
-                            "unit":     fc2.selectbox("Unit", UNITS, index=_unit_idx, key=f"sub_u_{si}"),
-                            "baseline": fc3.number_input("Baseline", value=float(ex.get("baseline",0)), key=f"sub_b_{si}"),
-                            "target":   fc4.number_input("Target",   value=float(ex.get("target",0)),   key=f"sub_t_{si}"),
-                            "owner":    fc5.selectbox("Responsible", _team_names, index=_owner_idx, key=f"sub_o_{si}"),
-                        })
-
+            # ── Step 2: KPI overall metric ──
+            st.caption(f"Default unit for this KPI: **{_def_unit}**")
+            with st.form("fi_kpi_overall"):
+                _k1,_k2,_k3,_k4,_k5 = st.columns(5)
+                kpi_name     = _k1.text_input("KPI Name",
+                    value=kpi_vals.get("kpi_name","") or kpi_category)
+                _avail_units = UNITS
+                _cur_unit    = kpi_vals.get("unit", _def_unit)
+                _unit_idx    = _avail_units.index(_cur_unit) if _cur_unit in _avail_units else 0
+                kpi_unit     = _k2.selectbox("Unit", _avail_units, index=_unit_idx)
+                kpi_baseline = _k3.number_input("Baseline", value=float(kpi_vals.get("baseline_value",0) or 0))
+                kpi_target   = _k4.number_input("Target",   value=float(kpi_vals.get("target_value",0)   or 0))
+                _launch      = selected_project.get("launch_date", date.today())
+                _auto_dt     = date.fromisoformat(str(_launch)[:10]) + timedelta(weeks=12)
+                kpi_tdate    = _k5.date_input("Target Date",
+                    value=date.fromisoformat(str(kpi_vals.get("target_date",_auto_dt))[:10])
+                    if kpi_vals.get("target_date") else _auto_dt)
                 if st.form_submit_button("💾 Save KPI"):
-                    kpi_data = {
-                        "project_id":pid,"kpi_name":kpi_name,"unit":kpi_unit,
+                    _kdata = {
+                        "project_id":pid, "kpi_name":kpi_name, "unit":kpi_unit,
                         "kpi_category":kpi_category,
-                        "sub_kpi_focus":",".join(kpi_sub_focus),
-                        "baseline_value":kpi_baseline,"target_value":kpi_target,
-                        "target_date":str(kpi_tdate),"sub_components":json.dumps(sub_components)
+                        "baseline_value":kpi_baseline, "target_value":kpi_target,
+                        "target_date":str(kpi_tdate),
+                        "sub_components": kpi_vals.get("sub_components","[]")
                     }
-                    if kpi:
-                        supabase.table("fi_project_kpi").update(kpi_data).eq("id",kpi["id"]).execute()
-                    else:
-                        supabase.table("fi_project_kpi").insert(kpi_data).execute()
+                    if kpi: supabase.table("fi_project_kpi").update(_kdata).eq("id",kpi["id"]).execute()
+                    else:   supabase.table("fi_project_kpi").insert(_kdata).execute()
                     st.success("✅ KPI saved"); st.rerun()
+
+            # ── Step 3: KAIs ──
+            st.divider()
+            st.markdown("**📋 KAIs — Key Activity Indicators**")
+            st.caption("Select the specific activities this project will address, then set metric / unit / baseline / target / responsible.")
+
+            # KAI multiselect outside form
+            _existing_subs = kpi_vals.get("sub_components") or []
+            if isinstance(_existing_subs, str):
+                try: _existing_subs = json.loads(_existing_subs)
+                except: _existing_subs = []
+            _existing_kai_names = [s.get("name","") for s in _existing_subs if isinstance(s,dict)]
+            _def_kais = [k for k in _existing_kai_names if k in _kai_opts]
+            selected_kais = st.multiselect(
+                "Select KAIs for this project",
+                _kai_opts, default=_def_kais, key="fi_kai_select",
+                help="KAI = the specific activities that will drive the KPI improvement"
+            )
+
+            if selected_kais:
+                with st.form("fi_kai_form"):
+                    _team_names = [""]+[m["member_name"] for m in team]
+                    _sub_by_name = {s.get("name",""): s for s in _existing_subs if isinstance(s,dict)}
+                    kai_rows = []
+                    st.markdown("| KAI | Unit | Baseline | Target | Responsible |")
+                    for si, kai in enumerate(selected_kais):
+                        ex = _sub_by_name.get(kai,{})
+                        _c1,_c2,_c3,_c4,_c5 = st.columns([3,2,1.5,1.5,2])
+                        _c1.markdown(f"**{kai}**")
+                        _u = ex.get("unit",_def_unit)
+                        _u_idx = UNITS.index(_u) if _u in UNITS else 0
+                        _ow = ex.get("owner","")
+                        _ow_idx = _team_names.index(_ow) if _ow in _team_names else 0
+                        kai_rows.append({
+                            "name":     kai,
+                            "unit":     _c2.selectbox("Unit",     UNITS,        index=_u_idx,  key=f"kai_u_{si}"),
+                            "baseline": _c3.number_input("Baseline", value=float(ex.get("baseline",0)), key=f"kai_b_{si}"),
+                            "target":   _c4.number_input("Target",   value=float(ex.get("target",0)),   key=f"kai_t_{si}"),
+                            "owner":    _c5.selectbox("Responsible", _team_names, index=_ow_idx, key=f"kai_o_{si}"),
+                        })
+                    if st.form_submit_button("💾 Save KAIs"):
+                        _kdata2 = {"sub_components": json.dumps(kai_rows), "sub_kpi_focus": ",".join(selected_kais)}
+                        if kpi: supabase.table("fi_project_kpi").update(_kdata2).eq("id",kpi["id"]).execute()
+                        else:
+                            # Create KPI row first with defaults
+                            _base = {"project_id":pid,"kpi_name":kpi_category,"unit":_def_unit,
+                                     "kpi_category":kpi_category,"baseline_value":0,"target_value":0,
+                                     "target_date":str(_auto_dt)}
+                            _base.update(_kdata2)
+                            supabase.table("fi_project_kpi").insert(_base).execute()
+                        st.success("✅ KAIs saved"); st.rerun()
+
+            # Show saved KAIs as clean table
+            if _existing_subs:
+                st.divider()
+                st.markdown("**Current KAIs:**")
+                _kai_display = pd.DataFrame([{
+                    "KAI": s.get("name",""), "Unit": s.get("unit",""),
+                    "Baseline": s.get("baseline",""), "Target": s.get("target",""),
+                    "Responsible": s.get("owner","—")
+                } for s in _existing_subs if isinstance(s,dict)])
+                st.dataframe(_kai_display, use_container_width=True, hide_index=True)
 
         # ── Section D: Cost/Benefit (unlocks week 5) ──
         if current_week >= 5:
