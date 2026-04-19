@@ -729,17 +729,14 @@ def _generate_project_pdf(project, team, kpi, steps, weekly_updates, actions, st
             progress_bar(c,kx+6,y-50,kai_w-12,5,pct,col)
     page_frame(c,1,TOTAL_PAGES); c.showPage()
 
-    # PAGE 2
+   # PAGE 2
     c.setFillColor(HexColor("#0E5E86")); c.setFont("Helvetica-Bold",22)
-    c.drawString(40, H-52, "YOUR TITLE HERE")
+    c.drawString(40, H-92, "Master Plan  &  KPI Trend")
     c.setFont("Helvetica",9); c.setFillColor(HexColor("#566573"))
-    c.drawString(40, H-64, "YOUR SUBTITLE HERE")
-    c.setFillColor(HexColor("#DE201B")); c.rect(40, H-76, 110, 4, fill=1, stroke=0)
-    c.setFillColor(HexColor("#0C5595")); c.rect(155, H-76, W-195, 4, fill=1, stroke=0)
-    c.setFont("Helvetica",9); c.setFillColor(HexColor("#AACCEE"))
-    done=sum(1 for s in steps if True)  # simplified
-    c.drawString(M,H-35,f"Week {cw} of 12  ·  Gantt chart below")
-    y=H-92
+    c.drawString(40, H-108, f"Week {cw} of 12  ·  {len(steps)} steps")
+    c.setFillColor(HexColor("#DE201B")); c.rect(40, H-120, 110, 4, fill=1, stroke=0)
+    c.setFillColor(HexColor("#0C5595")); c.rect(155, H-120, W-195, 4, fill=1, stroke=0)
+    y=H-140
     y=section_title(c,y,"Gantt Chart — Planned vs Actual Progress")
     gf=chart_gantt()
     if gf:
@@ -759,16 +756,14 @@ def _generate_project_pdf(project, team, kpi, steps, weekly_updates, actions, st
     page_frame(c,2,TOTAL_PAGES); c.showPage()
 
     # PAGE 3
-    c.setFillColor(HexColor("#0E5E86")); c.setFont("Helvetica-Bold",22)
-    c.drawString(40, H-52, "YOUR TITLE HERE")
-    c.setFont("Helvetica",9); c.setFillColor(HexColor("#566573"))
-    c.drawString(40, H-64, "YOUR SUBTITLE HERE")
-    c.setFillColor(HexColor("#DE201B")); c.rect(40, H-76, 110, 4, fill=1, stroke=0)
-    c.setFillColor(HexColor("#0C5595")); c.rect(155, H-76, W-195, 4, fill=1, stroke=0)
-    c.setFont("Helvetica",9); c.setFillColor(HexColor("#AACCEE"))
     ot_rate=int(completed_cnt/len(actions)*100) if actions else 0
-    c.drawString(M,H-35,f"{completed_cnt}/{len(actions)} actions completed  ·  On-time rate: {ot_rate}%")
-    y=H-92
+    c.setFillColor(HexColor("#0E5E86")); c.setFont("Helvetica-Bold",22)
+    c.drawString(40, H-92, "KAI Progress  &  Action Plan")
+    c.setFont("Helvetica",9); c.setFillColor(HexColor("#566573"))
+    c.drawString(40, H-108, f"{completed_cnt}/{len(actions)} actions completed  ·  On-time rate: {ot_rate}%")
+    c.setFillColor(HexColor("#DE201B")); c.rect(40, H-120, 110, 4, fill=1, stroke=0)
+    c.setFillColor(HexColor("#0C5595")); c.rect(155, H-120, W-195, 4, fill=1, stroke=0)
+    y=H-140
     if sub_comps:
         y=section_title(c,y,"Key Activity Indicators — Detailed Progress")
         kf=chart_kai()
@@ -813,18 +808,16 @@ def _generate_project_pdf(project, team, kpi, steps, weekly_updates, actions, st
     page_frame(c,3,TOTAL_PAGES); c.showPage()
 
     # PAGE 4
-    c.setFillColor(HexColor("#0E5E86")); c.setFont("Helvetica-Bold",22)
-    c.drawString(40, H-52, "YOUR TITLE HERE")
-    c.setFont("Helvetica",9); c.setFillColor(HexColor("#566573"))
-    c.drawString(40, H-64, "YOUR SUBTITLE HERE")
-    c.setFillColor(HexColor("#DE201B")); c.rect(40, H-76, 110, 4, fill=1, stroke=0)
-    c.setFillColor(HexColor("#0C5595")); c.rect(155, H-76, W-195, 4, fill=1, stroke=0)
-    c.setFont("Helvetica",9); c.setFillColor(HexColor("#AACCEE"))
     tgt_w=TARGET_RAMP_LOCAL.get(cw,100)
     gap_n=int(total_score)-tgt_w
     gap_str=f"+{gap_n} pts ahead" if gap_n>=0 else f"{gap_n} pts behind"
-    c.drawString(M,H-35,f"Score: {int(total_score)}/100  ·  Target W{cw}: {tgt_w}/100  ·  {gap_str}")
-    y=H-92
+    c.setFillColor(HexColor("#0E5E86")); c.setFont("Helvetica-Bold",22)
+    c.drawString(40, H-92, "Audit Score  &  Gap Analysis")
+    c.setFont("Helvetica",9); c.setFillColor(HexColor("#566573"))
+    c.drawString(40, H-108, f"Score: {int(total_score)}/100  ·  Target W{cw}: {tgt_w}/100  ·  {gap_str}")
+    c.setFillColor(HexColor("#DE201B")); c.rect(40, H-120, 110, 4, fill=1, stroke=0)
+    c.setFillColor(HexColor("#0C5595")); c.rect(155, H-120, W-195, 4, fill=1, stroke=0)
+    y=H-140
     y=section_title(c,y,"Score vs Target Trajectory")
     sf=chart_score(); sr=_reader(sf)
     c.drawImage(sr,M,y-175,width=W-2*M,height=175,preserveAspectRatio=True); y-=187
@@ -887,6 +880,11 @@ def _generate_project_pdf(project, team, kpi, steps, weekly_updates, actions, st
     c.setFillColor(HexColor(C_BLUE));  c.setFont("Helvetica-Bold",8.5)
     c.drawString(M+12,y-10,"AUDITOR NOTES")
     y2=wrap_text(c,notes,M+12,y-22,W-2*M-24,"Helvetica",8.5,13,C_BLACK,3)
+    c.setFillColor(HexColor(C_DGREY)); c.setFont("Helvetica-Oblique",7.5)
+    audited_by=ar.get("audited_by","")
+    audited_at=str(ar.get("audited_at",""))[:10]
+    c.drawRightString(W-M-8,y-47,f"Audited by: {audited_by}  ·  {audited_at}")
+    page_frame(c,4,TOTAL_PAGES); c.showPage()
     c.setFillColor(HexColor(C_DGREY)); c.setFont("Helvetica-Oblique",7.5)
     audited_by=ar.get("audited_by","")
     audited_at=str(ar.get("audited_at",""))[:10]
