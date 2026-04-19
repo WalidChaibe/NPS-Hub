@@ -123,7 +123,7 @@ KPI_TREE = {
         ]
     },
     "Cost Reduction": {
-        "unit": "K€",
+        "unit": "K SAR",
         "kais": [
             "Reduce Maintenance Spend",
             "Reduce Material Costs",
