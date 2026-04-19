@@ -174,7 +174,7 @@ KPI_TREE = {
 }
 
 UNITS = ["% (Percent)","MT","SAR","LM","SQM","GSM","Hits","Hits/Hour",
-         "LM/Min","BD Time (hrs)","Hours","Mins","Secs","K€","Count","Score"]
+         "LM/Min","BD Time (hrs)","Hours","Mins","Secs","K SAR","Count","Score"]
 
 DEFAULT_COMPANY_KPIS = ["Reduce Costs","Improve Customer Satisfaction","Increase OEE","Reduce Waste","Improve Safety","Improve Delivery Performance","Increase Productivity"]
 
