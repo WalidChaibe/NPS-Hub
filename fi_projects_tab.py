@@ -411,484 +411,503 @@ def _score_project(project, team, kpi, steps, weekly_updates, actions, stab, aud
     return scores, total
 
 # ════════════════════════════════════════
-# BEAUTIFUL PDF REPORT GENERATOR
+# PRESENTATION-STYLE PDF REPORT GENERATOR
 # ════════════════════════════════════════
 def _generate_project_pdf(project, team, kpi, steps, weekly_updates, actions, stab, audit_records, scores, total_score):
-    """Management-quality 4-page PDF report"""
-    from reportlab.lib.pagesizes import A4
+    """Landscape presentation-style PDF — matches QM Pillar design language."""
+    import base64 as _b64, tempfile as _tf
     from reportlab.lib.utils import ImageReader
-    from reportlab.lib.colors import HexColor
+    from reportlab.lib.colors import HexColor, white, black
     import matplotlib.patches as mpatches
 
-    W, H = A4
-    M = 32
-    C_BLUE="#0E5E86"; C_DBLUE="#083D57"; C_LBLUE="#D6EAF8"
-    C_RED="#DE201B"; C_GREEN="#1E8449"; C_AMBER="#D68910"
-    C_LGREY="#F4F6F8"; C_MGREY="#BDC3C7"; C_DGREY="#566573"; C_BLACK="#1A1A2E"
+    # ── Slide canvas dimensions (16:9 landscape) ──
+    W, H = 960, 540
+    M = 40
 
-    # Parse data
-    kpi  = kpi or {}
-    stab = stab or {}
-    team = team or []
-    steps= steps or []
-    actions = actions or []
+    # ── Brand colours (match QM) ──
+    C_DBLUE  = "#0C5595"
+    C_BLUE   = "#0E5E86"
+    C_LBLUE  = "#D6EAF8"
+    C_RED    = "#DE201B"
+    C_GREEN  = "#1E8449"
+    C_AMBER  = "#D68910"
+    C_LGREY  = "#F4F6F8"
+    C_MGREY  = "#BDC3C7"
+    C_DGREY  = "#566573"
+    C_BLACK  = "#1A1A2E"
+
+    # ── Napco logo (base64 stub — replace with full b64 from QM if desired) ──
+    _napco_logo_reader = None
+    try:
+        import base64 as _b64, tempfile as _tf
+        _logo_b64 = "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAIBAQEBAQIBAQECAgICAgQDAgICAgUEBAMEBgUGBgYFBgYGBwkIBgcJBwYGCAsICQoKCgoKBggLDAsKDAkKCgr/wAARCABkAGQDASIAAhEBAxEB/8QAGgABAAMBAQEAAAAAAAAAAAAAAAIDBAEFBv/EADMQAAIBAwMDAgQEBgMAAAAAAAABAgMEERIhMQVBUWETInGBkRQyocHR8CNCUlNi4f/EABQBAQAAAAAAAAAAAAAAAAAAAAD/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwD7+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAf/Z"
+        _logo_bytes = _b64.b64decode(_logo_b64)
+        _tmp = _tf.NamedTemporaryFile(delete=False, suffix=".jpeg")
+        _tmp.write(_logo_bytes); _tmp.flush()
+        _napco_logo_reader = ImageReader(_tmp.name)
+    except Exception:
+        _napco_logo_reader = None
+
+    # ── Parse data ──
+    kpi            = kpi or {}
+    stab           = stab or {}
+    team           = team or []
+    steps          = steps or []
+    actions        = actions or []
     weekly_updates = weekly_updates or []
     audit_records  = audit_records or []
 
-    launch_str = str(project.get("launch_date",""))[:10]
-    try: launch_d = date.fromisoformat(launch_str)
+    launch_str = str(project.get("launch_date", ""))[:10]
+    try:    launch_d = date.fromisoformat(launch_str)
     except: launch_d = date.today()
     cw = _get_current_week(project.get("launch_date"))
 
-    kpi_baseline = float(kpi.get("baseline_value",0) or 0)
-    kpi_target   = float(kpi.get("target_value",0) or 0)
+    kpi_baseline = float(kpi.get("baseline_value", 0) or 0)
+    kpi_target   = float(kpi.get("target_value",   0) or 0)
     kpi_vals     = sorted([w for w in weekly_updates if w.get("kpi_value") is not None],
                           key=lambda x: x["week_number"])
     kpi_current  = float(kpi_vals[-1]["kpi_value"]) if kpi_vals else kpi_baseline
-    kpi_progress = abs(kpi_current-kpi_baseline)/abs(kpi_target-kpi_baseline)*100 if abs(kpi_target-kpi_baseline)>0 else 0
+    kpi_progress = (abs(kpi_current - kpi_baseline) / abs(kpi_target - kpi_baseline) * 100
+                    if abs(kpi_target - kpi_baseline) > 0 else 0)
 
     sub_comps = kpi.get("sub_components") or []
     if isinstance(sub_comps, str):
-        try: sub_comps = json.loads(sub_comps)
+        try:    sub_comps = json.loads(sub_comps)
         except: sub_comps = []
-    sub_comps = [s for s in sub_comps if isinstance(s,dict)]
+    sub_comps = [s for s in sub_comps if isinstance(s, dict)]
 
-    completed_cnt = sum(1 for a in actions if a.get("status")=="Completed")
-    in_prog_cnt   = sum(1 for a in actions if a.get("status")=="In Progress")
+    completed_cnt = sum(1 for a in actions if a.get("status") == "Completed")
+    in_prog_cnt   = sum(1 for a in actions if a.get("status") == "In Progress")
     open_cnt      = len(actions) - completed_cnt - in_prog_cnt
+    ot_rate       = int(completed_cnt / len(actions) * 100) if actions else 0
 
-    TARGET_RAMP_LOCAL = {1:12,2:15,3:20,4:27,5:45,6:47,7:62,8:64,9:64,10:70,11:85,12:100}
-    score_color = C_GREEN if total_score>=70 else C_AMBER if total_score>=45 else C_RED
+    TARGET_RAMP  = {1:12,2:15,3:20,4:27,5:45,6:47,7:62,8:64,9:64,10:70,11:85,12:100}
+    score_color  = C_GREEN if total_score >= 70 else C_AMBER if total_score >= 45 else C_RED
+    tgt_w        = TARGET_RAMP.get(cw, 100)
+    gap_n        = int(total_score) - tgt_w
+    gap_str      = f"+{gap_n} pts ahead" if gap_n >= 0 else f"{gap_n} pts behind"
 
+    # ── Helper: fig → ImageReader ──
     def _reader(fig):
-        buf2 = io.BytesIO()
-        fig.savefig(buf2, format="png", dpi=200, bbox_inches="tight", facecolor=fig.get_facecolor())
-        buf2.seek(0)
-        plt.close(fig)
-        return ImageReader(buf2)
+        b2 = io.BytesIO()
+        fig.savefig(b2, format="png", dpi=200, bbox_inches="tight",
+                    facecolor=fig.get_facecolor())
+        b2.seek(0); plt.close(fig)
+        return ImageReader(b2)
 
-    def page_frame(c, pn, tp):
-        c.setFillColor(HexColor(C_BLUE)); c.rect(0,0,W,18,fill=1,stroke=0)
-        c.setFillColor(HexColor(C_RED));  c.rect(0,0,4,18,fill=1,stroke=0)
-        c.setFillColor(HexColor("#FFFFFF")); c.setFont("Helvetica",7)
-        c.drawString(M, 5, f"Easternpak — FI Project Report  |  {project.get('project_name','')}  |  Week {cw} of 12")
-        c.drawRightString(W-M, 5, f"Page {pn} of {tp}")
+    # ══════════════════════════════════════════════
+    # SHARED SLIDE HELPERS  (match QM design)
+    # ══════════════════════════════════════════════
+    def _slide_bg(c):
+        c.setFillColorRGB(1, 1, 1); c.rect(0, 0, W, H, fill=1, stroke=0)
 
-    def section_title(c, y, text):
-        c.setFillColor(HexColor(C_LGREY)); c.rect(M,y-6,W-2*M,20,fill=1,stroke=0)
-        c.setFillColor(HexColor(C_BLUE));  c.rect(M,y-6,4,20,fill=1,stroke=0)
-        c.setFillColor(HexColor(C_BLUE));  c.setFont("Helvetica-Bold",9.5)
-        c.drawString(M+12, y+6, text.upper())
-        return y-24
+    def _footer(c, slide_n, total):
+        c.setFillColor(HexColor(C_DBLUE)); c.rect(0, 0, W, 22, fill=1, stroke=0)
+        c.setFillColor(HexColor(C_RED));   c.rect(0, 0, 4, 22, fill=1, stroke=0)
+        c.setFillColor(HexColor("#FFFFFF")); c.setFont("Helvetica", 7)
+        c.drawString(M, 7,
+            f"Napco National  ·  FI Project Report  ·  {project.get('project_name','')[:60]}  ·  Week {cw} of 12")
+        c.drawRightString(W - M, 7, f"Slide {slide_n} of {total}")
 
-    def kpi_badge(c, x, y, w, h, label, value, sub="", color=C_BLUE, light=False):
-        bg = HexColor(C_LGREY) if light else HexColor(color)
-        c.setFillColor(bg); c.roundRect(x,y,w,h,4,fill=1,stroke=0)
-        c.setFillColor(HexColor(C_RED) if light else HexColor("#FFFFFF"))
-        c.rect(x,y+h-3,w,3,fill=1,stroke=0)
-        tc = HexColor(C_DBLUE) if light else HexColor("#FFFFFF")
-        c.setFillColor(tc); c.setFont("Helvetica",7)
-        c.drawCentredString(x+w/2, y+h-14, label.upper())
-        c.setFont("Helvetica-Bold", 18 if len(str(value))<=5 else 13)
-        c.drawCentredString(x+w/2, y+8, str(value))
-        if sub:
-            c.setFont("Helvetica",7)
-            c.setFillColor(HexColor(C_MGREY) if not light else HexColor(C_DGREY))
-            c.drawCentredString(x+w/2, y+1, sub)
+    def _slide_title_bar(c, title, subtitle=""):
+        c.setFillColor(HexColor(C_DBLUE)); c.setFont("Helvetica-Bold", 20)
+        c.drawString(M, H - 48, title)
+        if subtitle:
+            c.setFillColor(HexColor(C_DGREY)); c.setFont("Helvetica", 9)
+            c.drawString(M, H - 64, subtitle)
+        c.setFillColor(HexColor(C_RED));    c.rect(M,       H - 76, 110,            4, fill=1, stroke=0)
+        c.setFillColor(HexColor(C_DBLUE));  c.rect(M + 115, H - 76, W-M-115-M,     4, fill=1, stroke=0)
 
-    def progress_bar(c, x, y, w, h, pct, color=C_BLUE):
-        c.setFillColor(HexColor(C_LGREY)); c.roundRect(x,y,w,h,h/2,fill=1,stroke=0)
-        if pct>0:
-            fw = max(h, w*pct/100)
-            c.setFillColor(HexColor(color)); c.roundRect(x,y,fw,h,h/2,fill=1,stroke=0)
+    def _section_label(c, x, y, text):
+        c.setFillColor(HexColor(C_LGREY)); c.rect(x, y - 4, W - 2*M, 18, fill=1, stroke=0)
+        c.setFillColor(HexColor(C_DBLUE)); c.rect(x, y - 4, 4,       18, fill=1, stroke=0)
+        c.setFillColor(HexColor(C_DBLUE)); c.setFont("Helvetica-Bold", 8.5)
+        c.drawString(x + 10, y + 7, text.upper())
+        return y - 22
 
-    def wrap_text(c, text, x, y, max_w, font, size, line_h, color=C_BLACK, max_lines=99):
-        c.setFillColor(HexColor(color)); c.setFont(font,size)
-        words=str(text).split(); line=""; count=0
-        for word in words:
-            test=(line+" "+word).strip()
-            if c.stringWidth(test,font,size)<max_w: line=test
+    def _wrap(c, text, x, y, max_w, font, size, lh, color=C_BLACK, max_lines=99):
+        c.setFillColor(HexColor(color)); c.setFont(font, size)
+        words = str(text).split(); line = ""; n = 0
+        for w_ in words:
+            test = (line + " " + w_).strip()
+            if c.stringWidth(test, font, size) < max_w: line = test
             else:
-                if count>=max_lines: break
-                c.drawString(x,y,line); y-=line_h; line=word; count+=1
-        if line and count<max_lines: c.drawString(x,y,line); y-=line_h
+                if n >= max_lines: break
+                c.drawString(x, y, line); y -= lh; line = w_; n += 1
+        if line and n < max_lines: c.drawString(x, y, line); y -= lh
         return y
 
-    # ── Charts ──
+    def _kpi_badge(c, x, y, bw, bh, label, value, sub="", color=C_DBLUE, light=False):
+        bg = HexColor(C_LGREY) if light else HexColor(color)
+        c.setFillColor(bg); c.roundRect(x, y, bw, bh, 5, fill=1, stroke=0)
+        c.setFillColor(HexColor(C_RED) if light else HexColor("#FFFFFF"))
+        c.rect(x, y + bh - 4, bw, 4, fill=1, stroke=0)
+        tc = HexColor(C_DBLUE) if light else HexColor("#FFFFFF")
+        c.setFillColor(tc); c.setFont("Helvetica", 7)
+        c.drawCentredString(x + bw/2, y + bh - 16, label.upper())
+        c.setFont("Helvetica-Bold", 18 if len(str(value)) <= 6 else 13)
+        c.drawCentredString(x + bw/2, y + 10, str(value))
+        if sub:
+            c.setFont("Helvetica", 7)
+            c.setFillColor(HexColor(C_MGREY) if not light else HexColor(C_DGREY))
+            c.drawCentredString(x + bw/2, y + 2, sub)
+
+    def _progress_bar(c, x, y, bw, bh, pct, color=C_DBLUE):
+        c.setFillColor(HexColor(C_LGREY)); c.roundRect(x, y, bw, bh, bh/2, fill=1, stroke=0)
+        if pct > 0:
+            fw = max(bh, bw * pct / 100)
+            c.setFillColor(HexColor(color)); c.roundRect(x, y, fw, bh, bh/2, fill=1, stroke=0)
+
+    # ══════════════════════════════════════════════
+    # CHART HELPERS
+    # ══════════════════════════════════════════════
+    def chart_kpi_trend():
+        weeks = [w["week_number"] for w in kpi_vals]
+        vals  = [float(w["kpi_value"]) for w in kpi_vals]
+        if not weeks: return None
+        fig, ax = plt.subplots(figsize=(11, 3.5), dpi=180)
+        fig.patch.set_facecolor("#FFFFFF"); ax.set_facecolor("#FFFFFF")
+        if kpi_baseline:
+            ax.fill_between(weeks, kpi_baseline, vals, alpha=0.10, color=C_DBLUE)
+        ax.axhline(kpi_baseline, color=C_MGREY, lw=1.5, ls=":",
+                   label=f"Baseline {kpi_baseline}{kpi.get('unit','')}")
+        ax.axhline(kpi_target, color=C_GREEN, lw=1.5, ls="--",
+                   label=f"Target {kpi_target}{kpi.get('unit','')}")
+        ax.plot(weeks, vals, "o-", color=C_DBLUE, lw=2.5, ms=7, zorder=5, label="Actual")
+        for wk, v in zip(weeks, vals):
+            ax.annotate(f"{v:.1f}", (wk, v), textcoords="offset points", xytext=(0,9),
+                        fontsize=8, ha="center", color=C_DBLUE, fontweight="bold")
+        ax.axvline(cw, color=C_RED, lw=1.5, ls=":", alpha=0.6)
+        ax.set_xlim(0.3, 12.7)
+        _mn = min(vals + [kpi_baseline]) - 5 if vals else 0
+        _mx = max(vals + [kpi_target])   + 5 if vals else 100
+        ax.set_ylim(_mn, _mx)
+        ax.set_xticks(range(1,13)); ax.set_xticklabels([f"W{i}" for i in range(1,13)], fontsize=8)
+        ax.set_ylabel(f"{kpi.get('kpi_name','KPI')} {kpi.get('unit','')}", fontsize=9, color=C_DGREY)
+        ax.tick_params(colors=C_DGREY, labelsize=8)
+        ax.legend(fontsize=8, frameon=False, loc="upper left")
+        for sp in ["top","right"]: ax.spines[sp].set_visible(False)
+        ax.spines["left"].set_color(C_MGREY); ax.spines["bottom"].set_color(C_MGREY)
+        ax.grid(axis="y", color="#EEEEEE", lw=0.5)
+        plt.tight_layout(pad=0.4); return fig
+
     def chart_gantt():
+        import matplotlib.patches as mpatches
         n = len(steps)
-        if n==0: return None
-        fig, ax = plt.subplots(figsize=(8.5, max(2.5,n*0.6+0.8)), dpi=200)
+        if n == 0: return None
+        fig, ax = plt.subplots(figsize=(11, max(2.5, n*0.55 + 0.8)), dpi=180)
         fig.patch.set_facecolor("#FFFFFF"); ax.set_facecolor("#FFFFFF")
         sp_map = {}
         for wu in weekly_updates:
             sp_raw = wu.get("step_progress") or []
-            if isinstance(sp_raw,str):
-                try: sp_raw=json.loads(sp_raw)
-                except: sp_raw=[]
+            if isinstance(sp_raw, str):
+                try: sp_raw = json.loads(sp_raw)
+                except: sp_raw = []
             for sp in sp_raw:
-                if isinstance(sp,dict):
-                    sid=sp.get("step_id",""); pct=sp.get("pct_complete",0)
-                    sp_map[sid]=max(sp_map.get(sid,0),pct)
-        for i,step in enumerate(steps):
-            ps=step.get("planned_start_week",1); pe=step.get("planned_end_week",2)
-            ax.barh(i,pe-ps,left=ps-1,height=0.52,color=C_LBLUE,zorder=2)
-            ax.barh(i,pe-ps,left=ps-1,height=0.52,color="none",edgecolor=C_BLUE,lw=1,zorder=3)
-            pct=sp_map.get(str(step.get("id","")),0)
-            if pct>0:
-                col=C_GREEN if pct==100 else C_BLUE
-                ax.barh(i,((pe-ps)*pct/100),left=ps-1,height=0.52,color=col,alpha=0.85,zorder=4)
-                if pct>=20:
-                    ax.text(ps-1+((pe-ps)*pct/100)/2,i,f"{pct}%",ha="center",va="center",
-                            fontsize=7,color="#FFFFFF",fontweight="bold",zorder=5)
-        for w in range(13): ax.axvline(w,color="#F0F0F0",lw=0.5,zorder=1)
-        ax.axvline(cw-1,color=C_RED,lw=2,ls="--",zorder=6,alpha=0.8)
-        ax.text(cw-0.85,n-0.05,f"W{cw}",color=C_RED,fontsize=7.5,fontweight="bold")
+                if isinstance(sp, dict):
+                    sid = sp.get("step_id",""); pct = sp.get("pct_complete", 0)
+                    sp_map[sid] = max(sp_map.get(sid, 0), pct)
+        for i, step in enumerate(steps):
+            ps = step.get("planned_start_week",1); pe = step.get("planned_end_week",2)
+            ax.barh(i, pe-ps, left=ps-1, height=0.5, color=C_LBLUE, zorder=2)
+            ax.barh(i, pe-ps, left=ps-1, height=0.5, color="none", edgecolor=C_DBLUE, lw=1, zorder=3)
+            pct = sp_map.get(str(step.get("id","")), 0)
+            if pct > 0:
+                col = C_GREEN if pct == 100 else C_DBLUE
+                ax.barh(i, (pe-ps)*pct/100, left=ps-1, height=0.5, color=col, alpha=0.85, zorder=4)
+                if pct >= 20:
+                    ax.text(ps-1+(pe-ps)*pct/100/2, i, f"{pct}%",
+                            ha="center", va="center", fontsize=7, color="#FFFFFF",
+                            fontweight="bold", zorder=5)
+        for wk in range(13): ax.axvline(wk, color="#F0F0F0", lw=0.5, zorder=1)
+        ax.axvline(cw-1, color=C_RED, lw=2, ls="--", zorder=6, alpha=0.8)
+        ax.text(cw-0.8, n-0.1, f"W{cw}", color=C_RED, fontsize=7.5, fontweight="bold")
         ax.set_yticks(range(n))
-        ax.set_yticklabels([s.get("step_name","") for s in steps],fontsize=8,color=C_BLACK)
-        ax.set_xticks(range(13))
-        ax.set_xticklabels([""]+[f"W{i}" for i in range(1,13)],fontsize=7.5)
-        ax.set_xlim(0,12); ax.set_ylim(-0.6,n-0.4); ax.invert_yaxis()
+        ax.set_yticklabels([s.get("step_name","") for s in steps], fontsize=8, color=C_BLACK)
+        ax.set_xticks(range(13)); ax.set_xticklabels([""]+[f"W{i}" for i in range(1,13)], fontsize=7.5)
+        ax.set_xlim(0, 12); ax.set_ylim(-0.6, n-0.4); ax.invert_yaxis()
         for sp in ["top","right","left"]: ax.spines[sp].set_visible(False)
-        ax.spines["bottom"].set_color(C_MGREY); ax.tick_params(left=False,colors=C_DGREY)
-        patches=[mpatches.Patch(facecolor=C_LBLUE,edgecolor=C_BLUE,label="Planned"),
-                 mpatches.Patch(facecolor=C_BLUE,label="In Progress"),
-                 mpatches.Patch(facecolor=C_GREEN,label="Completed"),
-                 plt.Line2D([0],[0],color=C_RED,lw=2,ls="--",label=f"Now (W{cw})")]
-        ax.legend(handles=patches,loc="lower right",fontsize=7,frameon=True,
-                  framealpha=0.95,edgecolor=C_MGREY,ncol=4)
-        plt.tight_layout(pad=0.4)
-        return fig
-
-    def chart_kpi_trend():
-        weeks=[w["week_number"] for w in kpi_vals]
-        vals =[float(w["kpi_value"]) for w in kpi_vals]
-        if not weeks: return None
-        fig,ax=plt.subplots(figsize=(8.5,3),dpi=200)
-        fig.patch.set_facecolor("#FFFFFF"); ax.set_facecolor("#FFFFFF")
-        if kpi_baseline: ax.fill_between(weeks,kpi_baseline,vals,alpha=0.12,color=C_BLUE)
-        ax.axhline(kpi_baseline,color=C_MGREY,lw=1.5,ls=":",label=f"Baseline {kpi_baseline}{kpi.get('unit','')}")
-        ax.axhline(kpi_target,color=C_GREEN,lw=1.5,ls="--",label=f"Target {kpi_target}{kpi.get('unit','')}")
-        ax.plot(weeks,vals,"o-",color=C_BLUE,lw=2.5,ms=7,zorder=5,label="Actual")
-        for w,v in zip(weeks,vals):
-            ax.annotate(f"{v:.1f}",( w,v),textcoords="offset points",xytext=(0,9),
-                        fontsize=8,ha="center",color=C_BLUE,fontweight="bold")
-        ax.axvline(cw,color=C_RED,lw=1.5,ls=":",alpha=0.6)
-        ax.set_xlim(0.3,12.7)
-        _mn=min(vals+[kpi_baseline])-5 if vals else 0
-        _mx=max(vals+[kpi_target])+5 if vals else 100
-        ax.set_ylim(_mn,_mx)
-        ax.set_xticks(range(1,13)); ax.set_xticklabels([f"W{i}" for i in range(1,13)],fontsize=8)
-        ax.set_ylabel(f"{kpi.get('kpi_name','KPI')} {kpi.get('unit','')}",fontsize=9,color=C_DGREY)
-        ax.tick_params(colors=C_DGREY,labelsize=8)
-        ax.legend(fontsize=8,frameon=False,loc="upper left")
-        for sp in ["top","right"]: ax.spines[sp].set_visible(False)
-        ax.spines["left"].set_color(C_MGREY); ax.spines["bottom"].set_color(C_MGREY)
-        ax.grid(axis="y",color="#EEEEEE",lw=0.5)
-        plt.tight_layout(pad=0.4)
-        return fig
+        ax.spines["bottom"].set_color(C_MGREY); ax.tick_params(left=False, colors=C_DGREY)
+        patches = [mpatches.Patch(facecolor=C_LBLUE, edgecolor=C_DBLUE, label="Planned"),
+                   mpatches.Patch(facecolor=C_DBLUE, label="In Progress"),
+                   mpatches.Patch(facecolor=C_GREEN, label="Completed"),
+                   plt.Line2D([0],[0], color=C_RED, lw=2, ls="--", label=f"Now (W{cw})")]
+        ax.legend(handles=patches, loc="lower right", fontsize=7, frameon=True,
+                  framealpha=0.95, edgecolor=C_MGREY, ncol=4)
+        plt.tight_layout(pad=0.4); return fig
 
     def chart_kai():
         if not sub_comps: return None
-        # Get latest KAI values from weekly updates
         kai_actuals = {}
-        for wu in sorted(weekly_updates,key=lambda x:x.get("week_number",0)):
+        for wu in sorted(weekly_updates, key=lambda x: x.get("week_number",0)):
             notes = wu.get("kpi_notes") or ""
             try:
                 nd = json.loads(notes) if notes.startswith("{") else {}
-                for k,v in nd.items():
-                    if isinstance(v,dict): kai_actuals[k]=float(v.get("value",0))
+                for k, v in nd.items():
+                    if isinstance(v, dict): kai_actuals[k] = float(v.get("value",0))
             except: pass
-        fig,axes=plt.subplots(1,len(sub_comps),figsize=(8.5,2.5),dpi=200)
-        if len(sub_comps)==1: axes=[axes]
+        nc = min(4, len(sub_comps))
+        fig, axes = plt.subplots(1, nc, figsize=(11, 2.8), dpi=180)
+        if nc == 1: axes = [axes]
         fig.patch.set_facecolor("#FFFFFF")
-        for i,kai in enumerate(sub_comps[:4]):
-            ax=axes[i]
-            b=float(kai.get("baseline",0)); t=float(kai.get("target",0))
-            cur=float(kai_actuals.get(kai.get("name",""),b))
-            going_down=t<b
-            raw=(b-cur)/(b-t)*100 if going_down else (cur-b)/(t-b)*100 if (t-b)!=0 else 0
-            pct=max(0,min(100,raw))
-            col=C_GREEN if pct>=80 else C_BLUE if pct>=50 else C_AMBER
-            sizes=[pct,100-pct]; wcolors=[col,"#EEEEEE"]
-            ax.pie(sizes,colors=wcolors,startangle=90,
+        for i, kai in enumerate(sub_comps[:nc]):
+            ax = axes[i]
+            b = float(kai.get("baseline",0)); t = float(kai.get("target",0))
+            cur = float(kai_actuals.get(kai.get("name",""), b))
+            going_down = t < b
+            raw = (b-cur)/(b-t)*100 if going_down else (cur-b)/(t-b)*100 if (t-b)!=0 else 0
+            pct = max(0, min(100, raw))
+            col = C_GREEN if pct >= 80 else C_DBLUE if pct >= 50 else C_AMBER
+            ax.pie([pct, 100-pct], colors=[col,"#EEEEEE"], startangle=90,
                    wedgeprops={"width":0.38,"edgecolor":"white","linewidth":1.5})
-            ax.text(0,0.08,f"{int(pct)}%",ha="center",va="center",
-                    fontsize=13,fontweight="bold",color=col)
-            ax.text(0,-0.22,"progress",ha="center",va="center",fontsize=6.5,color=C_DGREY)
-            ax.set_title(kai.get("name","")[:20],fontsize=8,fontweight="bold",
-                         color=C_BLACK,pad=4)
-            fig.text((i+0.5)/len(sub_comps),0.04,
-                     f"{b} → {cur} → {t} {kai.get('unit','')}",
-                     ha="center",fontsize=7,color=C_DGREY)
-        plt.tight_layout(pad=0.3,rect=[0,0.12,1,1])
-        return fig
+            ax.text(0, 0.08, f"{int(pct)}%", ha="center", va="center",
+                    fontsize=13, fontweight="bold", color=col)
+            ax.text(0,-0.22,"progress", ha="center", va="center", fontsize=6.5, color=C_DGREY)
+            ax.set_title(kai.get("name","")[:20], fontsize=8, fontweight="bold", color=C_BLACK, pad=4)
+            fig.text((i+0.5)/nc, 0.04, f"{b} → {cur} → {t} {kai.get('unit','')}",
+                     ha="center", fontsize=7, color=C_DGREY)
+        plt.tight_layout(pad=0.3, rect=[0,0.12,1,1]); return fig
 
     def chart_score():
-        fig,ax=plt.subplots(figsize=(8.5,2.8),dpi=200)
+        fig, ax = plt.subplots(figsize=(11, 3.0), dpi=180)
         fig.patch.set_facecolor("#FFFFFF"); ax.set_facecolor("#FFFFFF")
-        tw=sorted(TARGET_RAMP_LOCAL.keys()); tt=[TARGET_RAMP_LOCAL[w] for w in tw]
-        ax.fill_between(tw,0,tt,alpha=0.06,color=C_MGREY)
-        ax.plot(tw,tt,"o--",color=C_MGREY,lw=1.5,ms=4,label="Target ramp")
-        aw=list(range(1,cw+1))
-        av=[min(total_score,TARGET_RAMP_LOCAL.get(w,total_score)) for w in aw]
-        ax.fill_between(aw,0,av,alpha=0.1,color=C_BLUE)
-        ax.plot(aw,av,"o-",color=C_BLUE,lw=2.5,ms=7,label="Actual score",zorder=5)
-        ax.scatter([cw],[total_score],s=80,color=C_BLUE,zorder=6)
-        ax.annotate(str(int(total_score)),(cw,total_score),
-                    textcoords="offset points",xytext=(6,4),
-                    fontsize=9,fontweight="bold",color=C_BLUE)
-        tgt_w=TARGET_RAMP_LOCAL.get(cw,100)
-        ax.scatter([cw],[tgt_w],s=60,color=C_RED,marker="D",zorder=6,
+        tw = sorted(TARGET_RAMP.keys()); tt = [TARGET_RAMP[wk] for wk in tw]
+        ax.fill_between(tw, 0, tt, alpha=0.06, color=C_MGREY)
+        ax.plot(tw, tt, "o--", color=C_MGREY, lw=1.5, ms=4, label="Target ramp")
+        aw = list(range(1, cw+1))
+        av = [min(total_score, TARGET_RAMP.get(wk, total_score)) for wk in aw]
+        ax.fill_between(aw, 0, av, alpha=0.10, color=C_DBLUE)
+        ax.plot(aw, av, "o-", color=C_DBLUE, lw=2.5, ms=7, label="Actual score", zorder=5)
+        ax.scatter([cw],[total_score], s=80, color=C_DBLUE, zorder=6)
+        ax.annotate(str(int(total_score)), (cw,total_score), textcoords="offset points",
+                    xytext=(6,4), fontsize=9, fontweight="bold", color=C_DBLUE)
+        ax.scatter([cw],[tgt_w], s=60, color=C_RED, marker="D", zorder=6,
                    label=f"Target W{cw}: {tgt_w}")
-        ax.axvline(cw,color=C_RED,lw=1.5,ls=":",alpha=0.6)
+        ax.axvline(cw, color=C_RED, lw=1.5, ls=":", alpha=0.6)
         ax.set_xlim(0.5,12.5); ax.set_ylim(0,108)
-        ax.set_xticks(range(1,13)); ax.set_xticklabels([f"W{i}" for i in range(1,13)],fontsize=8)
-        ax.set_ylabel("Score / 100",fontsize=9,color=C_DGREY)
-        ax.tick_params(colors=C_DGREY,labelsize=8)
-        ax.legend(fontsize=8,frameon=False,loc="upper left")
+        ax.set_xticks(range(1,13)); ax.set_xticklabels([f"W{i}" for i in range(1,13)], fontsize=8)
+        ax.set_ylabel("Score / 100", fontsize=9, color=C_DGREY)
+        ax.tick_params(colors=C_DGREY, labelsize=8)
+        ax.legend(fontsize=8, frameon=False, loc="upper left")
         for sp in ["top","right"]: ax.spines[sp].set_visible(False)
         ax.spines["left"].set_color(C_MGREY); ax.spines["bottom"].set_color(C_MGREY)
-        ax.grid(axis="y",color="#EEEEEE",lw=0.5)
-        plt.tight_layout(pad=0.4)
-        return fig
+        ax.grid(axis="y", color="#EEEEEE", lw=0.5)
+        plt.tight_layout(pad=0.4); return fig
 
-    # ── Build PDF ──
+    # ══════════════════════════════════════════════
+    # COVER SLIDE
+    # ══════════════════════════════════════════════
+    def draw_cover(c):
+        _slide_bg(c)
+        if _napco_logo_reader:
+            try: c.drawImage(_napco_logo_reader, 18, H-115, width=260, height=100,
+                             preserveAspectRatio=True, mask="auto")
+            except: pass
+        line_y = H - 125
+        c.setFillColor(HexColor(C_DBLUE)); c.rect(18, line_y, W-18, 4, fill=1, stroke=0)
+        c.setFillColor(HexColor(C_RED));   c.rect(0,  line_y, 4, H-line_y, fill=1, stroke=0)
+        centre_y = (line_y + 50) / 2
+        proj_name = project.get("project_name","FI Project")
+        c.setFillColor(HexColor(C_DBLUE)); c.setFont("Helvetica-Bold", 36)
+        tw_ = c.stringWidth(proj_name[:44], "Helvetica-Bold", 36)
+        c.drawString((W - tw_) / 2, centre_y + 28, proj_name[:44])
+        c.setFillColor(HexColor(C_RED)); c.rect(80, centre_y + 18, W-160, 2, fill=1, stroke=0)
+        sub_ = f"Focused Improvement  ·  {project.get('target_area','')}  ·  Week {cw} of 12"
+        c.setFillColor(HexColor(C_DGREY)); c.setFont("Helvetica-Oblique", 14)
+        sw_ = c.stringWidth(sub_, "Helvetica-Oblique", 14)
+        c.drawString((W - sw_) / 2, centre_y - 4, sub_)
+        cx_ = W - 90; cy_ = H - 78
+        c.setFillColor(HexColor(C_LGREY));     c.circle(cx_, cy_, 52, fill=1, stroke=0)
+        c.setFillColor(HexColor(score_color)); c.circle(cx_, cy_, 50, fill=1, stroke=0)
+        c.setFillColor(HexColor(C_DBLUE));     c.circle(cx_, cy_, 36, fill=1, stroke=0)
+        c.setFillColor(HexColor("#FFFFFF"))
+        c.setFont("Helvetica-Bold", 24); c.drawCentredString(cx_, cy_ - 8,  str(int(total_score)))
+        c.setFont("Helvetica-Bold",  9); c.drawCentredString(cx_, cy_ - 20, "/ 100")
+        c.setFont("Helvetica",       7); c.drawCentredString(cx_, cy_ - 30, "AUDIT SCORE")
+        c.setFillColor(HexColor(C_DGREY)); c.setFont("Helvetica-Oblique", 11)
+        d_str = f"Report generated: {date.today().strftime('%d %B %Y')}"
+        dw_ = c.stringWidth(d_str, "Helvetica-Oblique", 11)
+        c.drawString(W - dw_ - 40, 32, d_str)
+
+    # ══════════════════════════════════════════════
+    # BUILD PDF  — 7 slides
+    # ══════════════════════════════════════════════
     buf = io.BytesIO()
-    c = _rl_canvas.Canvas(buf, pagesize=A4)
-    TOTAL_PAGES = 4
+    c = _rl_canvas.Canvas(buf, pagesize=(W, H))
+    TOTAL = 7
 
-    # PAGE 1
-    c.setFillColor(HexColor(C_DBLUE)); c.rect(0,H-150,W,150,fill=1,stroke=0)
-    c.setFillColor(HexColor(C_RED));   c.rect(0,H-150,5,150,fill=1,stroke=0)
-    c.setFillColor(HexColor(C_RED));   c.roundRect(M,H-38,130,16,3,fill=1,stroke=0)
-    c.setFillColor(HexColor("#FFFFFF")); c.setFont("Helvetica-Bold",8)
-    c.drawString(M+8,H-29,"FOCUSED IMPROVEMENT  ·  FI")
-    c.setFillColor(HexColor("#FFFFFF")); c.setFont("Helvetica-Bold",22)
-    c.drawString(M,H-68,project.get("project_name","")[:50])
-    c.setFont("Helvetica",10); c.setFillColor(HexColor("#AACCEE"))
-    c.drawString(M,H-88,f"{project.get('target_area','')}   ·   Launch: {launch_str}   ·   Week {cw} of 12")
-    c.setFont("Helvetica",8); c.setFillColor(HexColor("#7FA8C0"))
-    c.drawString(M,H-108,f"Report generated: {date.today().strftime('%d %B %Y')}")
-    # Score circle
-    c.setFillColor(HexColor("#1A4A6B")); c.circle(W-62,H-82,46,fill=1,stroke=0)
-    c.setFillColor(HexColor(score_color)); c.circle(W-62,H-82,44,fill=1,stroke=0)
-    c.setFillColor(HexColor(C_DBLUE));    c.circle(W-62,H-82,32,fill=1,stroke=0)
-    c.setFillColor(HexColor("#FFFFFF"))
-    c.setFont("Helvetica-Bold",22); c.drawCentredString(W-62,H-89,str(int(total_score)))
-    c.setFont("Helvetica-Bold",8);  c.drawCentredString(W-62,H-102,"/ 100")
-    c.setFont("Helvetica",7);       c.drawCentredString(W-62,H-114,"AUDIT SCORE")
-    y=H-170
-    bw=(W-2*M-15)/4
-    for i,(lbl,val,sub,col,light) in enumerate([
-        ("Baseline KPI", f"{kpi_baseline}{kpi.get('unit','')}", "Start value", C_BLUE, True),
-        ("Current KPI",  f"{kpi_current:.1f}{kpi.get('unit','')}", f"Week {cw}", C_BLUE, False),
-        ("Target KPI",   f"{kpi_target}{kpi.get('unit','')}", "End of project", C_GREEN, False),
-        ("Progress",     f"{kpi_progress:.0f}%", "toward target", C_AMBER, False),
+    # SLIDE 1 — Cover
+    draw_cover(c); c.showPage()
+
+    # SLIDE 2 — Project Overview
+    _slide_bg(c)
+    _slide_title_bar(c, "Project Overview",
+        f"Launch: {launch_str}  ·  Area: {project.get('target_area','')}  ·  Week {cw} of 12")
+    y = H - 92
+    bw = (W - 2*M - 20) / 4
+    for i_, (lbl, val, sub_, col_, light_) in enumerate([
+        ("Baseline KPI", f"{kpi_baseline}{kpi.get('unit','')}", "Start value",   C_DBLUE, True),
+        ("Current KPI",  f"{kpi_current:.1f}{kpi.get('unit','')}", f"Week {cw}", C_DBLUE, False),
+        ("Target KPI",   f"{kpi_target}{kpi.get('unit','')}", "End of project",  C_GREEN, False),
+        ("Progress",     f"{kpi_progress:.0f}%",              "toward target",   C_AMBER, False),
     ]):
-        kpi_badge(c,M+i*(bw+5),y-52,bw,52,lbl,val,sub,col,light)
-    y-=66
-    y=section_title(c,y,"Problem Statement")
-    y=wrap_text(c,project.get("problem_statement",""),M+8,y,W-2*M-16,"Helvetica",9.5,14,C_BLACK,4)
-    y-=8
-    y=section_title(c,y,"Project Team")
-    c.setFont("Helvetica-Bold",8); c.setFillColor(HexColor(C_DGREY))
-    for tx,th in [(M+8,"NAME"),(M+185,"ROLE"),(M+330,"DEPARTMENT")]:
-        c.drawString(tx,y,th)
-    y-=6
-    c.setStrokeColor(HexColor(C_MGREY)); c.setLineWidth(0.5); c.line(M,y+1,W-M,y+1); y-=2
-    for ti,m in enumerate(team[:6]):
-        if ti%2==0:
-            c.setFillColor(HexColor(C_LGREY)); c.rect(M,y-3,W-2*M,14,fill=1,stroke=0)
-        c.setFillColor(HexColor(C_BLUE)); c.setFont("Helvetica-Bold",8.5)
-        c.drawString(M+8,y+3,m.get("member_name",""))
-        c.setFillColor(HexColor(C_DGREY)); c.setFont("Helvetica",8.5)
-        c.drawString(M+185,y+3,m.get("role",""))
-        c.drawString(M+330,y+3,m.get("department",""))
-        y-=15
-    y-=4
-    if sub_comps:
-        y=section_title(c,y,"KAI Progress Summary")
-        kai_w=(W-2*M-12)/min(4,len(sub_comps))
-        for i,kai in enumerate(sub_comps[:4]):
-            kx=M+i*(kai_w+4)
-            b=float(kai.get("baseline",0)); t=float(kai.get("target",0))
-            cur=float(kai.get("target",0))*0.7  # mock current for display
-            going_down=t<b
-            raw=(b-cur)/(b-t)*100 if going_down else (cur-b)/(t-b)*100 if (t-b)!=0 else 0
-            pct=max(0,min(100,raw))
-            col=C_GREEN if pct>=80 else C_BLUE if pct>=50 else C_AMBER
-            c.setFillColor(HexColor(C_LGREY)); c.roundRect(kx,y-50,kai_w,50,4,fill=1,stroke=0)
-            c.setFillColor(HexColor(C_BLUE)); c.rect(kx,y-4,kai_w,4,fill=1,stroke=0)
-            c.setFillColor(HexColor(C_DGREY)); c.setFont("Helvetica-Bold",7.5)
-            c.drawCentredString(kx+kai_w/2,y-14,kai.get("name","")[:20])
-            c.setFillColor(HexColor(col)); c.setFont("Helvetica-Bold",14)
-            c.drawCentredString(kx+kai_w/2,y-30,f"{int(pct)}%")
-            c.setFillColor(HexColor(C_DGREY)); c.setFont("Helvetica",7)
-            c.drawCentredString(kx+kai_w/2,y-42,f"{b} → {t} {kai.get('unit','')}")
-            progress_bar(c,kx+6,y-50,kai_w-12,5,pct,col)
-    page_frame(c,1,TOTAL_PAGES); c.showPage()
+        _kpi_badge(c, M + i_*(bw+6), y-52, bw, 52, lbl, val, sub_, col_, light_)
+    y -= 66
+    y = _section_label(c, M, y, "Problem Statement")
+    y = _wrap(c, project.get("problem_statement","—"), M+8, y, W-2*M-16, "Helvetica", 9.5, 14, C_BLACK, 4)
+    y -= 10
+    y = _section_label(c, M, y, "Project Team")
+    c.setFont("Helvetica-Bold", 8); c.setFillColor(HexColor(C_DGREY))
+    for tx_, th_ in [(M+8,"NAME"),(M+240,"ROLE"),(M+460,"DEPARTMENT")]:
+        c.drawString(tx_, y, th_)
+    y -= 8
+    c.setStrokeColor(HexColor(C_MGREY)); c.setLineWidth(0.5); c.line(M, y+2, W-M, y+2); y -= 4
+    for ti_, mem_ in enumerate(team[:8]):
+        if ti_ % 2 == 0:
+            c.setFillColor(HexColor(C_LGREY)); c.rect(M, y-2, W-2*M, 16, fill=1, stroke=0)
+        c.setFillColor(HexColor(C_DBLUE)); c.setFont("Helvetica-Bold", 8.5)
+        c.drawString(M+8,   y+4, mem_.get("member_name",""))
+        c.setFillColor(HexColor(C_DGREY)); c.setFont("Helvetica", 8.5)
+        c.drawString(M+240, y+4, mem_.get("role",""))
+        c.drawString(M+460, y+4, mem_.get("department",""))
+        y -= 17
+    _footer(c, 2, TOTAL); c.showPage()
 
-    # PAGE 2
-    c.setFillColor(HexColor(C_BLUE)); c.rect(0,H-36,W,36,fill=1,stroke=0)
-    c.setFillColor(HexColor(C_RED));  c.rect(0,H-36,5,36,fill=1,stroke=0)
-    c.setFillColor(HexColor("#FFFFFF")); c.setFont("Helvetica-Bold",14)
-    c.drawString(M,H-24,"Master Plan  &  KPI Trend")
-    c.setFont("Helvetica",9); c.setFillColor(HexColor("#AACCEE"))
-    done=sum(1 for s in steps if True)  # simplified
-    c.drawString(M,H-35,f"Week {cw} of 12  ·  Gantt chart below")
-    y=H-52
-    y=section_title(c,y,"Gantt Chart — Planned vs Actual Progress")
-    gf=chart_gantt()
+    # SLIDE 3 — KPI Performance
+    _slide_bg(c)
+    _slide_title_bar(c, "KPI Performance",
+        f"{kpi.get('kpi_name','KPI')}  ·  Progress: {kpi_progress:.0f}%")
+    y = H - 92
+    c.setFillColor(HexColor(C_DGREY)); c.setFont("Helvetica-Bold", 9)
+    c.drawString(M, y, f"Overall Progress: {kpi_progress:.0f}%")
+    _progress_bar(c, M, y-18, W-2*M, 10, kpi_progress, C_GREEN)
+    y -= 36
+    kf = chart_kpi_trend()
+    if kf:
+        img_h = H - 92 - 36 - 50
+        c.drawImage(_reader(kf), M, y - img_h, width=W-2*M, height=img_h, preserveAspectRatio=True)
+    else:
+        c.setFillColor(HexColor(C_DGREY)); c.setFont("Helvetica-Oblique", 10)
+        c.drawCentredString(W/2, y-80, "No KPI data recorded yet.")
+    _footer(c, 3, TOTAL); c.showPage()
+
+    # SLIDE 4 — Master Plan / Gantt
+    _slide_bg(c)
+    _slide_title_bar(c, "Master Plan & Step Progress", f"{len(steps)} steps  ·  Week {cw} of 12")
+    y = H - 92
+    gf = chart_gantt()
     if gf:
-        gh=max(180,len(steps)*30+60)
-        gr=_reader(gf); c.drawImage(gr,M,y-gh,width=W-2*M,height=gh,preserveAspectRatio=True); y-=gh+12
-    y=section_title(c,y,"KPI Trend — Week by Week")
-    tf=chart_kpi_trend()
-    if tf:
-        tr=_reader(tf); c.drawImage(tr,M,y-200,width=W-2*M,height=200,preserveAspectRatio=True); y-=212
-    c.setFillColor(HexColor(C_LGREY)); c.rect(M,y-28,W-2*M,28,fill=1,stroke=0)
-    c.setFillColor(HexColor(C_BLUE));  c.rect(M,y-28,4,28,fill=1,stroke=0)
-    c.setFillColor(HexColor(C_BLUE));  c.setFont("Helvetica-Bold",9)
-    c.drawString(M+12,y-10,f"KPI: {kpi.get('kpi_name','')}  ·  Baseline: {kpi_baseline}  →  Current: {kpi_current:.1f}  →  Target: {kpi_target}  {kpi.get('unit','')}")
-    c.setFillColor(HexColor(C_DGREY)); c.setFont("Helvetica",9)
-    c.drawString(M+12,y-22,f"Progress: {kpi_progress:.0f}% toward target")
-    progress_bar(c,M+200,y-20,W-2*M-220,7,kpi_progress,C_GREEN)
-    page_frame(c,2,TOTAL_PAGES); c.showPage()
+        img_h = H - 92 - 50
+        c.drawImage(_reader(gf), M, y - img_h, width=W-2*M, height=img_h, preserveAspectRatio=True)
+    else:
+        c.setFillColor(HexColor(C_DGREY)); c.setFont("Helvetica-Oblique", 10)
+        c.drawCentredString(W/2, y-80, "No master plan steps defined yet.")
+    _footer(c, 4, TOTAL); c.showPage()
 
-    # PAGE 3
-    c.setFillColor(HexColor(C_BLUE)); c.rect(0,H-36,W,36,fill=1,stroke=0)
-    c.setFillColor(HexColor(C_RED));  c.rect(0,H-36,5,36,fill=1,stroke=0)
-    c.setFillColor(HexColor("#FFFFFF")); c.setFont("Helvetica-Bold",14)
-    c.drawString(M,H-24,"KAI Progress  &  Action Plan")
-    c.setFont("Helvetica",9); c.setFillColor(HexColor("#AACCEE"))
-    ot_rate=int(completed_cnt/len(actions)*100) if actions else 0
-    c.drawString(M,H-35,f"{completed_cnt}/{len(actions)} actions completed  ·  On-time rate: {ot_rate}%")
-    y=H-52
-    if sub_comps:
-        y=section_title(c,y,"Key Activity Indicators — Detailed Progress")
-        kf=chart_kai()
-        if kf:
-            kr=_reader(kf); c.drawImage(kr,M,y-145,width=W-2*M,height=145,preserveAspectRatio=True); y-=157
-    y=section_title(c,y,"Action Plan")
-    col_xs=[M+5,M+198,M+308,M+376,M+446]
-    hdrs=["Action Description","Owner","Target Date","Status","KAI Addressed"]
-    c.setFillColor(HexColor(C_DBLUE)); c.rect(M+3,y-15,W-2*M-6,15,fill=1,stroke=0)
-    c.setFillColor(HexColor("#FFFFFF")); c.setFont("Helvetica-Bold",8)
-    for cx,hdr in zip(col_xs,hdrs): c.drawString(cx,y-11,hdr)
-    y-=17
-    STATUS_STYLES={"Completed":(C_GREEN,"#FFFFFF"),"In Progress":(C_BLUE,"#FFFFFF"),
-                   "Open":(C_LGREY,C_DGREY),"Overdue":(C_RED,"#FFFFFF")}
-    for ai,action in enumerate(actions):
-        row_h=16
-        bg="#FFFFFF" if ai%2==0 else C_LGREY
-        c.setFillColor(HexColor(bg)); c.rect(M+3,y-row_h+3,W-2*M-6,row_h,fill=1,stroke=0)
-        c.setFillColor(HexColor(C_BLACK)); c.setFont("Helvetica",8)
-        c.drawString(col_xs[0],y-9,str(action.get("description",""))[:36])
-        owner=str(action.get("owner","")).split()[0] if action.get("owner") else ""
-        c.drawString(col_xs[1],y-9,owner)
-        c.drawString(col_xs[2],y-9,str(action.get("target_date",""))[:7])
-        status=action.get("status","Open")
-        sc,stc=STATUS_STYLES.get(status,(C_MGREY,"#FFFFFF"))
-        c.setFillColor(HexColor(sc)); c.roundRect(col_xs[3]-2,y-12,66,12,3,fill=1,stroke=0)
-        c.setFillColor(HexColor(stc)); c.setFont("Helvetica-Bold",7)
-        c.drawCentredString(col_xs[3]+31,y-7,status)
-        rc=str(action.get("root_cause_addressed","—"))[:18]
-        c.setFillColor(HexColor(C_DGREY)); c.setFont("Helvetica",7)
-        c.drawString(col_xs[4],y-9,rc)
-        y-=row_h
-    y-=6
-    c.setFillColor(HexColor(C_LGREY)); c.rect(M,y-22,W-2*M,22,fill=1,stroke=0)
-    c.setFillColor(HexColor(C_BLUE));  c.rect(M,y-22,4,22,fill=1,stroke=0)
-    c.setFillColor(HexColor(C_GREEN)); c.setFont("Helvetica-Bold",8.5)
-    c.drawString(M+12,y-8,f"✔  {completed_cnt} Completed")
-    c.setFillColor(HexColor(C_AMBER)); c.drawString(M+130,y-8,f"●  {in_prog_cnt} In Progress")
-    c.setFillColor(HexColor(C_DGREY)); c.drawString(M+248,y-8,f"○  {open_cnt} Open")
-    c.setFillColor(HexColor(C_GREEN)); c.setFont("Helvetica-Bold",9)
-    c.drawRightString(W-M-8,y-8,f"On-time: {ot_rate}%")
-    page_frame(c,3,TOTAL_PAGES); c.showPage()
+    # SLIDE 5 — KAI Progress
+    _slide_bg(c)
+    _slide_title_bar(c, "Key Activity Indicators", f"{len(sub_comps)} KAI component(s) tracked")
+    y = H - 92
+    kaif = chart_kai()
+    if kaif:
+        img_h = H - 92 - 50
+        c.drawImage(_reader(kaif), M, y - img_h, width=W-2*M, height=img_h, preserveAspectRatio=True)
+    else:
+        c.setFillColor(HexColor(C_DGREY)); c.setFont("Helvetica-Oblique", 10)
+        c.drawCentredString(W/2, y-80, "No KAI sub-components defined.")
+    _footer(c, 5, TOTAL); c.showPage()
 
-    # PAGE 4
-    c.setFillColor(HexColor(C_BLUE)); c.rect(0,H-36,W,36,fill=1,stroke=0)
-    c.setFillColor(HexColor(C_RED));  c.rect(0,H-36,5,36,fill=1,stroke=0)
-    c.setFillColor(HexColor("#FFFFFF")); c.setFont("Helvetica-Bold",14)
-    c.drawString(M,H-24,"Audit Score  &  Gap Analysis")
-    c.setFont("Helvetica",9); c.setFillColor(HexColor("#AACCEE"))
-    tgt_w=TARGET_RAMP_LOCAL.get(cw,100)
-    gap_n=int(total_score)-tgt_w
-    gap_str=f"+{gap_n} pts ahead" if gap_n>=0 else f"{gap_n} pts behind"
-    c.drawString(M,H-35,f"Score: {int(total_score)}/100  ·  Target W{cw}: {tgt_w}/100  ·  {gap_str}")
-    y=H-52
-    y=section_title(c,y,"Score vs Target Trajectory")
-    sf=chart_score(); sr=_reader(sf)
-    c.drawImage(sr,M,y-175,width=W-2*M,height=175,preserveAspectRatio=True); y-=187
-    DIMENSIONS=[
-        ("Involvement",[1,2,34,35,36],12),
-        ("Method",[8,9,10,11,12,13,14,15,16],11),
-        ("Action Plan",[17,18,19,20,21,22,23],21),
-        ("Results",[3,4,5,6,7,24,25],41),
-        ("Stabilisation",[26,27,28,29,30,31,32,33],15),
+    # SLIDE 6 — Action Plan
+    _slide_bg(c)
+    _slide_title_bar(c, "Action Plan",
+        f"{completed_cnt}/{len(actions)} completed  ·  On-time rate: {ot_rate}%")
+    y = H - 92
+    bdg_w = (W - 2*M - 20) / 3
+    for i_, (lbl_, val_, col_) in enumerate([
+        ("Completed",   str(completed_cnt), C_GREEN),
+        ("In Progress", str(in_prog_cnt),   C_DBLUE),
+        ("Open / Late", str(open_cnt),      C_AMBER),
+    ]):
+        bx_ = M + i_*(bdg_w+10)
+        c.setFillColor(HexColor(col_)); c.roundRect(bx_, y-36, bdg_w, 36, 5, fill=1, stroke=0)
+        c.setFillColor(HexColor("#FFFFFF")); c.setFont("Helvetica-Bold", 20)
+        c.drawCentredString(bx_+bdg_w/2, y-22, val_)
+        c.setFont("Helvetica", 8); c.drawCentredString(bx_+bdg_w/2, y-33, lbl_.upper())
+    y -= 50
+    col_xs = [M+4, M+300, M+430, M+540, M+660]
+    c.setFillColor(HexColor(C_DBLUE)); c.rect(M, y-18, W-2*M, 18, fill=1, stroke=0)
+    c.setFillColor(HexColor("#FFFFFF")); c.setFont("Helvetica-Bold", 8)
+    for cx_, hdr_ in zip(col_xs, ["Action Description","Owner","Target Date","Status","KAI"]):
+        c.drawString(cx_, y-13, hdr_)
+    y -= 20
+    STATUS_STYLES = {"Completed":(C_GREEN,"#FFFFFF"),"In Progress":(C_DBLUE,"#FFFFFF"),
+                     "Open":(C_LGREY,C_DGREY),"Overdue":(C_RED,"#FFFFFF")}
+    row_h = 18
+    max_rows = int((y - 50) / row_h)
+    for ai_, action_ in enumerate(actions[:max_rows]):
+        bg_ = "#FFFFFF" if ai_ % 2 == 0 else C_LGREY
+        c.setFillColor(HexColor(bg_)); c.rect(M, y-row_h+3, W-2*M, row_h, fill=1, stroke=0)
+        c.setFillColor(HexColor(C_BLACK)); c.setFont("Helvetica", 8)
+        c.drawString(col_xs[0], y-12, str(action_.get("description",""))[:48])
+        owner_ = str(action_.get("owner","")).split()[0] if action_.get("owner") else "—"
+        c.drawString(col_xs[1], y-12, owner_)
+        c.drawString(col_xs[2], y-12, str(action_.get("target_date",""))[:10])
+        status_ = action_.get("status","Open")
+        sc_, stc_ = STATUS_STYLES.get(status_, (C_MGREY,"#FFFFFF"))
+        c.setFillColor(HexColor(sc_)); c.roundRect(col_xs[3]-2, y-15, 88, 14, 3, fill=1, stroke=0)
+        c.setFillColor(HexColor(stc_)); c.setFont("Helvetica-Bold", 7)
+        c.drawCentredString(col_xs[3]+42, y-9, status_)
+        c.setFillColor(HexColor(C_DGREY)); c.setFont("Helvetica", 7)
+        c.drawString(col_xs[4], y-12, str(action_.get("root_cause_addressed","—"))[:16])
+        y -= row_h
+    _footer(c, 6, TOTAL); c.showPage()
+
+    # SLIDE 7 — Audit Score & Gap Analysis
+    _slide_bg(c)
+    _slide_title_bar(c, "Audit Score & Gap Analysis",
+        f"Score: {int(total_score)}/100  ·  Target W{cw}: {tgt_w}/100  ·  {gap_str}")
+    y = H - 92
+    sf = chart_score(); chart_h = 180
+    c.drawImage(_reader(sf), M, y - chart_h, width=W-2*M, height=chart_h, preserveAspectRatio=True)
+    y -= chart_h + 12
+    DIMENSIONS = [
+        ("Involvement",   [1,2,34,35,36],            12),
+        ("Method",        [8,9,10,11,12,13,14,15,16], 11),
+        ("Action Plan",   [17,18,19,20,21,22,23],    21),
+        ("Results",       [3,4,5,6,7,24,25],         41),
+        ("Stabilisation", [26,27,28,29,30,31,32,33], 15),
     ]
-    y=section_title(c,y,"Performance by Dimension")
-    dw=(W-2*M-16)/len(DIMENSIONS)
-    for i,(dim,qs,possible) in enumerate(DIMENSIONS):
-        achieved=sum(scores.get(q,0) for q in qs)
-        pct=achieved/possible*100 if possible>0 else 0
-        col=C_GREEN if pct>=90 else C_AMBER if pct>=60 else C_RED
-        dx=M+i*(dw+4)
-        c.setFillColor(HexColor(C_LGREY)); c.roundRect(dx,y-52,dw,52,4,fill=1,stroke=0)
-        c.setFillColor(HexColor(col)); c.circle(dx+dw/2,y-20,14,fill=1,stroke=0)
-        c.setFillColor(HexColor("#FFFFFF")); c.setFont("Helvetica-Bold",9)
-        c.drawCentredString(dx+dw/2,y-24,f"{int(pct)}%")
-        c.setFillColor(HexColor(C_BLACK)); c.setFont("Helvetica-Bold",7.5)
-        c.drawCentredString(dx+dw/2,y-42,dim)
-        c.setFillColor(HexColor(C_DGREY)); c.setFont("Helvetica",7)
-        c.drawCentredString(dx+dw/2,y-51,f"{achieved}/{possible}")
-    y-=62
-    QUESTIONS_LOCAL={
-        4:"Cost/Benefit chart introduced",15:"Reoccurrence analysis",
-        16:"Single problem analysis",24:"KPI trend positive",
-        25:"Goal achieved / substantial progress",26:"Procedures to hold gains",
-        28:"Monitoring devices updated",29:"OPLs/SOPs created",
-        30:"Training matrix in place",31:"CIL standards — audit ≥90%",
-    }
-    WDUE={4:5,15:7,16:7,24:7,25:11,26:10,28:8,29:10,30:10,31:5}
-    gaps_list=[(qn,txt) for qn,txt in QUESTIONS_LOCAL.items() if scores.get(qn,0)==0 and WDUE.get(qn,99)<=cw]
-    upcoming=[(qn,txt) for qn,txt in QUESTIONS_LOCAL.items() if scores.get(qn,0)==0 and WDUE.get(qn,99)>cw]
-    y=section_title(c,y,"Gap Register — Items Requiring Attention")
-    if gaps_list:
-        c.setFillColor(HexColor(C_DGREY)); c.setFont("Helvetica-Bold",8)
-        c.drawString(M+8,y,"OVERDUE / MISSING:"); y-=14
-        for qn,txt in gaps_list[:5]:
-            c.setFillColor(HexColor(C_RED)); c.circle(M+14,y+4,3,fill=1,stroke=0)
-            c.setFillColor(HexColor(C_BLACK)); c.setFont("Helvetica",8.5)
-            c.drawString(M+22,y,f"Q{qn}: {txt}")
-            c.setFont("Helvetica",7.5); c.setFillColor(HexColor(C_DGREY))
-            c.drawRightString(W-M-5,y,f"Due W{WDUE.get(qn,'?')}"); y-=13
-        y-=4
-    if upcoming:
-        c.setFillColor(HexColor(C_DGREY)); c.setFont("Helvetica-Bold",8)
-        c.drawString(M+8,y,"UPCOMING (not yet due):"); y-=12
-        for qn,txt in upcoming[:3]:
-            c.setFillColor(HexColor(C_AMBER)); c.circle(M+14,y+4,3,fill=1,stroke=0)
-            c.setFillColor(HexColor(C_DGREY)); c.setFont("Helvetica",8)
-            c.drawString(M+22,y,f"Q{qn}: {txt}  (due W{WDUE.get(qn,'?')})"); y-=12
-    y-=6
-    ar=audit_records[-1] if audit_records else {}
-    notes=ar.get("auditor_notes","No auditor notes recorded.")
-    c.setFillColor(HexColor(C_LGREY)); c.rect(M,y-50,W-2*M,50,fill=1,stroke=0)
-    c.setFillColor(HexColor(C_BLUE));  c.rect(M,y-50,4,50,fill=1,stroke=0)
-    c.setFillColor(HexColor(C_BLUE));  c.setFont("Helvetica-Bold",8.5)
-    c.drawString(M+12,y-10,"AUDITOR NOTES")
-    y2=wrap_text(c,notes,M+12,y-22,W-2*M-24,"Helvetica",8.5,13,C_BLACK,3)
-    c.setFillColor(HexColor(C_DGREY)); c.setFont("Helvetica-Oblique",7.5)
-    audited_by=ar.get("audited_by","")
-    audited_at=str(ar.get("audited_at",""))[:10]
-    c.drawRightString(W-M-8,y-47,f"Audited by: {audited_by}  ·  {audited_at}")
-    page_frame(c,4,TOTAL_PAGES); c.showPage()
+    y = _section_label(c, M, y, "Performance by Dimension")
+    dw_ = (W - 2*M - 20) / len(DIMENSIONS)
+    for i_, (dim_, qs_, possible_) in enumerate(DIMENSIONS):
+        achieved_ = sum(scores.get(q_, 0) for q_ in qs_)
+        pct_ = achieved_ / possible_ * 100 if possible_ > 0 else 0
+        col_ = C_GREEN if pct_ >= 90 else C_AMBER if pct_ >= 60 else C_RED
+        dx_ = M + i_*(dw_+4)
+        c.setFillColor(HexColor(C_LGREY)); c.roundRect(dx_, y-50, dw_, 50, 5, fill=1, stroke=0)
+        c.setFillColor(HexColor(col_)); c.circle(dx_+dw_/2, y-18, 14, fill=1, stroke=0)
+        c.setFillColor(HexColor("#FFFFFF")); c.setFont("Helvetica-Bold", 9)
+        c.drawCentredString(dx_+dw_/2, y-22, f"{int(pct_)}%")
+        c.setFillColor(HexColor(C_BLACK)); c.setFont("Helvetica-Bold", 7.5)
+        c.drawCentredString(dx_+dw_/2, y-38, dim_)
+        c.setFillColor(HexColor(C_DGREY)); c.setFont("Helvetica", 7)
+        c.drawCentredString(dx_+dw_/2, y-48, f"{achieved_}/{possible_}")
+    y -= 58
+    ar_ = audit_records[-1] if audit_records else {}
+    notes_ = ar_.get("auditor_notes","No auditor notes recorded.")
+    c.setFillColor(HexColor(C_LGREY)); c.rect(M, y-44, W-2*M, 44, fill=1, stroke=0)
+    c.setFillColor(HexColor(C_DBLUE)); c.rect(M, y-44, 4,    44, fill=1, stroke=0)
+    c.setFillColor(HexColor(C_DBLUE)); c.setFont("Helvetica-Bold", 8.5)
+    c.drawString(M+12, y-10, "AUDITOR NOTES")
+    _wrap(c, notes_, M+12, y-22, W-2*M-24, "Helvetica", 8.5, 12, C_BLACK, 3)
+    audited_by_ = ar_.get("audited_by",""); audited_at_ = str(ar_.get("audited_at",""))[:10]
+    c.setFillColor(HexColor(C_DGREY)); c.setFont("Helvetica-Oblique", 7.5)
+    c.drawRightString(W-M-8, y-40, f"Audited by: {audited_by_}  ·  {audited_at_}")
+    _footer(c, 7, TOTAL); c.showPage()
 
     c.save(); buf.seek(0)
     return buf
+
 
 # ════════════════════════════════════════
 # MAIN RENDER FUNCTION
