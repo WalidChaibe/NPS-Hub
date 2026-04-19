@@ -415,13 +415,13 @@ def _score_project(project, team, kpi, steps, weekly_updates, actions, stab, aud
 # ════════════════════════════════════════
 def _generate_project_pdf(project, team, kpi, steps, weekly_updates, actions, stab, audit_records, scores, total_score):
     """Management-quality 4-page PDF report"""
-    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.pagesizes import landscape as _rl_landscape
     from reportlab.lib.utils import ImageReader
     from reportlab.lib.colors import HexColor
     import matplotlib.patches as mpatches
 
-    W, H = A4
-    M = 32
+    W, H = 960, 540
+    M = 40
     C_BLUE="#0E5E86"; C_DBLUE="#083D57"; C_LBLUE="#D6EAF8"
     C_RED="#DE201B"; C_GREEN="#1E8449"; C_AMBER="#D68910"
     C_LGREY="#F4F6F8"; C_MGREY="#BDC3C7"; C_DGREY="#566573"; C_BLACK="#1A1A2E"
@@ -730,14 +730,16 @@ def _generate_project_pdf(project, team, kpi, steps, weekly_updates, actions, st
     page_frame(c,1,TOTAL_PAGES); c.showPage()
 
     # PAGE 2
-    c.setFillColor(HexColor(C_BLUE)); c.rect(0,H-36,W,36,fill=1,stroke=0)
-    c.setFillColor(HexColor(C_RED));  c.rect(0,H-36,5,36,fill=1,stroke=0)
-    c.setFillColor(HexColor("#FFFFFF")); c.setFont("Helvetica-Bold",14)
-    c.drawString(M,H-24,"Master Plan  &  KPI Trend")
+    c.setFillColor(HexColor("#0E5E86")); c.setFont("Helvetica-Bold",22)
+    c.drawString(40, H-52, "YOUR TITLE HERE")
+    c.setFont("Helvetica",9); c.setFillColor(HexColor("#566573"))
+    c.drawString(40, H-64, "YOUR SUBTITLE HERE")
+    c.setFillColor(HexColor("#DE201B")); c.rect(40, H-76, 110, 4, fill=1, stroke=0)
+    c.setFillColor(HexColor("#0C5595")); c.rect(155, H-76, W-195, 4, fill=1, stroke=0)
     c.setFont("Helvetica",9); c.setFillColor(HexColor("#AACCEE"))
     done=sum(1 for s in steps if True)  # simplified
     c.drawString(M,H-35,f"Week {cw} of 12  ·  Gantt chart below")
-    y=H-52
+    y=H-92
     y=section_title(c,y,"Gantt Chart — Planned vs Actual Progress")
     gf=chart_gantt()
     if gf:
@@ -757,14 +759,16 @@ def _generate_project_pdf(project, team, kpi, steps, weekly_updates, actions, st
     page_frame(c,2,TOTAL_PAGES); c.showPage()
 
     # PAGE 3
-    c.setFillColor(HexColor(C_BLUE)); c.rect(0,H-36,W,36,fill=1,stroke=0)
-    c.setFillColor(HexColor(C_RED));  c.rect(0,H-36,5,36,fill=1,stroke=0)
-    c.setFillColor(HexColor("#FFFFFF")); c.setFont("Helvetica-Bold",14)
-    c.drawString(M,H-24,"KAI Progress  &  Action Plan")
+    c.setFillColor(HexColor("#0E5E86")); c.setFont("Helvetica-Bold",22)
+    c.drawString(40, H-52, "YOUR TITLE HERE")
+    c.setFont("Helvetica",9); c.setFillColor(HexColor("#566573"))
+    c.drawString(40, H-64, "YOUR SUBTITLE HERE")
+    c.setFillColor(HexColor("#DE201B")); c.rect(40, H-76, 110, 4, fill=1, stroke=0)
+    c.setFillColor(HexColor("#0C5595")); c.rect(155, H-76, W-195, 4, fill=1, stroke=0)
     c.setFont("Helvetica",9); c.setFillColor(HexColor("#AACCEE"))
     ot_rate=int(completed_cnt/len(actions)*100) if actions else 0
     c.drawString(M,H-35,f"{completed_cnt}/{len(actions)} actions completed  ·  On-time rate: {ot_rate}%")
-    y=H-52
+    y=H-92
     if sub_comps:
         y=section_title(c,y,"Key Activity Indicators — Detailed Progress")
         kf=chart_kai()
@@ -809,16 +813,18 @@ def _generate_project_pdf(project, team, kpi, steps, weekly_updates, actions, st
     page_frame(c,3,TOTAL_PAGES); c.showPage()
 
     # PAGE 4
-    c.setFillColor(HexColor(C_BLUE)); c.rect(0,H-36,W,36,fill=1,stroke=0)
-    c.setFillColor(HexColor(C_RED));  c.rect(0,H-36,5,36,fill=1,stroke=0)
-    c.setFillColor(HexColor("#FFFFFF")); c.setFont("Helvetica-Bold",14)
-    c.drawString(M,H-24,"Audit Score  &  Gap Analysis")
+    c.setFillColor(HexColor("#0E5E86")); c.setFont("Helvetica-Bold",22)
+    c.drawString(40, H-52, "YOUR TITLE HERE")
+    c.setFont("Helvetica",9); c.setFillColor(HexColor("#566573"))
+    c.drawString(40, H-64, "YOUR SUBTITLE HERE")
+    c.setFillColor(HexColor("#DE201B")); c.rect(40, H-76, 110, 4, fill=1, stroke=0)
+    c.setFillColor(HexColor("#0C5595")); c.rect(155, H-76, W-195, 4, fill=1, stroke=0)
     c.setFont("Helvetica",9); c.setFillColor(HexColor("#AACCEE"))
     tgt_w=TARGET_RAMP_LOCAL.get(cw,100)
     gap_n=int(total_score)-tgt_w
     gap_str=f"+{gap_n} pts ahead" if gap_n>=0 else f"{gap_n} pts behind"
     c.drawString(M,H-35,f"Score: {int(total_score)}/100  ·  Target W{cw}: {tgt_w}/100  ·  {gap_str}")
-    y=H-52
+    y=H-92
     y=section_title(c,y,"Score vs Target Trajectory")
     sf=chart_score(); sr=_reader(sf)
     c.drawImage(sr,M,y-175,width=W-2*M,height=175,preserveAspectRatio=True); y-=187
