@@ -59,8 +59,8 @@ QUESTIONS = {
 }
 
 TARGET_RAMP = {
-    1:12, 2:15, 3:20, 4:27, 5:45, 6:47,
-    7:62, 8:64, 9:64, 10:70, 11:85, 12:100
+    1:12, 2:15, 3:24, 4:33, 5:56, 6:58,
+    7:77, 8:79, 9:79, 10:85, 11:100, 12:100
 }
 
 TEAM_ROLES = ["Team Leader","Analyst","Operator","Maintenance","Quality","Other"]
