@@ -974,6 +974,7 @@ def render_fi_projects_tab(supabase, role, pillar, name):
                         st.divider()
                         st.caption("KAI readings:")
                         chunks = [sub_c[i:i+4] for i in range(0,len(sub_c),4)]
+                        _kai_global = 0
                         for chunk in chunks:
                             kcols = st.columns(len(chunk))
                             for ci, kai in enumerate(chunk):
@@ -981,7 +982,8 @@ def render_fi_projects_tab(supabase, role, pillar, name):
                                 ex_v = float(_wu_kai_data.get(kn,{}).get("value",0))
                                 with kcols[ci]:
                                     st.caption(f"**{kn}**  _{kai.get('baseline','')}→{kai.get('target','')} {kai.get('unit','')}_")
-                                    kai_weekly[kn] = {"value": st.number_input(kn, value=ex_v, key=f"kai_{sel_week}_{ci}", label_visibility="collapsed")}
+                                    kai_weekly[kn] = {"value": st.number_input(kn, value=ex_v, key=f"kai_{sel_week}_{_kai_global}", label_visibility="collapsed")}
+                                _kai_global += 1
 
                     if st.form_submit_button("Save KPI", type="primary"):
                         _save_wu({"kpi_value": kpi_val_in, "kpi_collected_by": ",".join(coll_by), "kpi_notes": json.dumps(kai_weekly), "updated_by": name})
@@ -1199,15 +1201,16 @@ def render_fi_projects_tab(supabase, role, pillar, name):
                 act_names = [f"{a['description'][:45]} [{a.get('status','')}]" for a in actions]
                 act_idx   = st.selectbox("Select action", range(len(actions)), format_func=lambda x: act_names[x], key="fi_act_sel")
                 act_obj   = actions[act_idx]
-                us1, us2, us3 = st.columns(3)
-                new_st   = us1.selectbox("New Status", ACTION_STATUSES, index=ACTION_STATUSES.index(act_obj.get("status","Open")), key="fi_new_st")
-                new_ev   = us2.file_uploader("Evidence", type=["pdf","png","jpg","xlsx"], key="fi_ev_up")
-                if us3.button("Update", key="fi_upd_act"):
-                    upd_a = {"status": new_st}
-                    if new_st == "Completed": upd_a["completed_date"] = str(date.today())
-                    if new_ev: upd_a["evidence_b64"] = _b64(new_ev); upd_a["evidence_filename"] = new_ev.name
-                    supabase.table("fi_actions").update(upd_a).eq("id", act_obj["id"]).execute()
-                    st.rerun()
+                with st.form("fi_upd_act_form"):
+                    us1, us2 = st.columns(2)
+                    new_st   = us1.selectbox("New Status", ACTION_STATUSES, index=ACTION_STATUSES.index(act_obj.get("status","Open")))
+                    new_ev   = us2.file_uploader("Evidence", type=["pdf","png","jpg","xlsx"])
+                    if st.form_submit_button("Update Action", type="primary"):
+                        upd_a = {"status": new_st}
+                        if new_st == "Completed": upd_a["completed_date"] = str(date.today())
+                        if new_ev: upd_a["evidence_b64"] = _b64(new_ev); upd_a["evidence_filename"] = new_ev.name
+                        supabase.table("fi_actions").update(upd_a).eq("id", act_obj["id"]).execute()
+                        st.rerun()
 
         # add action
         if can_edit:
