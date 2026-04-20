@@ -517,124 +517,265 @@ def _five_why_chart(problem, whys):
 # ─────────────────────────────────────────────
 def _fishbone_chart(problem, categories):
     """
+    Proper Ishikawa fishbone.
     categories: dict {cat_name: [cause1, cause2, ...]}
-    Renders a horizontal fishbone (Ishikawa) diagram.
+    Top 3 cats above spine, bottom 3 below.
+    Each bone is a diagonal line; causes are stacked vertically along it.
     """
-    fig, ax = plt.subplots(figsize=(16, 9), dpi=300)
-    fig.patch.set_facecolor("#ffffff")
-    ax.set_facecolor("#ffffff")
-    ax.set_xlim(0, 14)
-    ax.set_ylim(0, 8)
+    import textwrap
+
+    W, H   = 22, 10        # canvas size in data units
+    SY     = H / 2         # spine y
+    SX0    = 1.5           # spine start x
+    SX1    = 19.0          # spine end (before fish head)
+    HEAD_X = 20.5          # fish head centre x
+
+    fig, ax = plt.subplots(figsize=(20, 10), dpi=300)
+    fig.patch.set_facecolor("#FAFAFA")
+    ax.set_facecolor("#FAFAFA")
+    ax.set_xlim(0, W)
+    ax.set_ylim(0, H)
     ax.axis("off")
 
-    # spine
-    ax.annotate("", xy=(13.2, 4), xytext=(1.0, 4),
-                arrowprops=dict(arrowstyle="-|>", color="#1A1A2E",
-                                lw=2.5, mutation_scale=18))
+    # ── main spine ──
+    ax.annotate("", xy=(SX1 + 0.2, SY), xytext=(SX0, SY),
+                arrowprops=dict(arrowstyle="-|>", color="#1A1A2E", lw=3, mutation_scale=22))
 
-    # problem box
-    prob_box = plt.matplotlib.patches.FancyBboxPatch(
-        (12.9, 3.4), 0.9, 1.2,
-        boxstyle="round,pad=0.08",
-        facecolor="#DE201B", edgecolor="white", lw=1.5
+    # ── fish head (problem box) ──
+    head = mpatches.FancyBboxPatch(
+        (SX1, SY - 1.1), W - SX1 - 0.3, 2.2,
+        boxstyle="round,pad=0.12",
+        facecolor="#DE201B", edgecolor="white", lw=2, zorder=5
     )
-    ax.add_patch(prob_box)
-    wrapped = problem[:35] + ("\n" + problem[35:70] if len(problem) > 35 else "")
-    ax.text(13.35, 4.0, wrapped, ha="center", va="center",
-            fontsize=8, color="white", fontweight="bold")
+    ax.add_patch(head)
+    prob_lines = textwrap.wrap(problem[:80], width=16)
+    for li, line in enumerate(prob_lines[:3]):
+        ax.text(HEAD_X, SY + 0.35 - li * 0.55, line,
+                ha="center", va="center", fontsize=9,
+                color="white", fontweight="bold", zorder=6)
 
     cats = list(categories.items())
-    n_cats = len(cats)
+    n    = len(cats)
+    top_cats = cats[:math.ceil(n / 2)]
+    bot_cats = cats[math.ceil(n / 2):]
 
-    # place categories: top-half above spine, bottom-half below
-    top_cats    = cats[:math.ceil(n_cats / 2)]
-    bottom_cats = cats[math.ceil(n_cats / 2):]
+    # evenly space attachment points along spine
+    def _x_positions(n_branches):
+        if n_branches == 0:
+            return []
+        step = (SX1 - SX0 - 1.0) / (n_branches + 1)
+        return [SX0 + 0.5 + step * (i + 1) for i in range(n_branches)]
 
-    spine_x_start = 2.0
-    spine_x_end   = 12.5
-    spine_y       = 4.0
+    BONE_ANGLE = 0.55    # how far y the bone tip goes from spine
+    BONE_LEN   = 3.0     # length of main bone in x
 
-    def _place_branch(cat_name, causes, x_attach, side):
-        """side: +1 = top, -1 = bottom"""
-        branch_len = 2.5
-        angle_y    = spine_y + side * 1.8
-        # branch line
-        ax.plot([x_attach, x_attach - 0.5],
-                [spine_y, angle_y],
-                color="#0C5595", lw=1.8, zorder=2)
-        # category label box
-        bbox_y = angle_y + side * 0.25
-        bp = plt.matplotlib.patches.FancyBboxPatch(
-            (x_attach - 1.5, bbox_y - 0.25), 2.0, 0.5,
-            boxstyle="round,pad=0.06",
-            facecolor="#0C5595", edgecolor="white", lw=1
+    def _draw_branch(cat_name, causes, x_attach, side):
+        """side: +1 top,  -1 bottom"""
+        tip_x = x_attach - BONE_LEN
+        tip_x = max(SX0 + 0.2, tip_x)
+        tip_y = SY + side * (H * 0.28)
+
+        # main bone line (diagonal from tip to spine)
+        ax.plot([tip_x, x_attach], [tip_y, SY],
+                color="#0C5595", lw=2.2, zorder=2, solid_capstyle="round")
+
+        # category label box at the tip
+        lbl_bg = mpatches.FancyBboxPatch(
+            (tip_x - 1.1, tip_y + side * 0.15 - 0.28), 2.2, 0.56,
+            boxstyle="round,pad=0.08",
+            facecolor="#0C5595", edgecolor="white", lw=1.5, zorder=4
         )
-        ax.add_patch(bp)
-        ax.text(x_attach - 0.5, bbox_y,
+        ax.add_patch(lbl_bg)
+        ax.text(tip_x, tip_y + side * 0.15,
                 cat_name, ha="center", va="center",
-                fontsize=9, color="white", fontweight="bold")
-        # causes as sub-lines
-        for ci, cause in enumerate(causes[:5]):
-            c_x = x_attach - 0.5 - ci * 0.45
-            c_x = max(spine_x_start + 0.2, c_x)
-            ax.plot([c_x, c_x - 0.3],
-                    [angle_y, spine_y + side * 0.5],
-                    color="#BDC3C7", lw=1.2, zorder=1)
-            t_y = angle_y + side * 0.55 + ci * side * 0.28
-            ax.text(c_x - 0.1, t_y, cause[:28],
-                    ha="center", va="center",
-                    fontsize=7.5, color="#1A1A2E")
+                fontsize=9.5, color="white", fontweight="bold", zorder=5)
 
-    n_top = len(top_cats)
-    n_bot = len(bottom_cats)
-    x_positions_top = [spine_x_start + (spine_x_end - spine_x_start) / (n_top + 1) * (i + 1) for i in range(n_top)]
-    x_positions_bot = [spine_x_start + (spine_x_end - spine_x_start) / (n_bot + 1) * (i + 1) for i in range(n_bot)]
+        # causes: evenly stacked along the bone
+        if causes:
+            n_causes = min(len(causes), 6)
+            # interpolate points along the bone from near-tip to near-spine
+            for ci in range(n_causes):
+                t = (ci + 1) / (n_causes + 1)   # 0→tip, 1→spine
+                cx = tip_x + t * (x_attach - tip_x)
+                cy = tip_y + t * (SY - tip_y)
+                # short sub-rib perpendicular to bone (outward from spine)
+                rib_len = 0.7
+                ax.plot([cx, cx], [cy, cy + side * rib_len],
+                        color="#BDC3C7", lw=1.2, zorder=1)
+                # cause text at end of rib
+                txt = causes[ci][:28]
+                ax.text(cx, cy + side * (rib_len + 0.12),
+                        txt, ha="center",
+                        va="bottom" if side == 1 else "top",
+                        fontsize=8, color="#1A1A2E", zorder=3,
+                        bbox=dict(boxstyle="round,pad=0.15", facecolor="white",
+                                  edgecolor="#BDC3C7", lw=0.8, alpha=0.9))
 
-    for (cat, causes), xp in zip(top_cats, x_positions_top):
-        _place_branch(cat, causes, xp, +1)
-    for (cat, causes), xp in zip(bottom_cats, x_positions_bot):
-        _place_branch(cat, causes, xp, -1)
+    for (cat, causes), xp in zip(top_cats, _x_positions(len(top_cats))):
+        _draw_branch(cat, causes, xp, +1)
+    for (cat, causes), xp in zip(bot_cats, _x_positions(len(bot_cats))):
+        _draw_branch(cat, causes, xp, -1)
+
+    # title
+    ax.text(W / 2, H - 0.35, "Fishbone (Ishikawa) Diagram",
+            ha="center", va="top", fontsize=13,
+            fontweight="bold", color="#1A1A2E")
 
     fig.tight_layout(pad=0.3)
     return fig
 
 
 # ─────────────────────────────────────────────
-# ANALYSIS TOOLS – PARETO
+# ANALYSIS TOOLS – VSM
 # ─────────────────────────────────────────────
-def _pareto_chart(items, values, title="Pareto Analysis"):
-    if not items or not values:
+def _vsm_chart(process_steps, title="Value Stream Map"):
+    """
+    process_steps: list of dicts with keys:
+      name, cycle_time, changeover_time, uptime, operators,
+      va_time, nva_time, inventory_before
+    """
+    n = len(process_steps)
+    if n == 0:
         return None
-    combined = sorted(zip(items, values), key=lambda x: x[1], reverse=True)
-    items_s  = [c[0] for c in combined]
-    vals_s   = [c[1] for c in combined]
-    total_v  = sum(vals_s)
-    cum_pct  = [sum(vals_s[:i+1]) / total_v * 100 for i in range(len(vals_s))]
 
-    fig, ax1 = plt.subplots(figsize=(14, 6), dpi=300)
-    fig.patch.set_facecolor("#ffffff")
-    ax1.set_facecolor("#fafafa")
+    import textwrap
 
-    bars = ax1.bar(items_s, vals_s, color="#0C5595", alpha=0.85, zorder=2)
-    for bar, v in zip(bars, vals_s):
-        ax1.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + total_v * 0.01,
-                 str(v), ha="center", va="bottom", fontsize=9, fontweight="bold", color="#1A1A2E")
+    W  = max(24, n * 4.5 + 4)
+    H  = 14
+    fig, ax = plt.subplots(figsize=(W * 0.9, 8), dpi=300)
+    fig.patch.set_facecolor("#FAFAFA")
+    ax.set_facecolor("#FAFAFA")
+    ax.set_xlim(0, W)
+    ax.set_ylim(0, H)
+    ax.axis("off")
 
-    ax2 = ax1.twinx()
-    ax2.plot(items_s, cum_pct, "o-", color="#DE201B", lw=2, ms=7, zorder=5, label="Cumulative %")
-    ax2.axhline(80, color="#DE201B", lw=1, ls="--", alpha=0.5, label="80%")
-    ax2.set_ylim(0, 115)
-    ax2.set_ylabel("Cumulative %", fontsize=9, color="#DE201B")
-    ax2.tick_params(colors="#DE201B")
+    # title
+    ax.text(W / 2, H - 0.4, title, ha="center", va="top",
+            fontsize=13, fontweight="bold", color="#1A1A2E")
 
-    ax1.set_ylabel("Count / Value", fontsize=9)
-    ax1.set_title(title, fontsize=12, fontweight="bold", color="#1A1A2E", pad=10)
-    ax1.grid(axis="y", color="#eeeeee", lw=0.6, zorder=1)
-    for sp in ["top", "right"]:
-        ax1.spines[sp].set_visible(False)
-    ax2.spines["top"].set_visible(False)
-    plt.xticks(rotation=20, ha="right", fontsize=9)
-    fig.tight_layout(pad=0.5)
+    # ── Customer / Supplier boxes ──
+    for bx, label, col in [(0.2, "SUPPLIER", "#566573"), (W - 3.0, "CUSTOMER", "#1E8449")]:
+        bpatch = mpatches.FancyBboxPatch((bx, 8.5), 2.6, 1.6,
+            boxstyle="round,pad=0.1", facecolor=col, edgecolor="white", lw=1.5, zorder=3)
+        ax.add_patch(bpatch)
+        ax.text(bx + 1.3, 9.3, label, ha="center", va="center",
+                fontsize=9, fontweight="bold", color="white", zorder=4)
+
+    # column x centres
+    step_w   = (W - 5.0) / n
+    centres  = [2.8 + step_w * i + step_w / 2 for i in range(n)]
+
+    total_va  = 0
+    total_nva = 0
+    total_lt  = 0
+
+    for i, (step, cx) in enumerate(zip(process_steps, centres)):
+        bx = cx - 1.6
+
+        # ── inventory triangle before step ──
+        inv = step.get("inventory_before", 0)
+        if inv > 0:
+            tri_x = bx - 0.6
+            tri = plt.Polygon([[tri_x, 7.3], [tri_x + 0.7, 7.3], [tri_x + 0.35, 6.7]],
+                               facecolor="#D68910", edgecolor="white", lw=1, zorder=3)
+            ax.add_patch(tri)
+            ax.text(tri_x + 0.35, 6.5, str(inv),
+                    ha="center", va="top", fontsize=7.5,
+                    color="#D68910", fontweight="bold")
+
+        # ── push arrow between steps ──
+        if i < n - 1:
+            ax.annotate("", xy=(cx + 1.6 + 0.1, 7.6), xytext=(cx + 1.6 + 0.5, 7.6),
+                        arrowprops=dict(arrowstyle="-|>", color="#0C5595", lw=1.5, mutation_scale=12))
+            ax.text(cx + 1.6 + 0.3, 7.85, "Push", ha="center", va="bottom",
+                    fontsize=6.5, color="#0C5595")
+
+        # ── process box ──
+        pbg_col = "#EAF4FB"
+        pb = mpatches.FancyBboxPatch((bx, 6.0), 3.2, 1.8,
+            boxstyle="round,pad=0.12",
+            facecolor=pbg_col, edgecolor="#0C5595", lw=1.8, zorder=3)
+        ax.add_patch(pb)
+
+        # step name
+        name_lines = textwrap.wrap(step.get("name","Step"), width=16)
+        for li, ln in enumerate(name_lines[:2]):
+            ax.text(cx, 7.6 - li * 0.45, ln,
+                    ha="center", va="center",
+                    fontsize=9, fontweight="bold", color="#0C5595", zorder=4)
+
+        # operators icon
+        ops = step.get("operators", 1)
+        ax.text(bx + 0.25, 6.25, "👤" * min(ops, 4),
+                ha="left", va="bottom", fontsize=8, zorder=4)
+
+        # ── data box below ──
+        db = mpatches.FancyBboxPatch((bx, 3.8), 3.2, 2.0,
+            boxstyle="round,pad=0.1",
+            facecolor="white", edgecolor="#BDC3C7", lw=1.2, zorder=3)
+        ax.add_patch(db)
+
+        ct  = step.get("cycle_time",   0)
+        co  = step.get("changeover_time", 0)
+        upt = step.get("uptime",        100)
+        va  = step.get("va_time",       0)
+        nva = step.get("nva_time",      0)
+
+        data_rows = [
+            ("C/T",  f"{ct}s"),
+            ("C/O",  f"{co}min"),
+            ("Uptime", f"{upt}%"),
+            ("VA",   f"{va}s"),
+            ("NVA",  f"{nva}s"),
+        ]
+        for ri, (lbl, val) in enumerate(data_rows):
+            y_r = 5.55 - ri * 0.36
+            ax.text(bx + 0.18, y_r, lbl + ":", ha="left", va="center",
+                    fontsize=7.5, color="#566573", zorder=4)
+            ax.text(bx + 1.35, y_r, val, ha="left", va="center",
+                    fontsize=7.5, fontweight="bold", color="#1A1A2E", zorder=4)
+
+        # ── timeline bar ──
+        va_w  = va  / max(ct + nva, 1) * 3.0 if (ct + nva) > 0 else 1.5
+        nva_w = nva / max(ct + nva, 1) * 3.0 if (ct + nva) > 0 else 1.5
+
+        # NVA (waiting) bar
+        ax.barh(3.2, nva_w, left=bx, height=0.4,
+                color="#DE201B", alpha=0.75, zorder=3)
+        # VA bar
+        ax.barh(3.2, va_w, left=bx + nva_w, height=0.4,
+                color="#1E8449", alpha=0.85, zorder=3)
+
+        ax.text(cx, 2.95, f"VA:{va}s / NVA:{nva}s",
+                ha="center", va="top", fontsize=7, color="#566573", zorder=4)
+
+        total_va  += va
+        total_nva += nva
+        total_lt  += ct
+
+    # ── summary bar ──
+    eff = total_va / max(total_va + total_nva, 1) * 100
+    eff_col = "#1E8449" if eff >= 60 else "#D68910" if eff >= 30 else "#DE201B"
+    summary_items = [
+        ("Total Lead Time", f"{total_lt}s"),
+        ("Total VA",        f"{total_va}s"),
+        ("Total NVA",       f"{total_nva}s"),
+        ("Flow Efficiency", f"{eff:.1f}%"),
+    ]
+    sx = 0.5
+    for lbl, val in summary_items:
+        sb = mpatches.FancyBboxPatch((sx, 0.3), 4.8, 1.4,
+            boxstyle="round,pad=0.1",
+            facecolor=eff_col if "Efficiency" in lbl else "#0C5595",
+            edgecolor="white", lw=1.5, zorder=3)
+        ax.add_patch(sb)
+        ax.text(sx + 2.4, 1.2, lbl, ha="center", va="center",
+                fontsize=8, color="rgba(255,255,255,0.75)" if False else (1,1,1,0.75), zorder=4)
+        ax.text(sx + 2.4, 0.72, val, ha="center", va="center",
+                fontsize=12, fontweight="bold", color="white", zorder=4)
+        sx += 5.3
+
+    fig.tight_layout(pad=0.3)
     return fig
 
 
@@ -1105,7 +1246,7 @@ def render_fi_projects_tab(supabase, role, pillar, name):
     # ══════════════════════════════════════════════════
     elif sec == "Analysis Tools":
         st.markdown("### Analysis Tools")
-        tool = st.radio("Tool", ["5-Why", "Fishbone", "Pareto"], horizontal=True, key="fi_tool")
+        tool = st.radio("Tool", ["5-Why", "Fishbone", "VSM Builder"], horizontal=True, key="fi_tool")
 
         if tool == "5-Why":
             st.markdown("#### 5-Why Analysis")
@@ -1152,30 +1293,72 @@ def render_fi_projects_tab(supabase, role, pillar, name):
                 else:
                     st.warning("Fill in the problem and at least one category.")
 
-        elif tool == "Pareto":
-            st.markdown("#### Pareto Chart")
-            st.caption("Enter categories and their counts/values to identify the vital few.")
-            p_title = st.text_input("Chart Title", value="Defect Pareto", key="pareto_title")
-            p_raw   = st.text_area("Items (one per line: Label, Value)",
-                                   height=160, key="pareto_data",
-                                   placeholder="Misregistration, 45\nScrap, 32\nRework, 18\nSetup Error, 12\nOther, 5")
-            if st.button("Generate Pareto", type="primary", key="par_gen"):
-                items_p, vals_p = [], []
-                for line in p_raw.split("\n"):
-                    parts = [x.strip() for x in line.split(",")]
-                    if len(parts) >= 2:
-                        try:
-                            items_p.append(parts[0])
-                            vals_p.append(float(parts[1]))
-                        except ValueError:
-                            pass
-                if items_p:
-                    fig_par = _pareto_chart(items_p, vals_p, title=p_title)
-                    st.pyplot(fig_par, use_container_width=True)
-                    buf_par = _fig_to_bytes(fig_par)
-                    st.download_button("Download PNG", data=buf_par, file_name="pareto.png", mime="image/png")
-                else:
-                    st.warning("Enter at least one row in the format: Label, Value")
+        elif tool == "VSM Builder":
+            st.markdown("#### Value Stream Map")
+            st.caption("Build a current-state VSM. Add each process step, fill in times and the chart is generated automatically.")
+
+            vsm_title = st.text_input("Map Title", value=f"VSM — {selected_project.get('target_area','')}", key="vsm_title")
+
+            # recommended sample sizes info
+            with st.expander("📐 Recommended Sample Sizes for Time Studies"):
+                st.markdown("""
+| Study Type | Recommended Samples | Notes |
+|---|---|---|
+| **Cycle Time** | 30 cycles minimum | Increase to 50+ if high variation |
+| **Changeover (SMED)** | 10 observations | Cover all shift patterns |
+| **Motion Study** | 20 observations | Per operator per task |
+| **Work Sampling** | 384+ observations | For 95% confidence, ±5% accuracy |
+| **Takt Time** | Use customer demand data | Daily demand ÷ available time |
+| **OEE Measurement** | 4 weeks minimum | To capture all loss categories |
+""")
+
+            st.markdown("##### Process Steps")
+            st.caption("Add each step in the value stream from left to right.")
+
+            if "vsm_steps" not in st.session_state:
+                st.session_state["vsm_steps"] = []
+
+            with st.form("vsm_add_step"):
+                v1, v2, v3 = st.columns(3)
+                v_name = v1.text_input("Step Name *", placeholder="e.g. Die Cut")
+                v_ct   = v2.number_input("Cycle Time (sec)", min_value=0, value=0)
+                v_co   = v3.number_input("Changeover (min)", min_value=0, value=0)
+                v4, v5, v6, v7 = st.columns(4)
+                v_ops  = v4.number_input("Operators", min_value=1, max_value=20, value=1)
+                v_upt  = v5.number_input("Uptime %", min_value=0, max_value=100, value=95)
+                v_va   = v6.number_input("VA Time (sec)", min_value=0, value=0)
+                v_nva  = v7.number_input("NVA/Wait (sec)", min_value=0, value=0)
+                v_inv  = st.number_input("Inventory before this step (units)", min_value=0, value=0)
+                if st.form_submit_button("Add Step"):
+                    if v_name:
+                        st.session_state["vsm_steps"].append({
+                            "name": v_name, "cycle_time": v_ct, "changeover_time": v_co,
+                            "operators": v_ops, "uptime": v_upt,
+                            "va_time": v_va, "nva_time": v_nva,
+                            "inventory_before": v_inv,
+                        })
+                        st.rerun()
+
+            if st.session_state.get("vsm_steps"):
+                df_vsm = pd.DataFrame(st.session_state["vsm_steps"])
+                df_vsm.index = range(1, len(df_vsm)+1)
+                st.dataframe(df_vsm, use_container_width=True)
+
+                vc1, vc2 = st.columns(2)
+                if vc1.button("Clear All Steps", key="vsm_clear"):
+                    st.session_state["vsm_steps"] = []
+                    st.rerun()
+                if vc2.button("Remove Last Step", key="vsm_rem"):
+                    st.session_state["vsm_steps"].pop()
+                    st.rerun()
+
+                if st.button("Generate VSM", type="primary", key="vsm_gen"):
+                    fig_vsm = _vsm_chart(st.session_state["vsm_steps"], title=vsm_title)
+                    st.pyplot(fig_vsm, use_container_width=True)
+                    buf_vsm = _fig_to_bytes(fig_vsm)
+                    st.download_button("Download VSM PNG", data=buf_vsm, file_name="vsm.png", mime="image/png")
+            else:
+                st.info("Add your first process step above.")
 
     # ══════════════════════════════════════════════════
     # ACTIONS
