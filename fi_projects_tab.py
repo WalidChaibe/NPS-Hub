@@ -497,7 +497,7 @@ def _five_why_chart(problem, whys):
         ax.add_patch(fancy)
         ax.text(0.7, y + box_h / 2, label,
                 va="center", ha="left", fontsize=8.5,
-                fontweight="bold", color="rgba(255,255,255,0.80)",
+                fontweight="bold", color=(1, 1, 1, 0.80),
                 zorder=3)
         wrapped = text if len(text) <= 90 else text[:87] + "..."
         ax.text(2.5, y + box_h / 2, wrapped,
