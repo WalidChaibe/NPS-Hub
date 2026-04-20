@@ -479,7 +479,7 @@ def _five_why_chart(problem, whys):
             [("ROOT CAUSE", whys[-1] if whys and whys[-1].strip() else "", "#1E8449")]
     n = len(items)
     fig_h = n * 1.2 + 0.5
-    fig, ax = plt.subplots(figsize=(10, fig_h))
+    fig, ax = plt.subplots(figsize=(13, fig_h), dpi=300)
     fig.patch.set_facecolor("#ffffff")
     ax.set_xlim(0, 10)
     ax.set_ylim(0, fig_h)
@@ -520,7 +520,7 @@ def _fishbone_chart(problem, categories):
     categories: dict {cat_name: [cause1, cause2, ...]}
     Renders a horizontal fishbone (Ishikawa) diagram.
     """
-    fig, ax = plt.subplots(figsize=(14, 8))
+    fig, ax = plt.subplots(figsize=(16, 9), dpi=300)
     fig.patch.set_facecolor("#ffffff")
     ax.set_facecolor("#ffffff")
     ax.set_xlim(0, 14)
@@ -611,7 +611,7 @@ def _pareto_chart(items, values, title="Pareto Analysis"):
     total_v  = sum(vals_s)
     cum_pct  = [sum(vals_s[:i+1]) / total_v * 100 for i in range(len(vals_s))]
 
-    fig, ax1 = plt.subplots(figsize=(11, 5))
+    fig, ax1 = plt.subplots(figsize=(14, 6), dpi=300)
     fig.patch.set_facecolor("#ffffff")
     ax1.set_facecolor("#fafafa")
 
@@ -640,7 +640,7 @@ def _pareto_chart(items, values, title="Pareto Analysis"):
 
 def _fig_to_bytes(fig):
     buf = io.BytesIO()
-    fig.savefig(buf, format="png", dpi=180, bbox_inches="tight")
+    fig.savefig(buf, format="png", dpi=300, bbox_inches="tight")
     buf.seek(0)
     plt.close(fig)
     return buf
@@ -935,9 +935,32 @@ def render_fi_projects_tab(supabase, role, pillar, name):
         st.markdown("### Weekly Log")
         st.caption("Each week fill in your KPI reading, step progress, and meeting. Everything builds your score automatically.")
 
-        sel_week = st.select_slider("Week", options=list(range(1,13)), value=cw, key="fi_wk_slider")
+        week_labels = {w: f"Week {w} {'(current)' if w==cw else ''}" for w in range(1,13)}
+        sel_week = st.selectbox("Select Week", options=list(range(1,13)),
+                                index=cw-1, format_func=lambda x: week_labels[x],
+                                key="fi_wk_sel")
         wu = wu_by_week.get(sel_week, {})
         wu_id = wu.get("id")
+
+        # requirements due this week and their status
+        due_qs = [(qn, QUESTIONS[qn]) for qn in QUESTIONS if QUESTIONS[qn]["week"] == sel_week]
+        new_qs = [(qn, QUESTIONS[qn]) for qn in QUESTIONS if QUESTIONS[qn]["week"] <= sel_week]
+        met_count  = sum(1 for qn, _ in new_qs if q_status[qn]["met"])
+        due_count  = len(new_qs)
+        cum_score  = sum(q_status[qn]["score"] for qn, _ in new_qs)
+        cum_max    = sum(q["score"] for _, q in new_qs)
+        tgt_w      = TARGET_RAMP.get(sel_week, 100)
+
+        rc1, rc2, rc3 = st.columns(3)
+        rc1.metric("Cumulative Score (W" + str(sel_week) + ")", f"{cum_score} / {cum_max}")
+        rc2.metric("Target Score",    tgt_w, delta=f"{cum_score - tgt_w:+.0f}")
+        rc3.metric("Requirements Met", f"{met_count} / {due_count}")
+
+        if due_qs:
+            with st.expander(f"New requirements unlocking in Week {sel_week}", expanded=False):
+                for qn, qdata in due_qs:
+                    icon = "✅" if q_status[qn]["met"] else "🔴"
+                    st.markdown(f"{icon} **Q{qn}** ({qdata['score']} pts) — {qdata['text']}")
 
         def _save_wu(updates):
             updates["project_id"] = pid
