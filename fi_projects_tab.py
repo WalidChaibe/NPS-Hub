@@ -248,7 +248,11 @@ def _gantt_chart(steps, weekly_updates, current_week):
     # Week grid lines
     for w in range(12):
         ax.axvline(w, color="#DDDDDD", linewidth=0.5, zorder=1)
-
+    try:
+    _fi_mod.render_fi_projects_tab(supabase, role, pillar, name)
+    except Exception as e:
+    import traceback
+    st.error(traceback.format_exc())
     ax.set_yticks(range(n))
     ax.set_yticklabels([s.get("step_name","") for s in steps], fontsize=9, fontweight="bold")
     ax.set_xticks(range(12))
