@@ -754,21 +754,28 @@ with tab6:
 
     # ── Annotation canvas component ──
     def annotation_canvas(image_bytes, key):
+def annotation_canvas(image_bytes, key):
         """Returns annotated image bytes or None"""
         if not image_bytes:
             return None
         img_b64 = _opl_b64.b64encode(image_bytes).decode()
         canvas_html = f"""
-        <div style="position:relative;display:inline-block;">
-          <canvas id="canvas_{key}" style="border:2px solid #006394;cursor:crosshair;max-width:100%;"></canvas>
+        <div style="position:relative;display:inline-block;width:100%;">
+          <canvas id="canvas_{key}" style="border:2px solid #006394;cursor:crosshair;max-width:100%;touch-action:none;"></canvas>
           <br/>
-          <div style="margin:6px 0;">
-            <button onclick="setTool('circle')" style="margin:2px;padding:4px 10px;background:#006394;color:white;border:none;border-radius:4px;cursor:pointer;">⭕ Circle</button>
-            <button onclick="setTool('arrow')" style="margin:2px;padding:4px 10px;background:#C1A02E;color:white;border:none;border-radius:4px;cursor:pointer;">➡️ Arrow</button>
-            <button onclick="setTool('rect')" style="margin:2px;padding:4px 10px;background:#DE201B;color:white;border:none;border-radius:4px;cursor:pointer;">🟥 Rectangle</button>
-            <button onclick="undoLast()" style="margin:2px;padding:4px 10px;background:#888;color:white;border:none;border-radius:4px;cursor:pointer;">↩ Undo</button>
-            <button onclick="clearAll()" style="margin:2px;padding:4px 10px;background:#333;color:white;border:none;border-radius:4px;cursor:pointer;">🗑 Clear</button>
-            <button onclick="saveCanvas()" style="margin:2px;padding:4px 10px;background:#27AE60;color:white;border:none;border-radius:4px;cursor:pointer;">💾 Save Annotation</button>
+          <div style="margin:6px 0;display:flex;flex-wrap:wrap;gap:4px;">
+            <button onclick="setTool('circle')" style="margin:2px;padding:6px 12px;background:#006394;color:white;border:none;border-radius:4px;cursor:pointer;font-size:14px;">⭕ Circle</button>
+            <button onclick="setTool('arrow')" style="margin:2px;padding:6px 12px;background:#C1A02E;color:white;border:none;border-radius:4px;cursor:pointer;font-size:14px;">➡️ Arrow</button>
+            <button onclick="setTool('rect')" style="margin:2px;padding:6px 12px;background:#DE201B;color:white;border:none;border-radius:4px;cursor:pointer;font-size:14px;">🟥 Rectangle</button>
+            <button onclick="setTool('text')" style="margin:2px;padding:6px 12px;background:#8E44AD;color:white;border:none;border-radius:4px;cursor:pointer;font-size:14px;">🔤 Text</button>
+            <button onclick="undoLast()" style="margin:2px;padding:6px 12px;background:#888;color:white;border:none;border-radius:4px;cursor:pointer;font-size:14px;">↩ Undo</button>
+            <button onclick="clearAll()" style="margin:2px;padding:6px 12px;background:#333;color:white;border:none;border-radius:4px;cursor:pointer;font-size:14px;">🗑 Clear</button>
+            <button onclick="saveCanvas()" style="margin:2px;padding:6px 12px;background:#27AE60;color:white;border:none;border-radius:4px;cursor:pointer;font-size:14px;">💾 Save Annotation</button>
+          </div>
+          <div id="text_input_area_{key}" style="display:none;margin:6px 0;">
+            <input type="text" id="text_input_{key}" placeholder="Type text then click on image..."
+              style="padding:6px;font-size:14px;width:250px;border:2px solid #8E44AD;border-radius:4px;"/>
+            <span style="font-size:12px;color:#666;margin-left:8px;">Tap/click on image to place text</span>
           </div>
           <input type="hidden" id="result_{key}" value=""/>
         </div>
@@ -777,10 +784,12 @@ with tab6:
           const canvas = document.getElementById('canvas_{key}');
           const ctx = canvas.getContext('2d');
           const img = new Image();
+          let baseSnapshot;
           img.onload = function() {{
             canvas.width = img.width;
             canvas.height = img.height;
             ctx.drawImage(img, 0, 0);
+            baseSnapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
           }};
           img.src = 'data:image/jpeg;base64,{img_b64}';
 
@@ -790,107 +799,139 @@ with tab6:
           let shapes = [];
           let snapshot;
 
-          function setTool(t) {{ tool = t; }}
+          function setTool(t) {{
+            tool = t;
+            const textArea = document.getElementById('text_input_area_{key}');
+            if (t === 'text') {{
+              textArea.style.display = 'block';
+              canvas.style.cursor = 'text';
+            }} else {{
+              textArea.style.display = 'none';
+              canvas.style.cursor = 'crosshair';
+            }}
+          }}
           window.setTool = setTool;
 
-          canvas.addEventListener('mousedown', e => {{
+          function getPos(e) {{
             const r = canvas.getBoundingClientRect();
             const scaleX = canvas.width / r.width;
             const scaleY = canvas.height / r.height;
-            startX = (e.clientX - r.left) * scaleX;
-            startY = (e.clientY - r.top) * scaleY;
+            let clientX, clientY;
+            if (e.touches && e.touches.length > 0) {{
+              clientX = e.touches[0].clientX;
+              clientY = e.touches[0].clientY;
+            }} else if (e.changedTouches && e.changedTouches.length > 0) {{
+              clientX = e.changedTouches[0].clientX;
+              clientY = e.changedTouches[0].clientY;
+            }} else {{
+              clientX = e.clientX;
+              clientY = e.clientY;
+            }}
+            return {{
+              x: (clientX - r.left) * scaleX,
+              y: (clientY - r.top) * scaleY
+            }};
+          }}
+
+          function onStart(e) {{
+            e.preventDefault();
+            const pos = getPos(e);
+            if (tool === 'text') {{
+              const textVal = document.getElementById('text_input_{key}').value;
+              if (!textVal.trim()) {{ alert('Please type text first.'); return; }}
+              shapes.push({{ tool: 'text', x: pos.x, y: pos.y, text: textVal }});
+              drawAll();
+              return;
+            }}
+            startX = pos.x;
+            startY = pos.y;
             drawing = true;
             snapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          }});
+          }}
 
-          canvas.addEventListener('mousemove', e => {{
-            if (!drawing) return;
-            const r = canvas.getBoundingClientRect();
-            const scaleX = canvas.width / r.width;
-            const scaleY = canvas.height / r.height;
-            const x = (e.clientX - r.left) * scaleX;
-            const y = (e.clientY - r.top) * scaleY;
+          function onMove(e) {{
+            e.preventDefault();
+            if (!drawing || tool === 'text') return;
+            const pos = getPos(e);
             ctx.putImageData(snapshot, 0, 0);
+            drawShape(tool, startX, startY, pos.x, pos.y);
+          }}
+
+          function onEnd(e) {{
+            e.preventDefault();
+            if (!drawing || tool === 'text') return;
+            drawing = false;
+            const pos = getPos(e);
+            shapes.push({{ tool, startX, startY, x: pos.x, y: pos.y }});
+          }}
+
+          canvas.addEventListener('mousedown', onStart);
+          canvas.addEventListener('mousemove', onMove);
+          canvas.addEventListener('mouseup', onEnd);
+          canvas.addEventListener('touchstart', onStart, {{ passive: false }});
+          canvas.addEventListener('touchmove', onMove, {{ passive: false }});
+          canvas.addEventListener('touchend', onEnd, {{ passive: false }});
+
+          function drawShape(t, sx, sy, ex, ey) {{
             ctx.strokeStyle = '#DE201B';
+            ctx.fillStyle = '#DE201B';
             ctx.lineWidth = 3;
             ctx.beginPath();
-            if (tool === 'circle') {{
-              const rx = Math.abs(x - startX) / 2;
-              const ry = Math.abs(y - startY) / 2;
-              const cx = startX + (x - startX) / 2;
-              const cy = startY + (y - startY) / 2;
+            if (t === 'circle') {{
+              const rx = Math.abs(ex - sx) / 2;
+              const ry = Math.abs(ey - sy) / 2;
+              const cx = sx + (ex - sx) / 2;
+              const cy = sy + (ey - sy) / 2;
               ctx.ellipse(cx, cy, rx, ry, 0, 0, 2 * Math.PI);
               ctx.stroke();
-            }} else if (tool === 'rect') {{
-              ctx.strokeRect(startX, startY, x - startX, y - startY);
-            }} else if (tool === 'arrow') {{
-              ctx.moveTo(startX, startY);
-              ctx.lineTo(x, y);
+            }} else if (t === 'rect') {{
+              ctx.strokeRect(sx, sy, ex - sx, ey - sy);
+            }} else if (t === 'arrow') {{
+              ctx.moveTo(sx, sy);
+              ctx.lineTo(ex, ey);
               ctx.stroke();
-              const angle = Math.atan2(y - startY, x - startX);
-              const len = 15;
+              const angle = Math.atan2(ey - sy, ex - sx);
+              const len = 20;
               ctx.beginPath();
-              ctx.moveTo(x, y);
-              ctx.lineTo(x - len * Math.cos(angle - 0.4), y - len * Math.sin(angle - 0.4));
-              ctx.lineTo(x - len * Math.cos(angle + 0.4), y - len * Math.sin(angle + 0.4));
+              ctx.moveTo(ex, ey);
+              ctx.lineTo(ex - len * Math.cos(angle - 0.4), ey - len * Math.sin(angle - 0.4));
+              ctx.lineTo(ex - len * Math.cos(angle + 0.4), ey - len * Math.sin(angle + 0.4));
               ctx.closePath();
-              ctx.fillStyle = '#DE201B';
               ctx.fill();
             }}
-          }});
+          }}
 
-          canvas.addEventListener('mouseup', e => {{
-            if (!drawing) return;
-            drawing = false;
-            const r = canvas.getBoundingClientRect();
-            const scaleX = canvas.width / r.width;
-            const scaleY = canvas.height / r.height;
-            const x = (e.clientX - r.left) * scaleX;
-            const y = (e.clientY - r.top) * scaleY;
-            shapes.push({{tool, startX, startY, x, y}});
-          }});
+          function drawText(s) {{
+            ctx.font = 'bold 28px Arial';
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 3;
+            ctx.strokeText(s.text, s.x, s.y);
+            ctx.fillStyle = '#DE201B';
+            ctx.fillText(s.text, s.x, s.y);
+          }}
+
+          function drawAll() {{
+            if (baseSnapshot) ctx.putImageData(baseSnapshot, 0, 0);
+            shapes.forEach(s => {{
+              if (s.tool === 'text') {{
+                drawText(s);
+              }} else {{
+                drawShape(s.tool, s.startX, s.startY, s.x, s.y);
+              }}
+            }});
+            snapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          }}
 
           window.undoLast = function() {{
             shapes.pop();
-            redraw();
+            drawAll();
           }};
 
           window.clearAll = function() {{
             shapes = [];
-            redraw();
+            if (baseSnapshot) ctx.putImageData(baseSnapshot, 0, 0);
+            snapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
           }};
-
-          function redraw() {{
-            ctx.putImageData(snapshot, 0, 0);
-            shapes.forEach(s => {{
-              ctx.strokeStyle = '#DE201B';
-              ctx.lineWidth = 3;
-              ctx.beginPath();
-              if (s.tool === 'circle') {{
-                const rx = Math.abs(s.x - s.startX) / 2;
-                const ry = Math.abs(s.y - s.startY) / 2;
-                const cx = s.startX + (s.x - s.startX) / 2;
-                const cy = s.startY + (s.y - s.startY) / 2;
-                ctx.ellipse(cx, cy, rx, ry, 0, 0, 2 * Math.PI);
-                ctx.stroke();
-              }} else if (s.tool === 'rect') {{
-                ctx.strokeRect(s.startX, s.startY, s.x - s.startX, s.y - s.startY);
-              }} else if (s.tool === 'arrow') {{
-                ctx.moveTo(s.startX, s.startY);
-                ctx.lineTo(s.x, s.y);
-                ctx.stroke();
-                const angle = Math.atan2(s.y - s.startY, s.x - s.startX);
-                const len = 15;
-                ctx.beginPath();
-                ctx.moveTo(s.x, s.y);
-                ctx.lineTo(s.x - len * Math.cos(angle - 0.4), s.y - len * Math.sin(angle - 0.4));
-                ctx.lineTo(s.x - len * Math.cos(angle + 0.4), s.y - len * Math.sin(angle + 0.4));
-                ctx.closePath();
-                ctx.fillStyle = '#DE201B';
-                ctx.fill();
-              }}
-            }});
-          }}
 
           window.saveCanvas = function() {{
             const data = canvas.toDataURL('image/jpeg', 0.92);
@@ -902,7 +943,7 @@ with tab6:
         }})();
         </script>
         """
-        st.components.v1.html(canvas_html, height=500, scrolling=True)
+        st.components.v1.html(canvas_html, height=600, scrolling=True)
         return None  # annotation saved via JS — user clicks Save then we read from session
 
     # ── Napco logo b64 for OPL PDF ──
