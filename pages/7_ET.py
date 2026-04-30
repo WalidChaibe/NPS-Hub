@@ -1308,83 +1308,83 @@ with tab6:
                         if opl.get("good_image_2"):
                             try: st.image(_opl_b64.b64decode(opl["good_image_2"]), use_container_width=True)
                             except: pass
-# ── Seen & Understood ──
-        st.divider()
-        with st.expander("👁️ Seen & Understood — Edit", expanded=False):
-            new_ops = st.text_input(
-                "Operators (comma separated)",
-                value=opl.get("operators", ""),
-                key=f"ops_{opl['id']}"
-            )
-            if st.button("💾 Save", key=f"ops_save_{opl['id']}"):
-                supabase.table("et_opls").update({"operators": new_ops}).eq("id", opl["id"]).execute()
-                st.success("Saved!"); st.rerun()
-
-                # ── Full Edit ──
-                if can_edit:
-                    with st.expander("✏️ Edit OPL", expanded=False):
-                        with st.form(key=f"opl_edit_{opl['id']}"):
-                            e1, e2, e3 = st.columns(3)
-                            e_subject  = e1.text_input("Subject", value=opl.get("subject",""), key=f"e_sub_{opl['id']}")
-                            e_type     = e2.selectbox("Type", OPL_TYPES, index=OPL_TYPES.index(opl.get("opl_type", OPL_TYPES[0])) if opl.get("opl_type") in OPL_TYPES else 0)
-                            e_category = e3.selectbox("Category", OPL_CATEGORIES, index=OPL_CATEGORIES.index(opl.get("category", OPL_CATEGORIES[0])) if opl.get("category") in OPL_CATEGORIES else 0)
-                            em1, em2 = st.columns(2)
-                            e_machine  = em1.selectbox("Machine", ["— Select —"] + OPL_MACHINES, index=([" — Select —"] + OPL_MACHINES).index(opl.get("machine","— Select —")) if opl.get("machine") in OPL_MACHINES else 0)
-                            e_pillar   = em2.selectbox("Pillar", OPL_PILLARS, index=OPL_PILLARS.index(opl.get("pillar", OPL_PILLARS[0])) if opl.get("pillar") in OPL_PILLARS else 0)
-                            st.divider()
-                            st.markdown("**❌ Bad / Left side**")
-                            eb1, eb2 = st.columns(2)
-                            e_bad_text_1  = eb1.text_area("Text 1", value=opl.get("bad_text_1",""), height=80, key=f"e_bt1_{opl['id']}")
-                            e_bad_file_1  = eb2.file_uploader("Replace Image 1", type=["jpg","jpeg","png"], key=f"e_bf1_{opl['id']}")
-                            eb3, eb4 = st.columns(2)
-                            e_bad_text_2  = eb3.text_area("Text 2", value=opl.get("bad_text_2",""), height=80, key=f"e_bt2_{opl['id']}")
-                            e_bad_file_2  = eb4.file_uploader("Replace Image 2", type=["jpg","jpeg","png"], key=f"e_bf2_{opl['id']}")
-                            st.divider()
-                            st.markdown("**✅ Good / Right side**")
-                            eg1, eg2 = st.columns(2)
-                            e_good_text_1 = eg1.text_area("Text 1", value=opl.get("good_text_1",""), height=80, key=f"e_gt1_{opl['id']}")
-                            e_good_file_1 = eg2.file_uploader("Replace Image 1", type=["jpg","jpeg","png"], key=f"e_gf1_{opl['id']}")
-                            eg3, eg4 = st.columns(2)
-                            e_good_text_2 = eg3.text_area("Text 2", value=opl.get("good_text_2",""), height=80, key=f"e_gt2_{opl['id']}")
-                            e_good_file_2 = eg4.file_uploader("Replace Image 2", type=["jpg","jpeg","png"], key=f"e_gf2_{opl['id']}")
-                            st.divider()
-                            st.markdown("**📋 Footer**")
-                            ff1, ff2, ff3 = st.columns(3)
-                            e_prep_by   = ff1.text_input("Prepared By", value=opl.get("prepared_by",""), key=f"e_pb_{opl['id']}")
-                            e_prep_dt   = ff1.text_input("Date",            value=opl.get("prepared_date",""),  key=f"epd_{opl['id']}")
-                            e_appr_by   = ff2.text_input("Approved By", value=opl.get("approved_by",""), key=f"e_ab_{opl['id']}")
-                            e_appr_dt   = ff2.text_input("Date",            value=opl.get("approved_date",""),  key=f"ead_{opl['id']}")
-                            e_adm_by    = ff3.text_input("Administered By", value=opl.get("administered_by",""), key=f"e_adb_{opl['id']}")
-                            e_adm_dt    = ff3.text_input("Date",            value=opl.get("administered_date",""), key=f"eadd_{opl['id']}")
-
-                            if st.form_submit_button("💾 Save Changes", type="primary"):
-                                def _to_b64_e(f):
-                                    if f is None: return None
-                                    return _opl_b64.b64encode(f.getvalue()).decode()
-                                update_payload = {
-                                    "subject":          e_subject,
-                                    "opl_type":         e_type,
-                                    "category":         e_category,
-                                    "machine":          e_machine if e_machine != "— Select —" else None,
-                                    "pillar":           e_pillar,
-                                    "bad_text_1":       e_bad_text_1,
-                                    "bad_text_2":       e_bad_text_2,
-                                    "good_text_1":      e_good_text_1,
-                                    "good_text_2":      e_good_text_2,
-                                    "prepared_by":      e_prep_by,
-                                    "prepared_date":    e_prep_dt,
-                                    "approved_by":      e_appr_by,
-                                    "approved_date":    e_appr_dt,
-                                    "administered_by":  e_adm_by,
-                                    "administered_date": e_adm_dt,
-                                }
-                                # Only replace images if new ones uploaded
-                                if e_bad_file_1:  update_payload["bad_image_1"]  = _to_b64_e(e_bad_file_1)
-                                if e_bad_file_2:  update_payload["bad_image_2"]  = _to_b64_e(e_bad_file_2)
-                                if e_good_file_1: update_payload["good_image_1"] = _to_b64_e(e_good_file_1)
-                                if e_good_file_2: update_payload["good_image_2"] = _to_b64_e(e_good_file_2)
-                                supabase.table("et_opls").update(update_payload).eq("id", opl["id"]).execute()
-                                st.success("✅ OPL updated!"); st.rerun()
+        # ── Seen & Understood ──
+                st.divider()
+                with st.expander("👁️ Seen & Understood — Edit", expanded=False):
+                    new_ops = st.text_input(
+                        "Operators (comma separated)",
+                        value=opl.get("operators", ""),
+                        key=f"ops_{opl['id']}"
+                    )
+                    if st.button("💾 Save", key=f"ops_save_{opl['id']}"):
+                        supabase.table("et_opls").update({"operators": new_ops}).eq("id", opl["id"]).execute()
+                        st.success("Saved!"); st.rerun()
+        
+                        # ── Full Edit ──
+                        if can_edit:
+                            with st.expander("✏️ Edit OPL", expanded=False):
+                                with st.form(key=f"opl_edit_{opl['id']}"):
+                                    e1, e2, e3 = st.columns(3)
+                                    e_subject  = e1.text_input("Subject", value=opl.get("subject",""), key=f"e_sub_{opl['id']}")
+                                    e_type     = e2.selectbox("Type", OPL_TYPES, index=OPL_TYPES.index(opl.get("opl_type", OPL_TYPES[0])) if opl.get("opl_type") in OPL_TYPES else 0)
+                                    e_category = e3.selectbox("Category", OPL_CATEGORIES, index=OPL_CATEGORIES.index(opl.get("category", OPL_CATEGORIES[0])) if opl.get("category") in OPL_CATEGORIES else 0)
+                                    em1, em2 = st.columns(2)
+                                    e_machine  = em1.selectbox("Machine", ["— Select —"] + OPL_MACHINES, index=([" — Select —"] + OPL_MACHINES).index(opl.get("machine","— Select —")) if opl.get("machine") in OPL_MACHINES else 0)
+                                    e_pillar   = em2.selectbox("Pillar", OPL_PILLARS, index=OPL_PILLARS.index(opl.get("pillar", OPL_PILLARS[0])) if opl.get("pillar") in OPL_PILLARS else 0)
+                                    st.divider()
+                                    st.markdown("**❌ Bad / Left side**")
+                                    eb1, eb2 = st.columns(2)
+                                    e_bad_text_1  = eb1.text_area("Text 1", value=opl.get("bad_text_1",""), height=80, key=f"e_bt1_{opl['id']}")
+                                    e_bad_file_1  = eb2.file_uploader("Replace Image 1", type=["jpg","jpeg","png"], key=f"e_bf1_{opl['id']}")
+                                    eb3, eb4 = st.columns(2)
+                                    e_bad_text_2  = eb3.text_area("Text 2", value=opl.get("bad_text_2",""), height=80, key=f"e_bt2_{opl['id']}")
+                                    e_bad_file_2  = eb4.file_uploader("Replace Image 2", type=["jpg","jpeg","png"], key=f"e_bf2_{opl['id']}")
+                                    st.divider()
+                                    st.markdown("**✅ Good / Right side**")
+                                    eg1, eg2 = st.columns(2)
+                                    e_good_text_1 = eg1.text_area("Text 1", value=opl.get("good_text_1",""), height=80, key=f"e_gt1_{opl['id']}")
+                                    e_good_file_1 = eg2.file_uploader("Replace Image 1", type=["jpg","jpeg","png"], key=f"e_gf1_{opl['id']}")
+                                    eg3, eg4 = st.columns(2)
+                                    e_good_text_2 = eg3.text_area("Text 2", value=opl.get("good_text_2",""), height=80, key=f"e_gt2_{opl['id']}")
+                                    e_good_file_2 = eg4.file_uploader("Replace Image 2", type=["jpg","jpeg","png"], key=f"e_gf2_{opl['id']}")
+                                    st.divider()
+                                    st.markdown("**📋 Footer**")
+                                    ff1, ff2, ff3 = st.columns(3)
+                                    e_prep_by   = ff1.text_input("Prepared By", value=opl.get("prepared_by",""), key=f"e_pb_{opl['id']}")
+                                    e_prep_dt   = ff1.text_input("Date",            value=opl.get("prepared_date",""),  key=f"epd_{opl['id']}")
+                                    e_appr_by   = ff2.text_input("Approved By", value=opl.get("approved_by",""), key=f"e_ab_{opl['id']}")
+                                    e_appr_dt   = ff2.text_input("Date",            value=opl.get("approved_date",""),  key=f"ead_{opl['id']}")
+                                    e_adm_by    = ff3.text_input("Administered By", value=opl.get("administered_by",""), key=f"e_adb_{opl['id']}")
+                                    e_adm_dt    = ff3.text_input("Date",            value=opl.get("administered_date",""), key=f"eadd_{opl['id']}")
+        
+                                    if st.form_submit_button("💾 Save Changes", type="primary"):
+                                        def _to_b64_e(f):
+                                            if f is None: return None
+                                            return _opl_b64.b64encode(f.getvalue()).decode()
+                                        update_payload = {
+                                            "subject":          e_subject,
+                                            "opl_type":         e_type,
+                                            "category":         e_category,
+                                            "machine":          e_machine if e_machine != "— Select —" else None,
+                                            "pillar":           e_pillar,
+                                            "bad_text_1":       e_bad_text_1,
+                                            "bad_text_2":       e_bad_text_2,
+                                            "good_text_1":      e_good_text_1,
+                                            "good_text_2":      e_good_text_2,
+                                            "prepared_by":      e_prep_by,
+                                            "prepared_date":    e_prep_dt,
+                                            "approved_by":      e_appr_by,
+                                            "approved_date":    e_appr_dt,
+                                            "administered_by":  e_adm_by,
+                                            "administered_date": e_adm_dt,
+                                        }
+                                        # Only replace images if new ones uploaded
+                                        if e_bad_file_1:  update_payload["bad_image_1"]  = _to_b64_e(e_bad_file_1)
+                                        if e_bad_file_2:  update_payload["bad_image_2"]  = _to_b64_e(e_bad_file_2)
+                                        if e_good_file_1: update_payload["good_image_1"] = _to_b64_e(e_good_file_1)
+                                        if e_good_file_2: update_payload["good_image_2"] = _to_b64_e(e_good_file_2)
+                                        supabase.table("et_opls").update(update_payload).eq("id", opl["id"]).execute()
+                                        st.success("✅ OPL updated!"); st.rerun()
     # ── CREATE / EDIT VIEW ──
     with opl_create:
         if not can_edit:
