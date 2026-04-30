@@ -125,7 +125,7 @@ role     = st.session_state.get("role", "member")
 pillar   = st.session_state.get("pillar", "ALL")
 name     = st.session_state.get("name", "User")
 
-can_edit = (role == "plant_manager") or (role == "pillar_leader" and pillar == "ET")
+can_edit = (role == "plant_manager") or (role == "pillar_leader" and pillar == "ET") or (role == "opl_editor")
 is_opl_editor = (role == "opl_editor")
 
 # ── Notification check ──
