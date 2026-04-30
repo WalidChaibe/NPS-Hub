@@ -139,6 +139,10 @@ role   = st.session_state.get("role", "member")
 pillar = st.session_state.get("pillar", "ALL")
 name   = st.session_state.get("name", "User")
 
+# ── OPL Editor redirect ──
+if role == "opl_editor":
+    st.switch_page("pages/7_ET.py")
+    
 # ── Header ──
 col1, col2, col3 = st.columns([5, 1, 1])
 with col1:
