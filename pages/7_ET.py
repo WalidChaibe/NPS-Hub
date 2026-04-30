@@ -1283,7 +1283,7 @@ with tab6:
                     with st.expander("✏️ Edit OPL", expanded=False):
                         with st.form(key=f"opl_edit_{opl['id']}"):
                             e1, e2, e3 = st.columns(3)
-                            e_subject  = e1.text_input("Subject", value=opl.get("subject",""), key=f"e_sub_{opl['id']}"))
+                            e_subject  = e1.text_input("Subject", value=opl.get("subject",""), key=f"e_sub_{opl['id']}")
                             e_type     = e2.selectbox("Type", OPL_TYPES, index=OPL_TYPES.index(opl.get("opl_type", OPL_TYPES[0])) if opl.get("opl_type") in OPL_TYPES else 0)
                             e_category = e3.selectbox("Category", OPL_CATEGORIES, index=OPL_CATEGORIES.index(opl.get("category", OPL_CATEGORIES[0])) if opl.get("category") in OPL_CATEGORIES else 0)
                             em1, em2 = st.columns(2)
