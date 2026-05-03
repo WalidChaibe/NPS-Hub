@@ -18,7 +18,10 @@ if "user" not in st.session_state:
 
 # ── If already logged in, go to home ──
 if "user" in st.session_state:
-    st.switch_page("pages/1_Home.py")
+    if st.session_state.get("role") == "opl_editor":
+        st.switch_page("pages/7_ET.py")
+    else:
+        st.switch_page("pages/1_Home.py")
 
 # ── Login UI ──
 col1, col2, col3 = st.columns([1, 2, 1])
@@ -53,7 +56,10 @@ with col2:
                 # Reset notification check so it runs fresh on next page
                 st.session_state.pop("notif_checked", None)
                 st.success(f"Welcome back, {user_profile['full_name']}!")
-                st.switch_page("pages/1_Home.py")
+                if user_profile.get("role") == "opl_editor":
+                    st.switch_page("pages/7_ET.py")
+                else:
+                    st.switch_page("pages/1_Home.py")
             except Exception as e:
                 st.error(f"Error: {str(e)}")
     st.divider()
