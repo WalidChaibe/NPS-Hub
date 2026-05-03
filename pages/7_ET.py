@@ -1197,7 +1197,10 @@ with tab6:
         else:
             # ── Filters ──
             st.markdown("#### 🔍 Filter OPLs")
-            _filt_id = st.text_input("Search by OPL ID", placeholder="e.g. OPL-AM-001", key="opl_f_id")
+            _id_col1, _id_col2 = st.columns([1, 2])
+            _all_ids     = ["All"] + sorted([o.get("opl_id","") for o in opl_list if o.get("opl_id","")])
+            _filt_id_dd  = _id_col1.selectbox("OPL ID", _all_ids, key="opl_f_id_dd")
+            _filt_id_txt = _id_col2.text_input("Search OPL ID", placeholder="e.g. OPL-AM or 001", key="opl_f_id_txt")
             _fc1, _fc2, _fc3, _fc4, _fc5 = st.columns(5)
 
             _all_categories = ["All"] + sorted(list(set(o.get("category","") for o in opl_list if o.get("category",""))))
@@ -1214,7 +1217,8 @@ with tab6:
 
             # Apply filters
             filtered_opls = opl_list
-            if _filt_id.strip():    filtered_opls = [o for o in filtered_opls if _filt_id.strip().lower() in (o.get("opl_id","")).lower()]
+            if _filt_id_dd  != "All":       filtered_opls = [o for o in filtered_opls if o.get("opl_id","") == _filt_id_dd]
+            if _filt_id_txt.strip():        filtered_opls = [o for o in filtered_opls if _filt_id_txt.strip().lower() in o.get("opl_id","").lower()]
             if _filt_cat    != "All": filtered_opls = [o for o in filtered_opls if o.get("category","")   == _filt_cat]
             if _filt_mach   != "All": filtered_opls = [o for o in filtered_opls if o.get("machine","")    == _filt_mach]
             if _filt_pillar != "All": filtered_opls = [o for o in filtered_opls if o.get("pillar","")     == _filt_pillar]
