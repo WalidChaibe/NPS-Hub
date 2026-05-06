@@ -2544,27 +2544,86 @@ with tab6:
             
                     st.dataframe(_cost_df, use_container_width=True)
             
-                    # Pareto
-                    _cost_df = _cost_df[_cost_df["Total Cost"] > 0]
-            
-                    if not _cost_df.empty:
-                        st.markdown("#### Pareto — Cost by Defect")
-            
-                        _cost_df["Cumulative %"] = (
-                            _cost_df["Total Cost"].cumsum() / _cost_df["Total Cost"].sum() * 100
+                                        # Pareto
+                    # ── Pareto (Cost) ──
+                    _cost_df_plot = _cost_df[_cost_df["Total Cost"] > 0].copy()
+                    
+                    if not _cost_df_plot.empty:
+                        st.divider()
+                        st.markdown(f"#### Pareto — Cost by Defect ({_period_lbl})")
+                    
+                        # Sort like PPM
+                        _cost_df_plot = _cost_df_plot.sort_values("Total Cost", ascending=False).reset_index(drop=True)
+                    
+                        # Cumulative %
+                        _cost_df_plot["Cumulative %"] = (
+                            _cost_df_plot["Total Cost"].cumsum() / _cost_df_plot["Total Cost"].sum() * 100
                         )
-            
-                        _fig_c, _ax_c = plt.subplots()
-                        _xp = np.arange(len(_cost_df))
-            
-                        _ax_c.bar(_xp, _cost_df["Total Cost"].values)
-            
+                    
+                        _fig_c, _ax_c = plt.subplots(figsize=(13.33, 7.5), dpi=150)
+                        _xp = np.arange(len(_cost_df_plot))
+                    
+                        # Bars (same styling as PPM)
+                        _bars_c = _ax_c.bar(
+                            _xp,
+                            _cost_df_plot["Total Cost"].values,
+                            color="#006394",
+                            width=0.6,
+                            alpha=0.9
+                        )
+                    
+                        # Value labels
+                        for _bar, _val in zip(_bars_c, _cost_df_plot["Total Cost"].values):
+                            _ax_c.text(
+                                _bar.get_x() + _bar.get_width()/2,
+                                _bar.get_height() + _cost_df_plot["Total Cost"].max()*0.01,
+                                f"{_val:,.0f}",
+                                ha="center",
+                                va="bottom",
+                                fontsize=9,
+                                color="#000000"
+                            )
+                    
+                        # Cumulative line
                         _ax_c2 = _ax_c.twinx()
-                        _ax_c2.plot(_xp, _cost_df["Cumulative %"].values, marker="o")
-            
+                        _ax_c2.plot(
+                            _xp,
+                            _cost_df_plot["Cumulative %"].values,
+                            color="#C1A02E",
+                            linewidth=2.5,
+                            marker="o",
+                            markersize=5,
+                            label="Cumulative %"
+                        )
+                    
+                        # 80% line
+                        _ax_c2.axhline(80, color="#DE201B", linewidth=1, linestyle="--", alpha=0.6)
+                    
+                        _ax_c2.set_ylabel("Cumulative %")
+                        _ax_c2.set_ylim(0, 115)
+                        _ax_c2.tick_params(axis="y")
+                        _ax_c2.spines["top"].set_visible(False)
+                    
+                        # X-axis labels (same formatting!)
                         _ax_c.set_xticks(_xp)
-                        _ax_c.set_xticklabels(_cost_df["Defect"], rotation=40, ha="right")
-            
-                        st.pyplot(_fig_c)
+                        _ax_c.set_xticklabels(
+                            [fill(d, 16) for d in _cost_df_plot["Defect"]],
+                            rotation=40,
+                            ha="right",
+                            fontsize=8
+                        )
+                    
+                        _ax_c.set_ylabel("Cost")
+                        _ax_c.spines["top"].set_visible(False)
+                        _ax_c.spines["right"].set_visible(False)
+                        _ax_c.grid(False)
+                    
+                        # Legend (same as PPM)
+                        _l2, _lb2 = _ax_c2.get_legend_handles_labels()
+                        _ax_c.legend(_l2, _lb2, loc="upper right", frameon=False, fontsize=10)
+                    
+                        plt.tight_layout()
+                        st.image(fig_to_png_bytes(_fig_c))
+                        plt.close(_fig_c)
         except Exception as e:
             st.error(f"Error: {e}")
