@@ -2226,7 +2226,7 @@ with tab6:
                 _qm6_df_final["Month"] = _qm6_df_final["Month"].astype(int)
 
                 _qm6_ncr_loaded = read_excel_from_upload(_qm_ncr_app_file)
-                _qm6_ncr_loaded["_Base_Date"] = pd.to_datetime(_qm6_ncr_loaded[FINAL_APPROVAL_COL], errors="coerce")
+                _qm6_ncr_loaded["_Base_Date"] = pd.to_datetime(_qm6_ncr_loaded[CREATION_DATETIME_COL], errors="coerce")
                 _qm6_ncr_loaded["Year"]  = _qm6_ncr_loaded["_Base_Date"].dt.year.astype("Int64")
                 _qm6_ncr_loaded["Month"] = _qm6_ncr_loaded["_Base_Date"].dt.month.astype("Int64")
                 _qm6_ncr_loaded = _qm6_ncr_loaded.dropna(subset=["Year","Month"])
@@ -2286,9 +2286,33 @@ with tab6:
             # ── Load production data from Supabase ──
             try:
                 _prod_rows = supabase.table("qm_production_data").select("*").execute()
-                _prod_data = {(r["year"], r["month"]): r["produced_qty"] for r in (_prod_rows.data or [])}
-            except Exception:
+            
+                # Convert to DataFrame
+                _prod_df = pd.DataFrame(_prod_rows.data or [])
+            
+                # Build lookup dict (used later for PPM)
+                _prod_data = {
+                    (r["year"], r["month"]): r["produced_qty"]
+                    for r in (_prod_rows.data or [])
+                }
+            
+                # ── Display production data ──
+                if not _prod_df.empty:
+                    _prod_df = _prod_df.sort_values(["year", "month"])
+            
+                    # Filter to selected year + range
+                    _prod_filtered = _prod_df[
+                        (_prod_df["year"] == int(_qm6_year)) &
+                        (_prod_df["month"] >= _qm6_from_month) &
+                        (_prod_df["month"] <= _qm6_to_month)
+                    ]
+            
+                    st.markdown("### 🏭 Production Data for Selected Period")
+                    st.dataframe(_prod_filtered, use_container_width=True)
+            
+            except Exception as e:
                 _prod_data = {}
+                st.warning(f"Could not load production data: {e}")
 
             # Check missing production months in selected range
             _needed_months   = list(range(_qm6_from_month, _qm6_to_month + 1))
@@ -2359,7 +2383,8 @@ with tab6:
                             (_qm6_ncr_loaded["Year"] == int(_qm6_year)) &
                             (_qm6_ncr_loaded["Month"] >= _qm6_from_month) &
                             (_qm6_ncr_loaded["Month"] <= _qm6_to_month) &
-                            (_qm6_ncr_loaded[_qm6_dec_col_ncr].astype(str).str.strip().str.lower() == "shredding")
+                            (_qm6_ncr_loaded[_qm6_dec_col_ncr].astype(str).str.strip().str.lower() == "shredding") &
+                            (_qm6_ncr_loaded["Gen Categories"].astype(str).str.strip().str.lower() == "work in progress")    
                         ].copy()
                         _qm6_ncr_filt["_Reason"] = _qm6_ncr_filt["Reason"].astype(str).str.strip()
                         _qm6_ncr_filt["_Qty"]    = pd.to_numeric(_qm6_ncr_filt["Dec Qty"], errors="coerce").fillna(0)
@@ -2466,6 +2491,83 @@ with tab6:
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     key="dl_ppm_table"
                 )
-
+                st.divider()
+                st.markdown("### 💰 Cost Analysis by Defect")
+                
+                if st.button("💰 Generate Cost Table", key="qm6_cost_run"):
+                
+                    with st.spinner("Computing Cost Analysis..."):
+                
+                        # FINAL
+                        _cost_final = _qm6_df_final[
+                            (_qm6_df_final["Is_Valid"] == True) &
+                            (_qm6_df_final["Complaint_Category"] == "Quality") &
+                            (_qm6_df_final["Year"] == int(_qm6_year)) &
+                            (_qm6_df_final["Month"] >= _qm6_from_month) &
+                            (_qm6_df_final["Month"] <= _qm6_to_month) &
+                            (_qm6_df_final[_dec_col].astype(str).str.strip().str.lower() == "credit note")
+                        ].copy()
+                
+                        _cost_final["_Reason"] = _cost_final["Reason"].astype(str).str.strip()
+                        _cost_final["_Cost"]   = pd.to_numeric(_cost_final["Cost Amount"], errors="coerce").fillna(0)
+                
+                        _cost_final_grp = _cost_final.groupby("_Reason")["_Cost"].sum()
+                
+                        # NCR
+                        _cost_ncr = _qm6_ncr_loaded[
+                            (_qm6_ncr_loaded["Year"] == int(_qm6_year)) &
+                            (_qm6_ncr_loaded["Month"] >= _qm6_from_month) &
+                            (_qm6_ncr_loaded["Month"] <= _qm6_to_month) &
+                            (_qm6_ncr_loaded[_qm6_dec_col_ncr].astype(str).str.strip().str.lower() == "shredding") &
+                            (_qm6_ncr_loaded["Gen Categories"].astype(str).str.strip().str.lower() == "work in progress")
+                        ].copy()
+                
+                        _cost_ncr["_Reason"] = _cost_ncr["Reason"].astype(str).str.strip()
+                        _cost_ncr["_Cost"]   = pd.to_numeric(_cost_ncr["Cost Amount"], errors="coerce").fillna(0)
+                
+                        _cost_ncr_grp = _cost_ncr.groupby("_Reason")["_Cost"].sum()
+                
+                        # Merge
+                        _all_reasons_cost = set(_cost_final_grp.index) | set(_cost_ncr_grp.index)
+                
+                        _cost_rows = []
+                        for r in sorted(_all_reasons_cost):
+                            _f_cost = float(_cost_final_grp.get(r, 0))
+                            _n_cost = float(_cost_ncr_grp.get(r, 0))
+                            _total  = _f_cost + _n_cost
+                
+                            _cost_rows.append({
+                                "Defect": r,
+                                "NCR Cost": round(_n_cost, 2),
+                                "Credit Note Cost": round(_f_cost, 2),
+                                "Total Cost": round(_total, 2),
+                            })
+                
+                        _cost_df = pd.DataFrame(_cost_rows).sort_values("Total Cost", ascending=False)
+                
+                        st.dataframe(_cost_df, use_container_width=True)
+                
+                        # Pareto
+                        _cost_df = _cost_df[_cost_df["Total Cost"] > 0]
+                
+                        if not _cost_df.empty:
+                            st.markdown("#### Pareto — Cost by Defect")
+                
+                            _cost_df["Cumulative %"] = (
+                                _cost_df["Total Cost"].cumsum() / _cost_df["Total Cost"].sum() * 100
+                            )
+                
+                            _fig_c, _ax_c = plt.subplots()
+                            _xp = np.arange(len(_cost_df))
+                
+                            _ax_c.bar(_xp, _cost_df["Total Cost"].values)
+                
+                            _ax_c2 = _ax_c.twinx()
+                            _ax_c2.plot(_xp, _cost_df["Cumulative %"].values, marker="o")
+                
+                            _ax_c.set_xticks(_xp)
+                            _ax_c.set_xticklabels(_cost_df["Defect"], rotation=40, ha="right")
+                
+                            st.pyplot(_fig_c)
         except Exception as e:
             st.error(f"Error: {e}")
