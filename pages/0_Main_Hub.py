@@ -8,7 +8,6 @@ from utils.supabase_client import get_supabase, get_supabase_admin
 
 st.set_page_config(page_title="Main Hub", page_icon="⚙️", layout="wide")
 
-# ── Auth guard: plant manager only ──
 if "user" not in st.session_state:
     st.switch_page("app.py")
 
@@ -19,8 +18,8 @@ if role != "plant_manager":
     st.error("🔒 Access restricted to Plant Manager only.")
     st.stop()
 
-supabase       = get_supabase()        # anon key  — for profiles/directory
-supabase_admin = get_supabase_admin()  # service key — for auth user creation
+supabase       = get_supabase()
+supabase_admin = get_supabase_admin()
 
 col1, col2 = st.columns([5, 1])
 with col1:
@@ -37,20 +36,15 @@ tab1, tab2 = st.tabs(["👥 User Management", "🏭 People Directory"])
 PILLARS = ["ALL", "AM", "PM", "QM", "HSE", "FI", "ET"]
 ROLES   = ["plant_manager", "pillar_leader", "coordinator", "member"]
 
-# ════════════════════════════════════════
-# TAB 1 — USER MANAGEMENT
-# ════════════════════════════════════════
 with tab1:
 
-    # ── Load existing profiles ──
     try:
-        profiles_res = supabase.table("profiles").select("*").order("full_name").execute()
+        profiles_res = supabase_admin.table("profiles").select("*").order("full_name").execute()
         profiles = profiles_res.data or []
     except Exception as e:
         st.error(f"Could not load profiles: {e}")
         profiles = []
 
-    # ── Current Users Table ──
     st.markdown("### 👥 Current Users")
     if profiles:
         df_profiles = pd.DataFrame(profiles)[["full_name","email","pillar","role"]].rename(columns={
@@ -62,7 +56,6 @@ with tab1:
 
     st.divider()
 
-    # ── Add New User ──
     st.markdown("### ➕ Add New User")
     st.caption("This creates a Supabase auth account and profile in one step.")
 
@@ -80,15 +73,14 @@ with tab1:
                 st.error("Please fill in Name, Email and Password.")
             else:
                 try:
-                    # Create auth user via service role (admin) client
                     res = supabase_admin.auth.admin.create_user({
                         "email": new_email,
                         "password": new_password,
                         "email_confirm": True,
                     })
                     uid = res.user.id
-                    # Insert profile using anon client
-                    supabase.table("profiles").insert({
+                    # ── FIXED: use admin client to bypass RLS ──
+                    supabase_admin.table("profiles").insert({
                         "id": uid,
                         "full_name": new_name,
                         "email": new_email,
@@ -102,7 +94,6 @@ with tab1:
 
     st.divider()
 
-    # ── Edit Existing User ──
     st.markdown("### ✏️ Edit User Access")
     if profiles:
         user_map = {f"{p['full_name']} ({p.get('email','')})": p for p in profiles}
@@ -124,7 +115,8 @@ with tab1:
 
         if save_clicked:
             try:
-                supabase.table("profiles").update({
+                # ── FIXED: use admin client to bypass RLS ──
+                supabase_admin.table("profiles").update({
                     "full_name": edit_name,
                     "pillar":    edit_pillar,
                     "role":      edit_role,
@@ -137,15 +129,12 @@ with tab1:
         if delete_clicked:
             try:
                 supabase_admin.auth.admin.delete_user(sel_user["id"])
-                supabase.table("profiles").delete().eq("id", sel_user["id"]).execute()
+                supabase_admin.table("profiles").delete().eq("id", sel_user["id"]).execute()
                 st.success(f"🗑️ Deleted user **{sel_user['full_name']}**.")
                 st.rerun()
             except Exception as e:
                 st.error(f"Delete failed: {e}")
 
-# ════════════════════════════════════════
-# TAB 2 — PEOPLE DIRECTORY
-# ════════════════════════════════════════
 with tab2:
     st.markdown("### 🏭 People Directory")
     st.caption("This list is used as the owner dropdown in Action Plans and Projects across all pillars.")
