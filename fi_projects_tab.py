@@ -396,6 +396,167 @@ def _action_summary_chart(actions):
     ax.grid(axis="y",color="#eeeeee",lw=0.6); fig.tight_layout(pad=0.5); return fig
 
 
+def _slide_project_overview(project, team, kpi):
+    """Project Overview slide — styled card layout matching HTML template."""
+    import textwrap
+    fig = plt.figure(figsize=(16,9)); fig.patch.set_facecolor("#ffffff")
+    ax = fig.add_axes([0,0,1,1]); ax.set_xlim(0,16); ax.set_ylim(0,9); ax.axis("off")
+    # title bar
+    ax.text(0.5,8.55,"Project Overview",fontsize=22,fontweight="bold",color="#0D68A3",va="center")
+    ax.add_patch(mpatches.FancyBboxPatch((0.5,8.28),2.2,0.07,boxstyle="square,pad=0",facecolor="#DE201B",linewidth=0))
+    ax.add_patch(mpatches.FancyBboxPatch((2.75,8.28),13.0,0.07,boxstyle="square,pad=0",facecolor="#0D68A3",linewidth=0))
+    # LEFT card
+    ax.add_patch(mpatches.FancyBboxPatch((0.4,0.3),9.5,7.7,boxstyle="round,pad=0.1",facecolor="#F8FAFC",edgecolor="#E2E8F0",linewidth=1.2))
+    # Problem
+    ax.add_patch(mpatches.FancyBboxPatch((0.7,6.45),0.52,0.52,boxstyle="round,pad=0.05",facecolor="#EBF8FF",linewidth=0))
+    ax.text(0.96,6.71,"!",fontsize=15,fontweight="bold",color="#0D68A3",ha="center",va="center")
+    ax.text(1.42,7.02,"PROBLEM STATEMENT",fontsize=8,fontweight="700",color="#64748B")
+    prob=project.get("problem_statement","—")
+    for li,line in enumerate(textwrap.wrap(prob,width=52)[:3]):
+        ax.text(1.42,6.65-li*0.38,line,fontsize=11,color="#1E293B",fontweight="500")
+    # Area
+    ax.add_patch(mpatches.FancyBboxPatch((0.7,5.25),0.52,0.52,boxstyle="round,pad=0.05",facecolor="#EBF8FF",linewidth=0))
+    ax.text(0.96,5.51,"@",fontsize=13,fontweight="bold",color="#0D68A3",ha="center",va="center")
+    ax.text(1.42,5.82,"AREA",fontsize=8,fontweight="700",color="#64748B")
+    ax.text(1.42,5.47,project.get("target_area","—"),fontsize=13,color="#1E293B",fontweight="600")
+    # Timeline
+    ax.add_patch(mpatches.FancyBboxPatch((5.2,5.25),0.52,0.52,boxstyle="round,pad=0.05",facecolor="#EBF8FF",linewidth=0))
+    ax.text(5.46,5.51,"T",fontsize=13,fontweight="bold",color="#0D68A3",ha="center",va="center")
+    ax.text(5.9,5.82,"TIMELINE",fontsize=8,fontweight="700",color="#64748B")
+    ax.text(5.9,5.47,f"Launch: {str(project.get('launch_date','—'))[:10]}",fontsize=11,color="#1E293B",fontweight="600")
+    ax.text(5.9,5.1,f"Target: {str(project.get('expected_completion_date','—'))[:10]}",fontsize=11,color="#1E293B")
+    # KPI
+    ax.add_patch(mpatches.FancyBboxPatch((0.7,3.9),0.52,0.52,boxstyle="round,pad=0.05",facecolor="#EBF8FF",linewidth=0))
+    ax.text(0.96,4.16,"K",fontsize=13,fontweight="bold",color="#0D68A3",ha="center",va="center")
+    ax.text(1.42,4.48,"COMPANY KPI",fontsize=8,fontweight="700",color="#64748B")
+    ax.text(1.42,4.12,project.get("company_kpi_link","—"),fontsize=13,color="#0D68A3",fontweight="700")
+    ax.add_patch(mpatches.FancyBboxPatch((0.7,3.35),9.0,0.22,boxstyle="round,pad=0.04",facecolor="#E2E8F0",linewidth=0))
+    ax.add_patch(mpatches.FancyBboxPatch((0.7,3.35),9.0,0.22,boxstyle="round,pad=0.04",facecolor="#0D68A3",linewidth=0,alpha=0.55))
+    ax.text(5.2,3.0,"ACTIVE",fontsize=9,fontweight="700",color="#0D68A3",ha="center")
+    # RIGHT card team
+    ax.add_patch(mpatches.FancyBboxPatch((10.2,0.3),5.5,7.7,boxstyle="round,pad=0.1",facecolor="#FFFFFF",edgecolor="#E2E8F0",linewidth=1.2))
+    ax.add_patch(mpatches.FancyBboxPatch((10.2,7.72),5.5,0.28,boxstyle="square,pad=0",facecolor="#DE201B",linewidth=0))
+    ax.text(12.95,8.05,"Project Team",fontsize=16,fontweight="700",color="#1E293B",ha="center",va="center")
+    member_colors=["#0D68A3","#DE201B","#1E8449","#D68910","#566573","#8E44AD"]
+    for mi,m in enumerate(team[:6]):
+        y_m=7.1-mi*1.1; col=member_colors[mi%len(member_colors)]
+        ax.add_patch(plt.Circle((10.85,y_m+0.22),0.3,facecolor="#F1F5F9",edgecolor=col if mi==0 else "#BDC3C7",linewidth=2,zorder=3))
+        ax.text(10.85,y_m+0.22,m["member_name"][0].upper(),fontsize=11,fontweight="bold",color=col if mi==0 else "#64748B",ha="center",va="center",zorder=4)
+        ax.text(11.3,y_m+0.4,m["member_name"],fontsize=12,fontweight="700" if mi==0 else "500",color="#1E293B")
+        ax.text(11.3,y_m+0.08,f"{m.get('role','—')}  ·  {m.get('department','')}",fontsize=9,color=col if mi==0 else "#64748B")
+    if not team:
+        ax.text(12.95,4.5,"No team members yet",fontsize=11,color="#94A3B8",ha="center",va="center")
+    fig.tight_layout(pad=0); return fig
+
+
+def _slide_gap_register(q_status):
+    """Gap Register slide — styled list matching HTML template, adapts to any number of gaps."""
+    gaps=[(qn,qs) for qn,qs in q_status.items() if qs["due"] and not qs["met"]]
+    gaps_sorted=sorted(gaps,key=lambda x:-x[1]["max"])
+    n_gaps=len(gaps_sorted)
+    if n_gaps==0:
+        fig,ax=plt.subplots(figsize=(16,4)); fig.patch.set_facecolor("#ffffff"); ax.axis("off")
+        ax.text(8,2,"All due questions met!",fontsize=22,fontweight="bold",color="#1E8449",ha="center",va="center")
+        return fig
+    row_h=0.70; fig_h=max(5,n_gaps*row_h+2.6)
+    fig=plt.figure(figsize=(16,fig_h)); fig.patch.set_facecolor("#ffffff")
+    ax=fig.add_axes([0,0,1,1]); ax.set_xlim(0,16); ax.set_ylim(0,fig_h); ax.axis("off")
+    ax.text(0.5,fig_h-0.45,"Gap Register",fontsize=22,fontweight="bold",color="#0D68A3",va="center")
+    ax.add_patch(mpatches.FancyBboxPatch((0.5,fig_h-0.75),2.2,0.06,boxstyle="square,pad=0",facecolor="#DE201B",linewidth=0))
+    ax.add_patch(mpatches.FancyBboxPatch((2.75,fig_h-0.75),13.0,0.06,boxstyle="square,pad=0",facecolor="#0D68A3",linewidth=0))
+    card_top=fig_h-1.0; card_h=n_gaps*row_h+1.0
+    ax.add_patch(mpatches.FancyBboxPatch((0.4,card_top-card_h),15.2,card_h,boxstyle="round,pad=0.1",facecolor="#FFFFFF",edgecolor="#E2E8F0",linewidth=1.2))
+    ax.add_patch(mpatches.FancyBboxPatch((0.4,card_top-0.09),15.2,0.09,boxstyle="square,pad=0",facecolor="#DE201B",linewidth=0))
+    ax.text(1.1,card_top-0.38,"GAP REGISTER — Questions Not Yet Met:",fontsize=11,fontweight="700",color="#1E293B")
+    ax.plot([0.55,15.5],[card_top-0.58,card_top-0.58],color="#E2E8F0",lw=1.0)
+    for ri,(qn,qs) in enumerate(gaps_sorted):
+        y=card_top-0.9-ri*row_h
+        if ri%2==0:
+            ax.add_patch(mpatches.FancyBboxPatch((0.45,y-0.22),15.1,row_h-0.06,boxstyle="square,pad=0",facecolor="#F8FAFC",linewidth=0,zorder=1))
+        ax.add_patch(mpatches.FancyBboxPatch((0.65,y-0.16),0.82,0.50,boxstyle="round,pad=0.05",facecolor="#EBF8FF",edgecolor="#90CDF4",linewidth=0.8,zorder=2))
+        ax.text(1.06,y+0.09,f"Q{qn}",fontsize=11,fontweight="800",color="#0D68A3",ha="center",va="center",zorder=3)
+        ax.add_patch(mpatches.FancyBboxPatch((1.62,y-0.12),0.72,0.42,boxstyle="round,pad=0.05",facecolor="#EBF8FF",edgecolor="#90CDF4",linewidth=0.8,zorder=2))
+        ax.text(1.98,y+0.09,f"{qs['max']}pts",fontsize=9,fontweight="700",color="#3182CE",ha="center",va="center",zorder=3)
+        d_col="#DE201B" if qs["week_due"]<=2 else "#DD6B20"
+        bg_c="#FEF2F2" if qs["week_due"]<=2 else "#FFFAF0"
+        bd_c="#FEB2B2" if qs["week_due"]<=2 else "#FBD38D"
+        ax.add_patch(mpatches.FancyBboxPatch((2.48,y-0.12),0.92,0.42,boxstyle="round,pad=0.05",facecolor=bg_c,edgecolor=bd_c,linewidth=0.8,zorder=2))
+        ax.text(2.94,y+0.09,f"Due W{qs['week_due']}",fontsize=9,fontweight="700",color=d_col,ha="center",va="center",zorder=3)
+        ax.text(3.65,y+0.09,qs["text"],fontsize=11,color="#334155",fontweight="500",va="center",zorder=3)
+        if ri<n_gaps-1: ax.plot([0.55,15.5],[y-0.26,y-0.26],color="#F1F5F9",lw=0.8)
+    fig.tight_layout(pad=0); return fig
+
+
+def _slide_stabilisation(stab, q_status):
+    """Stabilisation Status slide — 8 info cards matching HTML template."""
+    stab=stab or {}
+    opls_count=len(_parse_json(stab.get("opls"),[]))
+    cards=[
+        ("CIL Standards Defined","Done" if stab.get("cil_standards_defined") else "Pending","#0D68A3","#EBF8FF",bool(stab.get("cil_standards_defined"))),
+        ("CIL Audit Score",f"{stab.get('cil_audit_score','—')}%","#DE201B","#FEF2F2",float(stab.get("cil_audit_score") or 0)>=90),
+        ("5S Rating",f"{stab.get('five_s_rating','—')} / 5","#DE201B","#FEF2F2",int(stab.get("five_s_rating") or 0)>=3),
+        ("Monitoring In Place","Yes" if stab.get("monitoring_in_place") else "No","#0D68A3","#EBF8FF",bool(stab.get("monitoring_in_place"))),
+        ("Monitoring Active","Active" if stab.get("monitoring_active") else "No","#0D68A3","#EBF8FF",bool(stab.get("monitoring_active"))),
+        ("Improvements Visible","Visible" if stab.get("improvements_visible") else "No","#0D68A3","#EBF8FF",bool(stab.get("improvements_visible"))),
+        ("OPLs Created",str(opls_count),"#DE201B","#FEF2F2",opls_count>0),
+        ("Procedures In Place","Yes" if stab.get("procedures_created") else "No","#0D68A3","#EBF8FF",bool(stab.get("procedures_created"))),
+    ]
+    fig=plt.figure(figsize=(16,9)); fig.patch.set_facecolor("#ffffff")
+    ax=fig.add_axes([0,0,1,1]); ax.set_xlim(0,16); ax.set_ylim(0,9); ax.axis("off")
+    ax.text(0.5,8.55,"Stabilisation Status",fontsize=22,fontweight="bold",color="#0D68A3",va="center")
+    ax.add_patch(mpatches.FancyBboxPatch((0.5,8.28),2.2,0.07,boxstyle="square,pad=0",facecolor="#DE201B",linewidth=0))
+    ax.add_patch(mpatches.FancyBboxPatch((2.75,8.28),13.0,0.07,boxstyle="square,pad=0",facecolor="#0D68A3",linewidth=0))
+    card_w=3.5; card_h=3.2; gap_x=0.4
+    start_x=0.5; row_ys=[4.6,1.1]
+    for ci,(title,value,top_col,icon_bg,is_good) in enumerate(cards):
+        row=ci//4; col=ci%4
+        cx=start_x+col*(card_w+gap_x); cy=row_ys[row]
+        ax.add_patch(mpatches.FancyBboxPatch((cx,cy),card_w,card_h,boxstyle="round,pad=0.08",facecolor="#FFFFFF",edgecolor="#E2E8F0",linewidth=1.0,zorder=1))
+        ax.add_patch(mpatches.FancyBboxPatch((cx,cy+card_h-0.14),card_w,0.14,boxstyle="square,pad=0",facecolor=top_col,linewidth=0,zorder=2))
+        ax.add_patch(plt.Circle((cx+0.55,cy+card_h-0.65),0.28,facecolor=icon_bg,edgecolor="white",linewidth=1.2,zorder=3))
+        ax.text(cx+0.55,cy+card_h-0.65,"●",fontsize=9,color=top_col,ha="center",va="center",zorder=4)
+        ax.text(cx+0.22,cy+1.45,title.upper(),fontsize=7,fontweight="700",color="#64748B",zorder=3)
+        val_col="#4CAF50" if is_good else ("#DE201B" if value in ("No","Pending") else "#94A3B8")
+        ax.text(cx+0.22,cy+0.65,value,fontsize=16,fontweight="800",color=val_col,zorder=3)
+    fig.tight_layout(pad=0); return fig
+
+
+def _slide_action_details(actions):
+    """Action Plan Details slide — styled table matching template."""
+    if not actions:
+        fig,ax=plt.subplots(figsize=(16,4)); fig.patch.set_facecolor("#ffffff"); ax.axis("off")
+        ax.text(8,2,"No actions recorded yet.",fontsize=16,color="#94A3B8",ha="center",va="center")
+        return fig
+    row_h=0.65; fig_h=max(5,min(len(actions),18)*row_h+2.5)
+    fig=plt.figure(figsize=(16,fig_h)); fig.patch.set_facecolor("#ffffff")
+    ax=fig.add_axes([0,0,1,1]); ax.set_xlim(0,16); ax.set_ylim(0,fig_h); ax.axis("off")
+    ax.text(0.5,fig_h-0.45,"Action Plan Details",fontsize=22,fontweight="bold",color="#0D68A3",va="center")
+    ax.add_patch(mpatches.FancyBboxPatch((0.5,fig_h-0.75),2.2,0.06,boxstyle="square,pad=0",facecolor="#DE201B",linewidth=0))
+    ax.add_patch(mpatches.FancyBboxPatch((2.75,fig_h-0.75),13.0,0.06,boxstyle="square,pad=0",facecolor="#0D68A3",linewidth=0))
+    card_top=fig_h-1.0; card_h=min(len(actions),18)*row_h+0.9
+    ax.add_patch(mpatches.FancyBboxPatch((0.4,card_top-card_h),15.2,card_h,boxstyle="round,pad=0.1",facecolor="#FFFFFF",edgecolor="#E2E8F0",linewidth=1.2))
+    ax.add_patch(mpatches.FancyBboxPatch((0.4,card_top-0.09),15.2,0.09,boxstyle="square,pad=0",facecolor="#0D68A3",linewidth=0))
+    for htext,hpos in zip(["#","Description","Owner","Due Date","Status"],[0.65,1.8,8.5,11.2,13.2]):
+        ax.text(hpos,card_top-0.42,htext,fontsize=9,fontweight="700",color="#64748B")
+    ax.plot([0.55,15.5],[card_top-0.6,card_top-0.6],color="#E2E8F0",lw=1.0)
+    status_colors={"Open":"#0C5595","In Progress":"#D68910","Completed":"#1E8449","Overdue":"#DE201B"}
+    for ri,a in enumerate(actions[:18]):
+        y=card_top-1.0-ri*row_h
+        if ri%2==0:
+            ax.add_patch(mpatches.FancyBboxPatch((0.45,y-0.18),15.1,row_h-0.06,boxstyle="square,pad=0",facecolor="#F8FAFC",linewidth=0,zorder=1))
+        is_od=(a.get("target_date") and _safe_date(a["target_date"]) and _safe_date(a["target_date"])<date.today() and a.get("status")!="Completed")
+        status="Overdue" if is_od else a.get("status","Open")
+        s_col=status_colors.get(status,"#566573")
+        ax.text(0.65,y+0.08,str(ri+1),fontsize=10,fontweight="700",color="#0D68A3",va="center",zorder=2)
+        ax.text(1.8,y+0.08,a.get("description","")[:55],fontsize=10,color="#334155",va="center",zorder=2)
+        ax.text(8.5,y+0.08,a.get("owner","—")[:18],fontsize=10,color="#334155",va="center",zorder=2)
+        ax.text(11.2,y+0.08,str(a.get("target_date",""))[:10],fontsize=10,color="#334155",va="center",zorder=2)
+        ax.add_patch(mpatches.FancyBboxPatch((13.1,y-0.1),1.8,0.4,boxstyle="round,pad=0.05",facecolor=s_col,linewidth=0,alpha=0.15,zorder=2))
+        ax.text(14.0,y+0.1,status,fontsize=9,fontweight="700",color=s_col,ha="center",va="center",zorder=3)
+        if ri<min(len(actions),18)-1: ax.plot([0.55,15.5],[y-0.22,y-0.22],color="#F1F5F9",lw=0.6)
+    fig.tight_layout(pad=0); return fig
+
+
 # ─────────────────────────────────────────────
 # ANALYSIS CHARTS (5-Why, Fishbone, VSM)
 # ─────────────────────────────────────────────
@@ -572,7 +733,7 @@ def render_fi_projects_tab(supabase, role, pillar, name):
     except Exception as e:
         st.error(f"Could not load projects: {e}"); return
 
-    top_l, top_r = st.columns([4, 1])
+    top_l, top_mid, top_r = st.columns([4, 1, 1])
     if not all_projects:
         st.info("No FI projects yet."); selected_project = None
     else:
@@ -582,6 +743,29 @@ def render_fi_projects_tab(supabase, role, pillar, name):
 
     if can_edit and top_r.button("＋ New", key="fi_new_btn"):
         st.session_state["fi_creating"] = True
+
+    # ── delete project (plant_manager only) ──────────────────────────────────
+    if role == "plant_manager" and selected_project:
+        if top_mid.button("🗑 Delete", key="fi_del_proj_btn"):
+            st.session_state["fi_confirm_delete"] = sel_id
+        if st.session_state.get("fi_confirm_delete") == sel_id:
+            st.warning(f"Permanently delete '{selected_project.get('project_name','')}' and ALL its data? This cannot be undone.")
+            conf1, conf2, _ = st.columns([1,1,4])
+            if conf1.button("Yes, delete", type="primary", key="fi_del_confirm"):
+                try:
+                    for tbl in ["fi_weekly_updates","fi_project_steps","fi_project_team",
+                                "fi_project_kpi","fi_project_cost","fi_actions",
+                                "fi_audit_records","fi_stabilisation","fi_company_kpis",
+                                "fi_project_analysis"]:
+                        try: supabase.table(tbl).delete().eq("project_id", sel_id).execute()
+                        except: pass
+                    supabase.table("fi_projects").delete().eq("id", sel_id).execute()
+                    st.session_state.pop("fi_confirm_delete", None)
+                    st.success("Project deleted."); st.rerun()
+                except Exception as e:
+                    st.error(f"Delete failed: {e}")
+            if conf2.button("Cancel", key="fi_del_cancel"):
+                st.session_state.pop("fi_confirm_delete", None); st.rerun()
 
     # ── create project modal ──────────────────────────────────────────────────
     if st.session_state.get("fi_creating") and can_edit:
@@ -1292,16 +1476,9 @@ def render_fi_projects_tab(supabase, role, pillar, name):
                     # 2. Project Overview
                     slides.append({"section":True,"title":"Project Overview"})
 
-                    # Problem + team as text slide
-                    _ov_lines = [
-                        f"Problem: {selected_project.get('problem_statement','—')}",
-                        f"Area: {_area}",
-                        f"Launch: {str(selected_project.get('launch_date',''))[:10]}  |  Target: {str(selected_project.get('expected_completion_date',''))[:10]}",
-                        f"Company KPI: {selected_project.get('company_kpi_link','—')}",
-                        "─" * 60,
-                        "TEAM:",
-                    ] + [f"  • {m['member_name']} — {m.get('role','')} ({m.get('department','')})" for m in team]
-                    slides.append({"title":"Project Overview","text_lines":_ov_lines})
+                    # Project Overview as rendered figure
+                    fig_ov = _slide_project_overview(selected_project, team, kpi)
+                    slides.append({"title":"Project Overview","fig":fig_ov})
 
                     # 3. KPI Trend
                     if kpi and wu_rows:
@@ -1323,15 +1500,9 @@ def render_fi_projects_tab(supabase, role, pillar, name):
                     fig_dim = _dim_bar_chart(q_status)
                     slides.append({"title":"Dimension Breakdown","fig":fig_dim})
 
-                    # Q status as text slide
-                    _gap_lines = ["GAP REGISTER — Questions Not Yet Met:",""]
-                    _gap_items = [(qn,qs) for qn,qs in q_status.items() if qs["due"] and not qs["met"]]
-                    if _gap_items:
-                        for qn,qs in sorted(_gap_items,key=lambda x:-x[1]["max"]):
-                            _gap_lines.append(f"  Q{qn} ({qs['max']}pts, due W{qs['week_due']}): {qs['text']}")
-                    else:
-                        _gap_lines.append("  ✅ All due questions met!")
-                    slides.append({"title":"Gap Register","text_lines":_gap_lines})
+                    # Gap Register as rendered figure
+                    fig_gap = _slide_gap_register(q_status)
+                    slides.append({"title":"Gap Register","fig":fig_gap})
 
                     # 7. Analysis
                     slides.append({"section":True,"title":"Analysis"})
@@ -1371,25 +1542,16 @@ def render_fi_projects_tab(supabase, role, pillar, name):
                     if actions:
                         fig_act = _action_summary_chart(actions)
                         if fig_act: slides.append({"title":"Action Plan Summary","fig":fig_act})
-                        _act_lines = [f"{'✅' if a.get('status')=='Completed' else '🔴' if (a.get('target_date') and _safe_date(a['target_date']) and _safe_date(a['target_date'])<date.today() and a.get('status')!='Completed') else '🟡'} [{a.get('status','Open')}] {a.get('description','')[:70]}  — {a.get('owner','—')}  📅{str(a.get('target_date',''))[:10]}" for a in actions]
-                        slides.append({"title":"Action Plan Details","text_lines":_act_lines})
+                        fig_act_det = _slide_action_details(actions)
+                        slides.append({"title":"Action Plan Details","fig":fig_act_det})
                     else:
-                        slides.append({"title":"Action Plan","text_lines":["No actions recorded yet."]})
+                        fig_act_det = _slide_action_details([])
+                        slides.append({"title":"Action Plan","fig":fig_act_det})
 
                     # 9. Stabilisation
                     slides.append({"section":True,"title":"Stabilisation"})
-                    stab_v2 = stab or {}
-                    _stab_lines = [
-                        f"CIL Standards Defined: {'✅' if stab_v2.get('cil_standards_defined') else '❌'}",
-                        f"CIL Audit Score: {stab_v2.get('cil_audit_score','—')}%",
-                        f"5S Rating: {stab_v2.get('five_s_rating','—')} / 5",
-                        f"Monitoring In Place: {'✅' if stab_v2.get('monitoring_in_place') else '❌'}",
-                        f"Monitoring Active: {'✅' if stab_v2.get('monitoring_active') else '❌'}",
-                        f"Improvements Visible: {'✅' if stab_v2.get('improvements_visible') else '❌'}",
-                        f"OPLs Created: {len(_parse_json(stab_v2.get('opls'),[]))}",
-                        f"Procedures in Place: {'✅' if stab_v2.get('procedures_created') else '❌'}",
-                    ]
-                    slides.append({"title":"Stabilisation Status","text_lines":_stab_lines})
+                    fig_stab = _slide_stabilisation(stab, q_status)
+                    slides.append({"title":"Stabilisation Status","fig":fig_stab})
 
                     # Build PDF
                     pdf_buf = _build_fi_pdf(slides, logo_reader=logo_reader)
