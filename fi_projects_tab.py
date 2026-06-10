@@ -368,22 +368,39 @@ def _ramp_chart(weekly_scores, cur_week):
 def _dim_bar_chart(q_status):
     DIMS={"Involvement":[1,2,34,35,36],"Method":[8,9,10,11,12,13,14,15,16],
           "Action Plan":[17,18,19,20,21,22,23],"Results":[3,4,5,6,7,24,25],"Stabilisation":[26,27,28,29,30,31,32,33]}
+    # Fixed brand colours per dimension — consistent regardless of score
+    DIM_COLORS={"Involvement":"#0C5595","Method":"#0E5E86","Action Plan":"#D68910",
+                "Results":"#1E8449","Stabilisation":"#006394"}
     labels=[]; achieved=[]; possible=[]
     for dim,qs in DIMS.items():
         labels.append(dim)
         achieved.append(sum(q_status[q]["score"] for q in qs if q in q_status))
         possible.append(sum(QUESTIONS[q]["score"] for q in qs))
     pcts=[a/p*100 if p else 0 for a,p in zip(achieved,possible)]
-    fig,ax=plt.subplots(figsize=(11,4)); fig.patch.set_facecolor("#ffffff"); ax.set_facecolor("#fafafa")
-    colors=["#1E8449" if p>=90 else "#D68910" if p>=60 else "#DE201B" for p in pcts]
-    bars=ax.bar(labels,pcts,color=colors,alpha=0.85,zorder=3)
-    for bar,a,p_val in zip(bars,achieved,possible):
+    bar_colors=[DIM_COLORS.get(l,"#566573") for l in labels]
+    fig,ax=plt.subplots(figsize=(11,5)); fig.patch.set_facecolor("#ffffff"); ax.set_facecolor("#fafafa")
+    bars=ax.bar(labels,pcts,color=bar_colors,alpha=0.85,zorder=3,width=0.55)
+    for bar,a,p_val,pct in zip(bars,achieved,possible,pcts):
+        # status indicator on top
+        ind_col="#1E8449" if pct>=90 else "#D68910" if pct>=60 else "#DE201B"
         ax.text(bar.get_x()+bar.get_width()/2,bar.get_height()+1.5,
-                f"{int(bar.get_height())}%\n({a}/{p_val})",ha="center",va="bottom",fontsize=9,color="#1A1A2E",fontweight="bold")
-    ax.set_ylim(0,115); ax.set_ylabel("% Achieved",fontsize=9,color="#566573")
-    ax.axhline(90,color="#1E8449",lw=1,ls="--",alpha=0.5); ax.axhline(60,color="#D68910",lw=1,ls="--",alpha=0.5)
+                f"{int(pct)}%",ha="center",va="bottom",fontsize=10,color=ind_col,fontweight="800")
+        ax.text(bar.get_x()+bar.get_width()/2,bar.get_height()+6.0,
+                f"{a}/{p_val} pts",ha="center",va="bottom",fontsize=7.5,color="#94A3B8")
+    ax.set_ylim(0,118); ax.set_ylabel("% Achieved",fontsize=9,color="#566573")
+    ax.axhline(90,color="#1E8449",lw=1.2,ls="--",alpha=0.6,label="Target ≥90%")
+    ax.axhline(60,color="#D68910",lw=1.0,ls=":",alpha=0.6,label="Acceptable ≥60%")
     for sp in ["top","right"]: ax.spines[sp].set_visible(False)
-    ax.grid(axis="y",color="#eeeeee",lw=0.6); fig.tight_layout(pad=0.5); return fig
+    ax.grid(axis="y",color="#eeeeee",lw=0.6)
+    # legend: dimension colours + threshold lines
+    dim_patches=[mpatches.Patch(facecolor=DIM_COLORS[d],label=d,alpha=0.85) for d in labels]
+    thresh_lines=[
+        plt.Line2D([0],[0],color="#1E8449",lw=1.5,ls="--",label="≥90% (target)"),
+        plt.Line2D([0],[0],color="#D68910",lw=1.2,ls=":",label="≥60% (acceptable)"),
+    ]
+    ax.legend(handles=dim_patches+thresh_lines,loc="upper right",frameon=True,
+              framealpha=0.95,edgecolor="#e0e0e0",fontsize=8,ncol=4)
+    fig.tight_layout(pad=0.5); return fig
 
 def _action_summary_chart(actions):
     if not actions: return None
@@ -403,416 +420,561 @@ def _action_summary_chart(actions):
 
 
 # ─────────────────────────────────────────────
-# PDF CARD SLIDES  (own_header=True, full-bleed 960×540)
-# figsize matches page: (9.6, 5.4) @ dpi=100 = 960×540 px
-# Saved at dpi=300 → 2880×1620 px (crisp in PDF)
-# No ReportLab title bar — each slide owns its full canvas
+# PDF CARD SLIDES  (own_header=True, 960×540)
 # ─────────────────────────────────────────────
-_SW, _SH = 9.6, 5.4   # slide inches
+_SW, _SH = 9.6, 5.4
 
-def _hdr(ax, title):
-    """Draw NPS Hub title + underline bars directly in axes."""
-    ax.text(0.18, _SH-0.22, title, fontsize=17, fontweight="bold",
+def _hdr(ax, title, fig_h=None):
+    """Standard NPS Hub header: bold blue title + red/blue underlines."""
+    H = fig_h if fig_h else _SH
+    ax.text(0.22, H-0.21, title, fontsize=16, fontweight="bold",
             color="#0D68A3", va="center")
-    ax.add_patch(mpatches.FancyBboxPatch((0.18,_SH-0.42),1.05,0.055,
+    ax.add_patch(mpatches.FancyBboxPatch((0.22, H-0.40), 1.0, 0.05,
         boxstyle="square,pad=0", facecolor="#DE201B", linewidth=0))
-    ax.add_patch(mpatches.FancyBboxPatch((1.26,_SH-0.42),_SW-1.44,0.055,
+    ax.add_patch(mpatches.FancyBboxPatch((1.25, H-0.40), _SW-1.42, 0.05,
         boxstyle="square,pad=0", facecolor="#0D68A3", linewidth=0))
 
 
+# ── PROJECT OVERVIEW ──────────────────────────────────────────────────────────
 def _slide_project_overview(project, team, kpi):
     import textwrap
-    fig = plt.figure(figsize=(_SW,_SH),dpi=100); fig.patch.set_facecolor("#F8FAFC")
-    ax  = fig.add_axes([0,0,1,1]); ax.set_xlim(0,_SW); ax.set_ylim(0,_SH); ax.axis("off")
-    _hdr(ax,"Project Overview")
+    fig = plt.figure(figsize=(_SW, _SH), dpi=100)
+    fig.patch.set_facecolor("#F8FAFC")
+    ax = fig.add_axes([0,0,1,1])
+    ax.set_xlim(0, _SW); ax.set_ylim(0, _SH); ax.axis("off")
+    _hdr(ax, "Project Overview")
 
-    BODY_T=_SH-0.55; BODY_B=0.10
-    LX,LW=0.14,5.55; RX,RW=5.85,3.55
+    BODY_T = _SH - 0.54; BODY_B = 0.12
+    LX, LW = 0.16, 5.50
+    RX, RW = 5.84, 3.58
+    BODY_H = BODY_T - BODY_B
 
-    # ── left card ──
-    ax.add_patch(mpatches.FancyBboxPatch((LX,BODY_B),LW,BODY_T-BODY_B,
-        boxstyle="round,pad=0.07",facecolor="#FFFFFF",edgecolor="#E2E8F0",lw=1.0))
+    # ── LEFT card ──
+    ax.add_patch(mpatches.FancyBboxPatch((LX, BODY_B), LW, BODY_H,
+        boxstyle="round,pad=0.07", facecolor="#FFFFFF",
+        edgecolor="#E2E8F0", linewidth=1.0))
 
-    def _row(icon, lbl, vals, y0, x0=LX+0.22, icon_c="#0D68A3"):
-        ax.add_patch(mpatches.FancyBboxPatch((x0,y0-0.06),0.30,0.30,
-            boxstyle="round,pad=0.04",facecolor="#EBF8FF",linewidth=0))
-        ax.text(x0+0.15,y0+0.09,icon,fontsize=9,fontweight="bold",color=icon_c,
-                ha="center",va="center")
-        tx=x0+0.38
-        ax.text(tx,y0+0.22,lbl,fontsize=6,fontweight="700",color="#94A3B8")
-        for li,v in enumerate(vals):
-            ax.text(tx,y0+0.05-li*0.18,v,fontsize=9 if li==0 else 8,
-                    fontweight="600" if li==0 else "400",
-                    color="#1E293B" if li==0 else "#64748B")
+    # evenly-spaced sections inside left card
+    SEC_PAD  = 0.20   # top/bottom padding
+    SEC_GAP  = 0.12   # gap between sections
+    SEP_COL  = "#F1F5F9"
+    ICON_SZ  = 0.28   # icon box size
+    ICON_PAD = 0.18   # icon left margin inside card
+    TEXT_X   = LX + ICON_PAD + ICON_SZ + 0.14
 
-    prob = project.get("problem_statement","—")
-    p_lines = textwrap.wrap(prob,width=46)[:3]
-    _row("!","PROBLEM STATEMENT",p_lines, BODY_T-0.38)
+    prob = project.get("problem_statement", "—")
+    p_lines = textwrap.wrap(prob, width=44)[:3]
+    # compute section heights
+    PROB_H = 0.24 + len(p_lines) * 0.19
+    ROW_H  = 0.50   # area/timeline row
+    KPI_H  = 0.40
+    PILL_H = 0.30
+    TOTAL  = PROB_H + ROW_H + KPI_H + PILL_H + 4*SEC_GAP + 2*SEC_PAD
+    scale  = BODY_H / max(TOTAL, BODY_H)  # shrink if needed
 
-    sep1 = BODY_T-0.38-len(p_lines)*0.19-0.22
-    ax.plot([LX+0.10,LX+LW-0.10],[sep1,sep1],color="#F1F5F9",lw=0.7)
+    def _icon(x, y, char, bg="#EBF8FF", fg="#0D68A3", sz=ICON_SZ):
+        ax.add_patch(mpatches.FancyBboxPatch((x, y), sz, sz,
+            boxstyle="round,pad=0.04", facecolor=bg, linewidth=0))
+        ax.text(x+sz/2, y+sz/2, char, fontsize=9, fontweight="bold",
+                color=fg, ha="center", va="center")
 
-    ay = sep1-0.10
-    _row("@","AREA",[project.get("target_area","—")],ay)
-    _row("T","TIMELINE",[
-        "Launch: "+str(project.get("launch_date","—"))[:10],
-        "Target: "+str(project.get("expected_completion_date","—"))[:10]
-    ],ay,x0=LX+0.22+LW*0.46)
+    def _sep(y):
+        ax.plot([LX+0.12, LX+LW-0.12], [y,y], color=SEP_COL, lw=0.7)
 
-    sep2 = ay-0.50
-    ax.plot([LX+0.10,LX+LW-0.10],[sep2,sep2],color="#F1F5F9",lw=0.7)
+    # Problem Statement
+    y_top = BODY_T - SEC_PAD
+    _icon(LX+ICON_PAD, y_top-ICON_SZ*scale, "!")
+    ax.text(TEXT_X, y_top-0.06*scale, "PROBLEM STATEMENT",
+            fontsize=5.8, fontweight="700", color="#94A3B8")
+    for li, line in enumerate(p_lines):
+        ax.text(TEXT_X, y_top-0.24*scale-li*0.19*scale,
+                line, fontsize=9, fontweight="600", color="#1E293B")
 
-    ky = sep2-0.10
-    _row("K","COMPANY KPI",[project.get("company_kpi_link","—")],ky)
+    _sep(y_top - (PROB_H+SEC_GAP)*scale)
+    y2 = y_top - (PROB_H + SEC_GAP*2)*scale
 
-    # status pill
-    ax.add_patch(mpatches.FancyBboxPatch((LX+0.20,BODY_B+0.14),1.20,0.26,
-        boxstyle="round,pad=0.05",facecolor="#0D68A3",linewidth=0,alpha=0.88))
-    ax.text(LX+0.80,BODY_B+0.27,"● ACTIVE",fontsize=8,fontweight="700",
-            color="white",ha="center",va="center")
+    # Area (left half) + Timeline (right half)
+    _icon(LX+ICON_PAD, y2-ICON_SZ*scale, "@")
+    ax.text(TEXT_X, y2-0.05*scale, "AREA", fontsize=5.8, fontweight="700", color="#94A3B8")
+    ax.text(TEXT_X, y2-0.26*scale, project.get("target_area","—"),
+            fontsize=9, fontweight="600", color="#1E293B")
 
-    # ── right card (team) ──
-    ax.add_patch(mpatches.FancyBboxPatch((RX,BODY_B),RW,BODY_T-BODY_B,
-        boxstyle="round,pad=0.07",facecolor="#FFFFFF",edgecolor="#E2E8F0",lw=1.0))
-    ax.add_patch(mpatches.FancyBboxPatch((RX,BODY_T-BODY_B+BODY_B-0.055),RW,0.055,
-        boxstyle="square,pad=0",facecolor="#DE201B",linewidth=0))
+    TLX = LX + LW*0.50
+    _icon(TLX, y2-ICON_SZ*scale, "T")
+    ax.text(TLX+ICON_SZ+0.10, y2-0.05*scale, "TIMELINE",
+            fontsize=5.8, fontweight="700", color="#94A3B8")
+    ax.text(TLX+ICON_SZ+0.10, y2-0.25*scale,
+            "Launch: "+str(project.get("launch_date","—"))[:10],
+            fontsize=8.5, fontweight="600", color="#1E293B")
+    ax.text(TLX+ICON_SZ+0.10, y2-0.43*scale,
+            "Target:  "+str(project.get("expected_completion_date","—"))[:10],
+            fontsize=8, color="#64748B")
 
-    # team header
-    ax.text(RX+RW/2,BODY_T-0.22,"Project Team",fontsize=11,fontweight="700",
-            color="#1E293B",ha="center")
-    ax.plot([RX+0.15,RX+RW-0.15],[BODY_T-0.38,BODY_T-0.38],color="#F1F5F9",lw=0.7)
+    _sep(y2 - (ROW_H+SEC_GAP)*scale)
+    y3 = y2 - (ROW_H + SEC_GAP*2)*scale
 
-    cols=["#0D68A3","#DE201B","#1E8449","#D68910","#566573","#8E44AD"]
-    n_m=min(len(team),6)
+    # Company KPI
+    _icon(LX+ICON_PAD, y3-ICON_SZ*scale, "K")
+    ax.text(TEXT_X, y3-0.05*scale, "COMPANY KPI",
+            fontsize=5.8, fontweight="700", color="#94A3B8")
+    ax.text(TEXT_X, y3-0.25*scale, project.get("company_kpi_link","—"),
+            fontsize=10, fontweight="700", color="#0D68A3")
+
+    # Status pill
+    ax.add_patch(mpatches.FancyBboxPatch(
+        (LX+ICON_PAD, BODY_B+0.12), 1.1, 0.26,
+        boxstyle="round,pad=0.04", facecolor="#0D68A3", linewidth=0, alpha=0.9))
+    ax.text(LX+ICON_PAD+0.55, BODY_B+0.25, "● ACTIVE",
+            fontsize=8, fontweight="700", color="white", ha="center", va="center")
+
+    # ── RIGHT card (Team) ──
+    ax.add_patch(mpatches.FancyBboxPatch((RX, BODY_B), RW, BODY_H,
+        boxstyle="round,pad=0.07", facecolor="#FFFFFF",
+        edgecolor="#E2E8F0", linewidth=1.0))
+    # red top accent
+    ax.add_patch(mpatches.FancyBboxPatch(
+        (RX, BODY_B+BODY_H-0.05), RW, 0.05,
+        boxstyle="square,pad=0", facecolor="#DE201B", linewidth=0))
+    ax.text(RX+RW/2, BODY_B+BODY_H-0.20, "Project Team",
+            fontsize=11, fontweight="700", color="#1E293B", ha="center")
+    ax.plot([RX+0.15, RX+RW-0.15], [BODY_B+BODY_H-0.36]*2,
+            color="#F1F5F9", lw=0.8)
+
+    MEMBER_COLORS = ["#0D68A3","#DE201B","#1E8449","#D68910","#566573","#8E44AD"]
+    n_m = min(len(team), 6)
     if n_m:
-        sp=(BODY_T-BODY_B-0.55)/n_m
-        for mi,m in enumerate(team[:n_m]):
-            ym=BODY_T-0.52-mi*sp; col=cols[mi%len(cols)]
-            ax.add_patch(plt.Circle((RX+0.40,ym),0.19,
-                facecolor="#F1F5F9",edgecolor=col if mi==0 else "#CBD5E1",
-                lw=1.5 if mi==0 else 0.8,zorder=3))
-            ax.text(RX+0.40,ym,m["member_name"][0].upper(),
-                    fontsize=9,fontweight="bold",color=col if mi==0 else "#94A3B8",
-                    ha="center",va="center",zorder=4)
-            ax.text(RX+0.68,ym+0.09,m["member_name"],
-                    fontsize=9,fontweight="700" if mi==0 else "500",color="#1E293B")
-            ax.text(RX+0.68,ym-0.09,
+        avail = BODY_H - 0.45
+        sp = avail / n_m
+        for mi, m in enumerate(team[:n_m]):
+            ym = BODY_B + BODY_H - 0.42 - mi*sp
+            col = MEMBER_COLORS[mi % len(MEMBER_COLORS)]
+            r = 0.17
+            ax.add_patch(plt.Circle((RX+0.36, ym), r,
+                facecolor="#F1F5F9",
+                edgecolor=col if mi==0 else "#CBD5E1",
+                linewidth=1.5 if mi==0 else 0.8, zorder=3))
+            ax.text(RX+0.36, ym, m["member_name"][0].upper(),
+                    fontsize=8.5, fontweight="bold",
+                    color=col if mi==0 else "#94A3B8",
+                    ha="center", va="center", zorder=4)
+            ax.text(RX+0.62, ym+0.08, m["member_name"],
+                    fontsize=8.5, fontweight="700" if mi==0 else "500",
+                    color="#1E293B")
+            ax.text(RX+0.62, ym-0.10,
                     f"{m.get('role','—')}  ·  {m.get('department','')}",
-                    fontsize=7,color=col if mi==0 else "#94A3B8")
-            if mi<n_m-1:
-                ax.plot([RX+0.18,RX+RW-0.18],[ym-0.21,ym-0.21],color="#F8FAFC",lw=0.6)
+                    fontsize=7, color=col if mi==0 else "#94A3B8")
+            if mi < n_m-1:
+                ax.plot([RX+0.18, RX+RW-0.15],
+                        [ym-0.22, ym-0.22],
+                        color="#F8FAFC", lw=0.6)
     else:
-        ax.text(RX+RW/2,(BODY_T+BODY_B)/2,"No team members yet",
-                fontsize=10,color="#CBD5E1",ha="center",va="center")
+        ax.text(RX+RW/2, BODY_B+BODY_H/2, "No team members",
+                fontsize=10, color="#CBD5E1", ha="center", va="center")
 
-    fig.tight_layout(pad=0); return fig
+    fig.tight_layout(pad=0)
+    return fig
 
 
+# ── GAP REGISTER ──────────────────────────────────────────────────────────────
 def _slide_gap_register(q_status):
-    """Adaptive height — content fills the card, no blank space."""
-    gaps=sorted([(qn,qs) for qn,qs in q_status.items() if qs["due"] and not qs["met"]],
-                key=lambda x:-x[1]["max"])
-    n=len(gaps)
+    gaps = sorted(
+        [(qn,qs) for qn,qs in q_status.items() if qs["due"] and not qs["met"]],
+        key=lambda x: -x[1]["max"])
+    n = len(gaps)
 
-    # height: min 3.2in, max 5.4in, grows with rows
-    ROW_H  = 0.48        # inches per row
-    HDR_H  = 0.72        # header + underline
-    PAD_T  = 0.18        # top pad inside card
-    PAD_B  = 0.22        # bottom margin
-    CARD_INNER = 0.38    # card header row
-    fig_h  = min(_SH, max(3.0, HDR_H + PAD_T + CARD_INNER + n*ROW_H + PAD_B))
+    # Adaptive height: exact fit, never blank
+    ROW_H   = 0.40    # height per data row (inches)
+    HDR_PAD = 0.52    # slide title + underline
+    COL_ROW = 0.34    # column-header row inside card
+    CARD_PAD_T = 0.10 # inside card top pad
+    CARD_PAD_B = 0.14 # inside card bottom pad
+    OUTER_PAD  = 0.12 # margin above/below card
 
-    fig = plt.figure(figsize=(_SW, fig_h), dpi=100); fig.patch.set_facecolor("#FFFFFF")
-    ax  = fig.add_axes([0,0,1,1]); ax.set_xlim(0,_SW); ax.set_ylim(0,fig_h); ax.axis("off")
+    content_h = COL_ROW + CARD_PAD_T + CARD_PAD_B + n*ROW_H
+    fig_h = max(1.8, min(_SH, HDR_PAD + OUTER_PAD + content_h + OUTER_PAD))
 
-    # header
-    ax.text(0.18,fig_h-0.22,"Gap Register",fontsize=17,fontweight="bold",color="#0D68A3",va="center")
-    ax.add_patch(mpatches.FancyBboxPatch((0.18,fig_h-0.42),1.05,0.055,
-        boxstyle="square,pad=0",facecolor="#DE201B",linewidth=0))
-    ax.add_patch(mpatches.FancyBboxPatch((1.26,fig_h-0.42),_SW-1.44,0.055,
-        boxstyle="square,pad=0",facecolor="#0D68A3",linewidth=0))
+    fig = plt.figure(figsize=(_SW, fig_h), dpi=100)
+    fig.patch.set_facecolor("#FFFFFF")
+    ax  = fig.add_axes([0,0,1,1])
+    ax.set_xlim(0, _SW); ax.set_ylim(0, fig_h); ax.axis("off")
+    _hdr(ax, "Gap Register", fig_h=fig_h)
 
-    if n==0:
-        ax.text(_SW/2,fig_h/2-0.1,"All due questions met  ✓",
-                fontsize=16,fontweight="bold",color="#1E8449",ha="center",va="center")
+    if n == 0:
+        ax.text(_SW/2, fig_h/2, "All due questions met  ✓",
+                fontsize=15, fontweight="bold", color="#1E8449",
+                ha="center", va="center")
         fig.tight_layout(pad=0); return fig
 
-    CARD_T=fig_h-0.55; CARD_B=PAD_B
-    CARD_H=CARD_T-CARD_B; CARD_X=0.14; CARD_W=_SW-0.28
+    CX    = 0.16
+    CW    = _SW - 0.32
+    CARD_B = OUTER_PAD
+    CARD_T = fig_h - HDR_PAD
+    CARD_H = CARD_T - CARD_B
 
-    # outer card
-    ax.add_patch(mpatches.FancyBboxPatch((CARD_X,CARD_B),CARD_W,CARD_H,
-        boxstyle="round,pad=0.07",facecolor="#FFFFFF",edgecolor="#E2E8F0",lw=1.0))
-    ax.add_patch(mpatches.FancyBboxPatch((CARD_X,CARD_B+CARD_H-0.048),CARD_W,0.048,
-        boxstyle="square,pad=0",facecolor="#DE201B",linewidth=0))
+    # Card shell
+    ax.add_patch(mpatches.FancyBboxPatch((CX, CARD_B), CW, CARD_H,
+        boxstyle="round,pad=0.06", facecolor="#FFFFFF",
+        edgecolor="#E2E8F0", linewidth=0.9))
+    # blue top accent (not red — matches Action Plan style)
+    ax.add_patch(mpatches.FancyBboxPatch(
+        (CX, CARD_B+CARD_H-0.042), CW, 0.042,
+        boxstyle="square,pad=0", facecolor="#0D68A3", linewidth=0))
 
-    # card header
-    HY=CARD_B+CARD_H-0.22
-    for txt,cx in [("#",CARD_X+0.14),("Description",CARD_X+0.52),
-                   ("Pts",CARD_X+4.70),("Due",CARD_X+5.22),
-                   ("Dimension",CARD_X+5.92),("Question",CARD_X+7.05)]:
-        ax.text(cx,HY,txt,fontsize=7,fontweight="700",color="#64748B")
-    ax.plot([CARD_X+0.08,CARD_X+CARD_W-0.08],[HY-0.13,HY-0.13],color="#E2E8F0",lw=0.7)
+    # Column headers — 4 columns only: Q#, Description, Weight, Due
+    # No "Dimension" column — was causing overlap
+    COL_QN   = CX + 0.14
+    COL_DESC = CX + 0.70
+    COL_WT   = CX + 6.60
+    COL_DUE  = CX + 7.25
+    COL_DIM  = CX + 7.90
 
-    dim_cols={"Involvement":"#8E44AD","Method":"#0C5595","Action Plan":"#D68910",
-              "Results":"#1E8449","Stabilisation":"#DE201B"}
+    HY = CARD_B + CARD_H - CARD_PAD_T - 0.16
+    for txt, cx2 in [("Q#",COL_QN),("Question",COL_DESC),
+                     ("Pts",COL_WT),("Due",COL_DUE),("Dim",COL_DIM)]:
+        ax.text(cx2, HY, txt, fontsize=7, fontweight="700", color="#64748B")
+    ax.plot([CX+0.08, CX+CW-0.08], [HY-0.11, HY-0.11],
+            color="#E2E8F0", lw=0.7)
 
-    max_show=min(n, int((CARD_H-0.42)/ROW_H))
-    for ri,(qn,qs) in enumerate(gaps[:max_show]):
-        ry=CARD_B+CARD_H-0.42-ri*ROW_H
-        # alt stripe
-        if ri%2==0:
-            ax.add_patch(mpatches.FancyBboxPatch((CARD_X+0.04,ry-ROW_H*0.38),
-                CARD_W-0.08,ROW_H*0.80,boxstyle="square,pad=0",
-                facecolor="#F8FAFC",linewidth=0,zorder=1))
-        cy=ry-ROW_H*0.08   # vertical centre
+    # Dim colours — consistent, not random
+    DIM_C = {"Involvement":"#0C5595","Method":"#0E5E86",
+              "Action Plan":"#D68910","Results":"#1E8449","Stabilisation":"#006394"}
+
+    max_show = min(n, int((CARD_H - COL_ROW - CARD_PAD_T - CARD_PAD_B) / ROW_H))
+    for ri, (qn, qs) in enumerate(gaps[:max_show]):
+        row_top = HY - 0.11 - (ri+1)*ROW_H
+        cy = row_top + ROW_H*0.45
+
+        # Alt row stripe
+        if ri % 2 == 0:
+            ax.add_patch(mpatches.FancyBboxPatch(
+                (CX+0.04, row_top+0.02), CW-0.08, ROW_H-0.04,
+                boxstyle="square,pad=0", facecolor="#F8FAFC", linewidth=0, zorder=1))
 
         # Q badge
-        ax.add_patch(mpatches.FancyBboxPatch((CARD_X+0.08,cy-0.13),0.36,0.27,
-            boxstyle="round,pad=0.04",facecolor="#EBF8FF",edgecolor="#90CDF4",lw=0.5,zorder=2))
-        ax.text(CARD_X+0.26,cy,f"Q{qn}",fontsize=8,fontweight="800",
-                color="#0D68A3",ha="center",va="center",zorder=3)
+        ax.add_patch(mpatches.FancyBboxPatch(
+            (COL_QN-0.02, cy-0.13), 0.44, 0.26,
+            boxstyle="round,pad=0.03", facecolor="#EBF8FF",
+            edgecolor="#90CDF4", linewidth=0.5, zorder=2))
+        ax.text(COL_QN+0.20, cy, f"Q{qn}",
+                fontsize=8, fontweight="800", color="#0D68A3",
+                ha="center", va="center", zorder=3)
 
-        # description (truncated)
-        ax.text(CARD_X+0.52,cy,qs["text"][:52],
-                fontsize=8.5,color="#1E293B",fontweight="500",va="center",zorder=2)
+        # Question text — use most of the width
+        q_text = qs["text"]
+        if len(q_text) > 65: q_text = q_text[:62]+"..."
+        ax.text(COL_DESC, cy, q_text,
+                fontsize=8.5, color="#1E293B", fontweight="500",
+                va="center", zorder=2)
 
-        # pts
-        ax.add_patch(mpatches.FancyBboxPatch((CARD_X+4.68,cy-0.12),0.42,0.24,
-            boxstyle="round,pad=0.03",facecolor="#EBF8FF",edgecolor="#90CDF4",lw=0.5,zorder=2))
-        ax.text(CARD_X+4.89,cy,f"{qs['max']}p",fontsize=7.5,fontweight="700",
-                color="#3182CE",ha="center",va="center",zorder=3)
+        # Pts badge
+        ax.add_patch(mpatches.FancyBboxPatch(
+            (COL_WT-0.02, cy-0.11), 0.44, 0.22,
+            boxstyle="round,pad=0.03", facecolor="#EBF8FF",
+            edgecolor="#90CDF4", linewidth=0.5, zorder=2))
+        ax.text(COL_WT+0.20, cy, f"{qs['max']}p",
+                fontsize=7.5, fontweight="700", color="#3182CE",
+                ha="center", va="center", zorder=3)
 
-        # due week badge
-        dc="#DE201B" if qs["week_due"]<=2 else "#DD6B20"
-        bc="#FEF2F2" if qs["week_due"]<=2 else "#FFFAF0"
-        ax.add_patch(mpatches.FancyBboxPatch((CARD_X+5.18,cy-0.12),0.52,0.24,
-            boxstyle="round,pad=0.03",facecolor=bc,edgecolor=dc,lw=0.5,zorder=2))
-        ax.text(CARD_X+5.44,cy,f"W{qs['week_due']}",fontsize=7.5,fontweight="700",
-                color=dc,ha="center",va="center",zorder=3)
+        # Due week badge
+        w = qs["week_due"]
+        d_col = "#DE201B" if w<=2 else "#D68910" if w<=5 else "#1E8449"
+        bg_c  = "#FEF2F2" if w<=2 else "#FFFAF0" if w<=5 else "#F0FFF4"
+        ax.add_patch(mpatches.FancyBboxPatch(
+            (COL_DUE-0.02, cy-0.11), 0.50, 0.22,
+            boxstyle="round,pad=0.03", facecolor=bg_c,
+            edgecolor=d_col, linewidth=0.5, zorder=2))
+        ax.text(COL_DUE+0.23, cy, f"W{w}",
+                fontsize=7.5, fontweight="700", color=d_col,
+                ha="center", va="center", zorder=3)
 
-        # dim badge
-        dc2=dim_cols.get(qs.get("dim",""),"#566573")
-        ax.add_patch(mpatches.FancyBboxPatch((CARD_X+5.88,cy-0.12),1.02,0.24,
-            boxstyle="round,pad=0.03",facecolor=dc2,linewidth=0,alpha=0.12,zorder=2))
-        ax.text(CARD_X+6.39,cy,qs.get("dim",""),fontsize=7,fontweight="600",
-                color=dc2,ha="center",va="center",zorder=3)
+        # Dim badge
+        d2 = DIM_C.get(qs.get("dim",""), "#566573")
+        ax.add_patch(mpatches.FancyBboxPatch(
+            (COL_DIM-0.02, cy-0.11), 1.08, 0.22,
+            boxstyle="round,pad=0.03", facecolor=d2,
+            linewidth=0, alpha=0.13, zorder=2))
+        ax.text(COL_DIM+0.52, cy, qs.get("dim",""),
+                fontsize=7, fontweight="600", color=d2,
+                ha="center", va="center", zorder=3)
 
-        # question text short
-        ax.text(CARD_X+7.04,cy,qs["text"][:38],fontsize=8,color="#475569",
-                va="center",zorder=2)
+        if ri < max_show-1:
+            ax.plot([CX+0.06, CX+CW-0.06],
+                    [row_top+0.01, row_top+0.01],
+                    color="#F1F5F9", lw=0.5)
 
-        if ri<max_show-1:
-            ax.plot([CARD_X+0.06,CARD_X+CARD_W-0.06],
-                    [ry-ROW_H*0.5,ry-ROW_H*0.5],color="#F1F5F9",lw=0.5)
+    if n > max_show:
+        ax.text(CX+CW/2, CARD_B+0.08, f"+ {n-max_show} more gaps",
+                fontsize=7.5, color="#94A3B8", ha="center")
 
-    if n>max_show:
-        ax.text(CARD_X+CARD_W/2,CARD_B+0.10,f"+ {n-max_show} more",
-                fontsize=7.5,color="#94A3B8",ha="center")
-
-    fig.tight_layout(pad=0); return fig
+    fig.tight_layout(pad=0)
+    return fig
 
 
+# ── STABILISATION STATUS ──────────────────────────────────────────────────────
 def _slide_stabilisation(stab, q_status):
-    stab=stab or {}
-    opls=len(_parse_json(stab.get("opls"),[]))
-    cards=[
-        ("CIL Standards",   "Done"    if stab.get("cil_standards_defined") else "Pending",   "#0D68A3",bool(stab.get("cil_standards_defined"))),
-        ("CIL Audit Score", f"{stab.get('cil_audit_score','—')}%",                           "#DE201B",float(stab.get("cil_audit_score") or 0)>=90),
-        ("5S Rating",       f"{stab.get('five_s_rating','—')} / 5",                          "#DE201B",int(stab.get("five_s_rating") or 0)>=3),
-        ("Monitoring",      "In Place" if stab.get("monitoring_in_place") else "Missing",    "#0D68A3",bool(stab.get("monitoring_in_place"))),
-        ("Mon. Active",     "Active"   if stab.get("monitoring_active") else "Inactive",     "#0D68A3",bool(stab.get("monitoring_active"))),
-        ("Improvements",    "Visible"  if stab.get("improvements_visible") else "Not Yet",   "#1E8449",bool(stab.get("improvements_visible"))),
-        ("OPLs Created",    str(opls),                                                        "#D68910",opls>0),
-        ("Procedures",      "In Place" if stab.get("procedures_created") else "Missing",     "#0D68A3",bool(stab.get("procedures_created"))),
+    stab  = stab or {}
+    opls  = len(_parse_json(stab.get("opls"), []))
+    cards = [
+        ("CIL Standards",   "Done"      if stab.get("cil_standards_defined") else "Pending",  "#0D68A3", bool(stab.get("cil_standards_defined"))),
+        ("CIL Audit Score", f"{stab.get('cil_audit_score','—')}%",                            "#DE201B", float(stab.get("cil_audit_score") or 0)>=90),
+        ("5S Rating",       f"{stab.get('five_s_rating','—')} / 5",                           "#DE201B", int(stab.get("five_s_rating") or 0)>=3),
+        ("Monitoring",      "In Place"  if stab.get("monitoring_in_place") else "Missing",    "#0D68A3", bool(stab.get("monitoring_in_place"))),
+        ("Mon. Active",     "Active"    if stab.get("monitoring_active") else "Inactive",     "#0D68A3", bool(stab.get("monitoring_active"))),
+        ("Improvements",    "Visible"   if stab.get("improvements_visible") else "Not Yet",   "#1E8449", bool(stab.get("improvements_visible"))),
+        ("OPLs Created",    str(opls),                                                         "#D68910", opls > 0),
+        ("Procedures",      "In Place"  if stab.get("procedures_created") else "Missing",     "#0D68A3", bool(stab.get("procedures_created"))),
     ]
-    fig=plt.figure(figsize=(_SW,_SH),dpi=100); fig.patch.set_facecolor("#F8FAFC")
-    ax=fig.add_axes([0,0,1,1]); ax.set_xlim(0,_SW); ax.set_ylim(0,_SH); ax.axis("off")
-    _hdr(ax,"Stabilisation Status")
 
-    NC=4; NR=2
-    MX=0.18; MY=0.14; GX=0.14; GY=0.16
-    BT=_SH-0.55; BB=MY
-    TW=_SW-2*MX; TH=BT-BB
-    CW=(TW-(NC-1)*GX)/NC
-    CH=(TH-(NR-1)*GY)/NR
+    fig = plt.figure(figsize=(_SW, _SH), dpi=100)
+    fig.patch.set_facecolor("#F8FAFC")
+    ax  = fig.add_axes([0,0,1,1])
+    ax.set_xlim(0, _SW); ax.set_ylim(0, _SH); ax.axis("off")
+    _hdr(ax, "Stabilisation Status")
 
-    for ci,(title,value,ac,good) in enumerate(cards):
-        r=ci//NC; col=ci%NC
-        cx=MX+col*(CW+GX); cy=BT-CH-r*(CH+GY)
+    NC = 4; NR = 2
+    MX = 0.18; MY = 0.12
+    GX = 0.16; GY = 0.14
+    BT = _SH - 0.54; BB = MY
+    TW = _SW - 2*MX; TH = BT - BB
+    CW = (TW - (NC-1)*GX) / NC
+    CH = (TH - (NR-1)*GY) / NR
 
-        # shadow
-        ax.add_patch(mpatches.FancyBboxPatch((cx+0.018,cy-0.018),CW,CH,
-            boxstyle="round,pad=0.06",facecolor="#E2E8F0",lw=0,alpha=0.55,zorder=1))
-        # card
-        ax.add_patch(mpatches.FancyBboxPatch((cx,cy),CW,CH,
-            boxstyle="round,pad=0.06",facecolor="#FFFFFF",edgecolor="#E2E8F0",lw=0.8,zorder=2))
-        # accent bar
-        ax.add_patch(mpatches.FancyBboxPatch((cx,cy+CH-0.048),CW,0.048,
-            boxstyle="square,pad=0",facecolor=ac,lw=0,zorder=3))
+    for ci, (title, value, ac, good) in enumerate(cards):
+        r   = ci // NC; col = ci % NC
+        cx  = MX + col*(CW+GX)
+        cy  = BT - CH - r*(CH+GY)
 
-        # icon
-        ax.add_patch(plt.Circle((cx+0.22,cy+CH*0.70),0.14,
-            facecolor=ac,alpha=0.12,lw=0,zorder=3))
-        ax.add_patch(plt.Circle((cx+0.22,cy+CH*0.70),0.08,
-            facecolor=ac,alpha=0.28,lw=0,zorder=4))
-        ax.text(cx+0.22,cy+CH*0.70,"●",fontsize=7,color=ac,
-                ha="center",va="center",zorder=5)
+        # subtle drop shadow
+        ax.add_patch(mpatches.FancyBboxPatch(
+            (cx+0.014, cy-0.014), CW, CH,
+            boxstyle="round,pad=0.06", facecolor="#D0D9E8",
+            linewidth=0, alpha=0.45, zorder=1))
+        # card body
+        ax.add_patch(mpatches.FancyBboxPatch(
+            (cx, cy), CW, CH,
+            boxstyle="round,pad=0.06", facecolor="#FFFFFF",
+            edgecolor="#E2E8F0", linewidth=0.7, zorder=2))
+        # accent bar top
+        ax.add_patch(mpatches.FancyBboxPatch(
+            (cx, cy+CH-0.042), CW, 0.042,
+            boxstyle="square,pad=0", facecolor=ac, linewidth=0, zorder=3))
 
-        # label
-        ax.text(cx+0.18,cy+CH*0.46,title.upper(),fontsize=6.2,fontweight="700",
-                color="#94A3B8",zorder=3)
+        # status indicator dot — bottom-right
+        dot_col = "#1E8449" if good else "#DE201B"
+        ax.add_patch(plt.Circle(
+            (cx+CW-0.15, cy+0.16), 0.06,
+            facecolor=dot_col, linewidth=0, zorder=4))
 
-        # value
-        vc="#1E8449" if good else "#DE201B"
-        if value in ("—%","—","— / 5","0"): vc="#CBD5E1"
-        ax.text(cx+0.18,cy+CH*0.22,value,fontsize=14,fontweight="800",color=vc,zorder=3)
+        # label — top section of card
+        ax.text(cx+0.14, cy+CH*0.62, title.upper(),
+                fontsize=6.5, fontweight="700", color="#94A3B8", zorder=3)
 
-        # status dot
-        ax.add_patch(plt.Circle((cx+CW-0.18,cy+0.18),0.065,
-            facecolor="#1E8449" if good else "#DE201B",lw=0,zorder=3))
+        # value — large, in lower half of card
+        val_col = "#1E8449" if good else "#DE201B"
+        if value in ("—%", "— / 5", "0", "—"): val_col = "#CBD5E1"
+        ax.text(cx+0.14, cy+CH*0.30, value,
+                fontsize=15, fontweight="800", color=val_col, zorder=3,
+                va="center")
 
-    fig.tight_layout(pad=0); return fig
+    fig.tight_layout(pad=0)
+    return fig
 
 
+# ── ACTION PLAN DETAILS ───────────────────────────────────────────────────────
 def _slide_action_details(actions):
-    """Adaptive height — rows are compact and content fills the slide."""
-    actions=actions or []
-    n=min(len(actions),14)
+    actions = actions or []
+    n = min(len(actions), 14)
 
-    ROW_H  = 0.34
-    HDR_H  = 0.55
-    COL_H  = 0.42
-    PAD_B  = 0.18
-    CARD_PAD_TOP = 0.36
-    fig_h  = min(_SH, max(2.8, HDR_H + CARD_PAD_TOP + COL_H + n*ROW_H + PAD_B))
+    ROW_H      = 0.36
+    HDR_PAD    = 0.52
+    COL_ROW    = 0.36
+    CARD_PAD_T = 0.10
+    CARD_PAD_B = 0.12
+    OUTER_PAD  = 0.12
 
-    fig=plt.figure(figsize=(_SW,fig_h),dpi=100); fig.patch.set_facecolor("#FFFFFF")
-    ax=fig.add_axes([0,0,1,1]); ax.set_xlim(0,_SW); ax.set_ylim(0,fig_h); ax.axis("off")
+    fig_h = max(2.0, min(_SH,
+        HDR_PAD + OUTER_PAD + CARD_PAD_T + COL_ROW + n*ROW_H + CARD_PAD_B + OUTER_PAD))
 
-    ax.text(0.18,fig_h-0.22,"Action Plan Details",fontsize=17,fontweight="bold",
-            color="#0D68A3",va="center")
-    ax.add_patch(mpatches.FancyBboxPatch((0.18,fig_h-0.42),1.05,0.055,
-        boxstyle="square,pad=0",facecolor="#DE201B",linewidth=0))
-    ax.add_patch(mpatches.FancyBboxPatch((1.26,fig_h-0.42),_SW-1.44,0.055,
-        boxstyle="square,pad=0",facecolor="#0D68A3",linewidth=0))
+    fig = plt.figure(figsize=(_SW, fig_h), dpi=100)
+    fig.patch.set_facecolor("#FFFFFF")
+    ax  = fig.add_axes([0,0,1,1])
+    ax.set_xlim(0, _SW); ax.set_ylim(0, fig_h); ax.axis("off")
+    _hdr(ax, "Action Plan Details", fig_h=fig_h)
 
     if not actions:
-        ax.text(_SW/2,fig_h/2,"No actions recorded yet.",
-                fontsize=13,color="#94A3B8",ha="center",va="center")
+        ax.text(_SW/2, fig_h/2, "No actions recorded yet.",
+                fontsize=12, color="#94A3B8", ha="center", va="center")
         fig.tight_layout(pad=0); return fig
 
-    CARD_T=fig_h-0.55; CARD_B=PAD_B
-    CX=0.14; CW=_SW-0.28; CARD_H=CARD_T-CARD_B
+    CX = 0.16; CW = _SW - 0.32
+    CARD_B = OUTER_PAD
+    CARD_T = fig_h - HDR_PAD
+    CARD_H = CARD_T - CARD_B
 
-    ax.add_patch(mpatches.FancyBboxPatch((CX,CARD_B),CW,CARD_H,
-        boxstyle="round,pad=0.07",facecolor="#FFFFFF",edgecolor="#E2E8F0",lw=1.0))
-    ax.add_patch(mpatches.FancyBboxPatch((CX,CARD_B+CARD_H-0.048),CW,0.048,
-        boxstyle="square,pad=0",facecolor="#0D68A3",lw=0))
+    ax.add_patch(mpatches.FancyBboxPatch((CX, CARD_B), CW, CARD_H,
+        boxstyle="round,pad=0.06", facecolor="#FFFFFF",
+        edgecolor="#E2E8F0", linewidth=0.9))
+    ax.add_patch(mpatches.FancyBboxPatch(
+        (CX, CARD_B+CARD_H-0.042), CW, 0.042,
+        boxstyle="square,pad=0", facecolor="#0D68A3", linewidth=0))
 
-    # column x positions and labels
-    COLS=[(CX+0.12,"#"),(CX+0.38,"Description"),(CX+5.08,"Owner"),
-          (CX+6.32,"Due Date"),(CX+7.52,"Status")]
-    HY=CARD_B+CARD_H-0.24
-    for cx2,lbl in COLS:
-        ax.text(cx2,HY,lbl,fontsize=7,fontweight="700",color="#64748B")
-    ax.plot([CX+0.08,CX+CW-0.08],[HY-0.12,HY-0.12],color="#E2E8F0",lw=0.7)
+    # Column layout: #  Description  Owner  Due  Status
+    COLS = [
+        (CX+0.12, "#",           0.20),
+        (CX+0.40, "Description", 4.60),
+        (CX+5.10, "Owner",       1.10),
+        (CX+6.28, "Due Date",    1.10),
+        (CX+7.46, "Status",      1.30),
+    ]
+    HY = CARD_B + CARD_H - CARD_PAD_T - 0.15
+    for cx2, lbl, _ in COLS:
+        ax.text(cx2, HY, lbl, fontsize=7, fontweight="700", color="#64748B")
+    ax.plot([CX+0.08, CX+CW-0.08], [HY-0.11, HY-0.11],
+            color="#E2E8F0", lw=0.7)
 
-    SCOLS={"Open":"#0C5595","In Progress":"#D68910","Completed":"#1E8449","Overdue":"#DE201B"}
+    SCOLS = {"Open":"#0C5595","In Progress":"#D68910",
+             "Completed":"#1E8449","Overdue":"#DE201B"}
 
-    for ri,a in enumerate(actions[:n]):
-        ry=CARD_B+CARD_H-0.40-ri*ROW_H
-        cy2=ry-ROW_H*0.10
+    for ri, a in enumerate(actions[:n]):
+        row_top = HY - 0.11 - (ri+1)*ROW_H
+        cy = row_top + ROW_H*0.44
 
-        if ri%2==0:
-            ax.add_patch(mpatches.FancyBboxPatch((CX+0.04,cy2-ROW_H*0.42),
-                CW-0.08,ROW_H*0.88,boxstyle="square,pad=0",
-                facecolor="#F8FAFC",lw=0,zorder=1))
+        if ri % 2 == 0:
+            ax.add_patch(mpatches.FancyBboxPatch(
+                (CX+0.04, row_top+0.02), CW-0.08, ROW_H-0.04,
+                boxstyle="square,pad=0", facecolor="#F8FAFC",
+                linewidth=0, zorder=1))
 
-        is_od=(a.get("target_date") and _safe_date(a["target_date"]) and
-               _safe_date(a["target_date"])<date.today() and a.get("status")!="Completed")
-        status="Overdue" if is_od else a.get("status","Open")
-        sc=SCOLS.get(status,"#566573")
+        is_od = (a.get("target_date") and _safe_date(a["target_date"]) and
+                 _safe_date(a["target_date"]) < date.today() and
+                 a.get("status") != "Completed")
+        status = "Overdue" if is_od else a.get("status","Open")
+        sc = SCOLS.get(status,"#566573")
 
-        ax.text(COLS[0][0],cy2,str(ri+1),fontsize=8,fontweight="700",
-                color="#0D68A3",va="center",zorder=2)
-        ax.text(COLS[1][0],cy2,a.get("description","")[:60],fontsize=8,
-                color="#1E293B",va="center",zorder=2)
-        ax.text(COLS[2][0],cy2,a.get("owner","—")[:18],fontsize=8,
-                color="#475569",va="center",zorder=2)
-        ax.text(COLS[3][0],cy2,str(a.get("target_date",""))[:10],fontsize=8,
-                color="#475569",va="center",zorder=2)
+        ax.text(COLS[0][0], cy, str(ri+1),
+                fontsize=8, fontweight="700", color="#0D68A3", va="center", zorder=2)
+        # Description — clip to column width
+        desc = a.get("description","")
+        max_chars = int(COLS[1][2] * 10.5)
+        if len(desc) > max_chars: desc = desc[:max_chars-2]+"..."
+        ax.text(COLS[1][0], cy, desc,
+                fontsize=8, color="#1E293B", va="center", zorder=2)
+        ax.text(COLS[2][0], cy, a.get("owner","—")[:16],
+                fontsize=8, color="#475569", va="center", zorder=2)
+        ax.text(COLS[3][0], cy, str(a.get("target_date",""))[:10],
+                fontsize=8, color="#475569", va="center", zorder=2)
 
-        pw=1.28; px=COLS[4][0]-0.04
-        ax.add_patch(mpatches.FancyBboxPatch((px,cy2-ROW_H*0.32),pw,ROW_H*0.65,
-            boxstyle="round,pad=0.03",facecolor=sc,lw=0,alpha=0.13,zorder=2))
-        ax.text(px+pw/2,cy2,status,fontsize=7.5,fontweight="700",
-                color=sc,ha="center",va="center",zorder=3)
+        # Status pill
+        PW = COLS[4][2] - 0.06
+        PX = COLS[4][0] - 0.02
+        PH = ROW_H * 0.62
+        ax.add_patch(mpatches.FancyBboxPatch(
+            (PX, cy-PH/2), PW, PH,
+            boxstyle="round,pad=0.03", facecolor=sc,
+            linewidth=0, alpha=0.14, zorder=2))
+        ax.text(PX+PW/2, cy, status,
+                fontsize=7.5, fontweight="700", color=sc,
+                ha="center", va="center", zorder=3)
 
-        if ri<n-1:
-            ax.plot([CX+0.06,CX+CW-0.06],[cy2-ROW_H*0.50,cy2-ROW_H*0.50],
-                    color="#F1F5F9",lw=0.5)
+        if ri < n-1:
+            ax.plot([CX+0.06, CX+CW-0.06],
+                    [row_top+0.01, row_top+0.01],
+                    color="#F1F5F9", lw=0.5)
 
-    if len(actions)>n:
-        ax.text(CX+CW/2,CARD_B+0.08,f"+ {len(actions)-n} more actions",
-                fontsize=7.5,color="#94A3B8",ha="center")
+    if len(actions) > n:
+        ax.text(CX+CW/2, CARD_B+0.06, f"+ {len(actions)-n} more actions",
+                fontsize=7.5, color="#94A3B8", ha="center")
 
-    fig.tight_layout(pad=0); return fig
+    fig.tight_layout(pad=0)
+    return fig
 
 
 # ─────────────────────────────────────────────
 # ANALYSIS CHARTS  (5-Why, Fishbone, VSM)
 # ─────────────────────────────────────────────
 def _five_why_chart(problem, whys):
-    items = [("PROBLEM", problem, "#DE201B")] +             [(f"WHY {i+1}", w, "#0C5595") for i, w in enumerate(whys) if w.strip()] +             [("ROOT CAUSE", whys[-1] if whys and whys[-1].strip() else "", "#1E8449")]
-    n = len(items)
-    fig_h = n * 1.2 + 0.5
-    fig, ax = plt.subplots(figsize=(13, fig_h), dpi=100)
-    fig.patch.set_facecolor("#ffffff")
-    ax.set_xlim(0, 10); ax.set_ylim(0, fig_h); ax.axis("off")
-    box_h = 0.80; y = fig_h - 0.4
-    for label, text, color in items:
-        y -= box_h
+    """5-Why chain — fills full width, text wraps inside boxes."""
+    import textwrap
+    active = [w for w in whys if w.strip()]
+    items = (
+        [("PROBLEM",    problem,         "#DE201B")] +
+        [(f"WHY {i+1}", w,               "#0C5595") for i,w in enumerate(active)] +
+        [("ROOT CAUSE", active[-1] if active else "—", "#1E8449")]
+    )
+    n      = len(items)
+    BOX_W  = 9.0
+    BOX_H  = 0.72    # base height per box
+    ARROW  = 0.22
+    PAD    = 0.20
+    # expand boxes that need wrapping
+    box_heights = []
+    for _,text,_ in items:
+        lines = textwrap.wrap(text, width=72)
+        box_heights.append(max(BOX_H, 0.20 + len(lines)*0.20))
+
+    fig_h = sum(box_heights) + (n-1)*ARROW + 2*PAD
+    fig, ax = plt.subplots(figsize=(11, fig_h), dpi=100)
+    fig.patch.set_facecolor("#F8FAFC")
+    ax.set_xlim(0, 11); ax.set_ylim(0, fig_h); ax.axis("off")
+
+    y = fig_h - PAD
+    for idx,(label,text,color) in enumerate(items):
+        bh = box_heights[idx]
+        y  -= bh
         ax.add_patch(mpatches.FancyBboxPatch(
-            (0.3, y), 9.4, box_h-0.05,
-            boxstyle="round,pad=0.08",
-            facecolor=color, edgecolor="white", linewidth=1.5, zorder=2))
-        ax.text(0.7, y+box_h/2, label,
-                va="center", ha="left", fontsize=8.5,
-                fontweight="bold", color=(1,1,1,0.80), zorder=3)
-        wrapped = text if len(text) <= 90 else text[:87]+"..."
-        ax.text(2.5, y+box_h/2, wrapped,
-                va="center", ha="left", fontsize=9,
-                color="white", zorder=3)
-        if y > 0.4:
-            ax.annotate("", xy=(5, y), xytext=(5, y-0.18),
-                        arrowprops=dict(arrowstyle="->", color="#BDC3C7", lw=1.5), zorder=1)
-    fig.tight_layout(pad=0.3)
+            (0.5, y), BOX_W, bh-0.06,
+            boxstyle="round,pad=0.06",
+            facecolor=color, edgecolor="white", linewidth=1.2, zorder=2))
+        # label badge
+        ax.add_patch(mpatches.FancyBboxPatch(
+            (0.60, y+bh-0.06-0.28), 1.40, 0.26,
+            boxstyle="round,pad=0.04",
+            facecolor="white", linewidth=0, alpha=0.22, zorder=3))
+        ax.text(1.30, y+bh-0.06-0.15, label,
+                fontsize=8, fontweight="800",
+                color="white", ha="center", va="center", zorder=4)
+        # text — wrapped, never clipped
+        lines = textwrap.wrap(text, width=72)
+        for li, line in enumerate(lines[:4]):
+            ax.text(0.72, y+bh-0.06-0.38-li*0.20, line,
+                    fontsize=9, color="white",
+                    fontweight="500", va="top", zorder=3)
+        # arrow down
+        if idx < n-1:
+            ax.annotate("",
+                xy=(5.0, y-ARROW+0.04), xytext=(5.0, y-0.02),
+                arrowprops=dict(arrowstyle="->",
+                    color="#94A3B8", lw=1.5), zorder=1)
+        y -= ARROW
+
+    fig.tight_layout(pad=0.2)
     return fig
 
 
 def _fishbone_chart(problem, categories):
-    """Ishikawa diagram with horizontal cause tags branching off each bone."""
+    """Ishikawa — cause tags as horizontal pills, staggered to avoid overlap."""
     import textwrap
-    W, H   = 22, 11
+    W, H   = 22, 12
     SY     = H / 2
-    SX0, SX1 = 1.8, 18.2
-    HEAD_X = 20.2
+    SX0, SX1 = 2.0, 18.0
+    HEAD_X = 20.1
 
     fig, ax = plt.subplots(figsize=(20, 10), dpi=100)
     fig.patch.set_facecolor("#FAFAFA"); ax.set_facecolor("#FAFAFA")
     ax.set_xlim(0, W); ax.set_ylim(0, H); ax.axis("off")
 
-    # main spine
-    ax.annotate("", xy=(SX1+0.15, SY), xytext=(SX0, SY),
-                arrowprops=dict(arrowstyle="-|>", color="#1A1A2E", lw=2.5, mutation_scale=20))
+    # spine
+    ax.annotate("", xy=(SX1+0.1, SY), xytext=(SX0, SY),
+                arrowprops=dict(arrowstyle="-|>", color="#1A1A2E",
+                                lw=2.5, mutation_scale=20))
 
     # fish head
     ax.add_patch(mpatches.FancyBboxPatch(
-        (SX1+0.15, SY-1.05), W-SX1-0.5, 2.1,
-        boxstyle="round,pad=0.12", facecolor="#DE201B", edgecolor="white", lw=1.8, zorder=5))
-    for li, line in enumerate(textwrap.wrap(problem[:75], width=14)[:3]):
-        ax.text(HEAD_X, SY+0.32-li*0.50, line,
+        (SX1+0.1, SY-1.05), W-SX1-0.5, 2.1,
+        boxstyle="round,pad=0.12",
+        facecolor="#DE201B", edgecolor="white", lw=1.8, zorder=5))
+    for li, line in enumerate(textwrap.wrap(problem[:75], width=13)[:3]):
+        ax.text(HEAD_X, SY+0.30-li*0.52, line,
                 ha="center", va="center", fontsize=9,
                 color="white", fontweight="bold", zorder=6)
 
@@ -822,55 +984,70 @@ def _fishbone_chart(problem, categories):
 
     def _xpos(nb):
         if nb == 0: return []
-        step = (SX1 - SX0 - 1.5) / (nb + 1)
-        return [SX0 + 0.8 + step*(i+1) for i in range(nb)]
+        step = (SX1 - SX0 - 1.8) / (nb + 1)
+        return [SX0 + 0.9 + step*(i+1) for i in range(nb)]
 
     def _bone(cat_name, causes, x_attach, side):
-        tip_x = max(SX0+0.3, x_attach - 2.5)
-        tip_y = SY + side * H * 0.27
-        # diagonal bone
+        # Bone tip: fixed distance from attachment to spine
+        BONE_LEN = 3.2
+        tip_x = max(SX0+0.4, x_attach - BONE_LEN)
+        tip_y = SY + side * H * 0.265
+
+        # main diagonal bone
         ax.plot([tip_x, x_attach], [tip_y, SY],
-                color="#0C5595", lw=2.0, zorder=2, solid_capstyle="round")
-        # category label at tip
+                color="#0C5595", lw=1.8, zorder=2,
+                solid_capstyle="round")
+
+        # category label — centred at tip, sized to fit
+        lbl_w = max(len(cat_name)*0.13 + 0.3, 1.4)
         ax.add_patch(mpatches.FancyBboxPatch(
-            (tip_x-1.05, tip_y+side*0.12-0.26), 2.1, 0.52,
-            boxstyle="round,pad=0.07", facecolor="#0C5595",
-            edgecolor="white", lw=1.2, zorder=4))
-        ax.text(tip_x, tip_y+side*0.12, cat_name,
-                ha="center", va="center", fontsize=9.5,
-                color="white", fontweight="bold", zorder=5)
+            (tip_x - lbl_w/2, tip_y + side*0.10 - 0.24),
+            lbl_w, 0.48,
+            boxstyle="round,pad=0.06",
+            facecolor="#0C5595", edgecolor="white", lw=1.2, zorder=4))
+        ax.text(tip_x, tip_y + side*0.10,
+                cat_name, ha="center", va="center",
+                fontsize=9, color="white", fontweight="bold", zorder=5)
+
         if not causes:
             return
-        n_c = min(len(causes), 6)
+
+        n_c = min(len(causes), 5)
+        # place cause tags evenly from 25%→80% along the bone (away from label and away from spine)
         for ci in range(n_c):
-            t  = (ci+1) / (n_c+1)
+            t  = 0.22 + ci * (0.60 / max(n_c-1, 1)) if n_c > 1 else 0.50
             bx = tip_x + t*(x_attach - tip_x)
             by = tip_y + t*(SY - tip_y)
-            RIB = 0.45
-            # short perpendicular rib
-            ax.plot([bx, bx], [by, by+side*RIB],
-                    color="#0C5595", lw=1.0, alpha=0.55, zorder=1)
-            # horizontal cause tag — sits at rib end, extends left (toward tip)
-            txt   = causes[ci][:32]
-            tag_w = max(len(txt)*0.10, 1.3)
-            tag_h = 0.32
-            tag_x = bx - tag_w - 0.06
-            tag_y = by + side*(RIB+0.04) - tag_h/2
+
+            # short rib outward from spine
+            RIB = 0.55
+            ax.plot([bx, bx], [by, by + side*RIB],
+                    color="#0C5595", lw=0.9, alpha=0.5, zorder=1)
+
+            txt   = causes[ci][:34]
+            tag_w = max(len(txt)*0.098 + 0.16, 1.2)
+            tag_h = 0.30
+            # centre the pill at the rib end, but clip to canvas
+            tag_cx = bx - tag_w/2
+            tag_cx = max(0.2, min(tag_cx, W - tag_w - 0.2))
+            tag_y  = by + side*(RIB + 0.05) - tag_h/2
+
             ax.add_patch(mpatches.FancyBboxPatch(
-                (tag_x, tag_y), tag_w, tag_h,
-                boxstyle="round,pad=0.06", facecolor="white",
-                edgecolor="#BDC3C7", lw=0.7, alpha=0.95, zorder=3))
-            ax.text(tag_x + tag_w/2, tag_y + tag_h/2, txt,
+                (tag_cx, tag_y), tag_w, tag_h,
+                boxstyle="round,pad=0.05",
+                facecolor="white", edgecolor="#BDC3C7",
+                lw=0.65, alpha=0.96, zorder=3))
+            ax.text(tag_cx + tag_w/2, tag_y + tag_h/2, txt,
                     ha="center", va="center",
-                    fontsize=7.5, color="#1A1A2E", zorder=4)
+                    fontsize=7.8, color="#1A1A2E", zorder=4)
 
     for (cat, causes), xp in zip(top_cats, _xpos(len(top_cats))):
         _bone(cat, causes, xp, +1)
     for (cat, causes), xp in zip(bot_cats, _xpos(len(bot_cats))):
         _bone(cat, causes, xp, -1)
 
-    ax.text(W/2, H-0.28, "Fishbone (Ishikawa) Diagram",
-            ha="center", va="top", fontsize=13,
+    ax.text(W/2, H-0.26, "Fishbone (Ishikawa) Diagram",
+            ha="center", va="top", fontsize=12,
             fontweight="bold", color="#1A1A2E")
     fig.tight_layout(pad=0.3)
     return fig
@@ -1275,39 +1452,43 @@ def render_fi_projects_tab(supabase, role, pillar, name):
                     if can_edit:
                         with st.expander("➕ Add Supporting Document"):
                             with st.form(f"sdoc_{sid}"):
-                                fd1,fd2=st.columns(2)
-                                _dt=fd1.selectbox("Document Type",DOC_TYPES,key=f"sdoc_type_{sid}")
-                                _dtitle=fd2.text_input("Title *",key=f"sdoc_title_{sid}")
-                                # Content input varies by type
-                                if _dt=="Table":
-                                    st.caption("Paste CSV or JSON data (rows as list of dicts)")
-                                    _dcontent=st.text_area("Table Data (CSV rows, one per line, first line=headers)",height=100,key=f"sdoc_content_{sid}")
-                                    # parse CSV → JSON for storage
-                                elif _dt=="Reference Link":
-                                    _dcontent=st.text_input("URL",key=f"sdoc_content_{sid}",placeholder="https://...")
-                                elif _dt=="Image":
-                                    _img_up=st.file_uploader("Upload image",type=["png","jpg","jpeg"],key=f"sdoc_img_{sid}")
-                                    _dcontent=_b64(_img_up) if _img_up else ""
+                                fd1, fd2 = st.columns(2)
+                                _dt     = fd1.selectbox("Type", ["Note","Table","Reference Link","Observation","Other"], key=f"sdoc_type_{sid}")
+                                _dtitle = fd2.text_input("Title *", key=f"sdoc_title_{sid}")
+                                # Simple content depending on type
+                                if _dt == "Table":
+                                    st.caption("Enter rows below — first row is headers. Separate columns with  |")
+                                    st.caption("Example:   Shift | Downtime | Root Cause")
+                                    _dcontent = st.text_area("Table rows (one row per line, columns separated by |)",
+                                        height=120, key=f"sdoc_content_{sid}",
+                                        placeholder="Shift | Downtime (min) | Root Cause\nDay | 45 | Bearing failure\nNight | 30 | Setup issue")
+                                elif _dt == "Reference Link":
+                                    _dcontent = st.text_input("URL", key=f"sdoc_content_{sid}", placeholder="https://...")
                                 else:
-                                    _dcontent=st.text_area("Content",height=80,key=f"sdoc_content_{sid}",placeholder="Notes, references, details...")
-                                _dnotes=st.text_input("Notes (optional)",key=f"sdoc_notes_{sid}")
-                                if st.form_submit_button("Save Document",type="primary"):
+                                    _dcontent = st.text_area("Content", height=90, key=f"sdoc_content_{sid}",
+                                        placeholder="Write your notes, observations, or details here...")
+                                _img_up = st.file_uploader("Attach image (optional)", type=["png","jpg","jpeg"], key=f"sdoc_img_{sid}")
+                                if st.form_submit_button("Save Document", type="primary"):
                                     if _dtitle:
-                                        # For CSV table, convert to JSON
-                                        _stored_content=_dcontent
-                                        if _dt=="Table" and _dcontent:
+                                        _stored = _dcontent
+                                        if _dt == "Table" and _dcontent:
                                             try:
-                                                import csv,io as _io
-                                                reader=csv.DictReader(_io.StringIO(_dcontent))
-                                                _stored_content=json.dumps(list(reader))
-                                            except:
-                                                pass
-                                        _save_analysis(supabase,pid,int(step.get("sort_order",0)),"step_doc",
+                                                lines = [l.strip() for l in _dcontent.strip().split("\n") if l.strip()]
+                                                if lines:
+                                                    headers = [h.strip() for h in lines[0].split("|")]
+                                                    rows = []
+                                                    for line in lines[1:]:
+                                                        vals = [v.strip() for v in line.split("|")]
+                                                        rows.append(dict(zip(headers, vals)))
+                                                    _stored = json.dumps(rows)
+                                            except: pass
+                                        _img_data = _b64(_img_up) if _img_up else None
+                                        _save_analysis(supabase, pid, int(step.get("sort_order",0)), "step_doc",
                                             {"step_id":sid,"doc_type":_dt,"title":_dtitle,
-                                             "content":_stored_content,"notes":_dnotes},name)
+                                             "content":_stored,"image_b64":_img_data}, name)
                                         st.success("Saved!"); st.rerun()
                                     else:
-                                        st.error("Title required.")
+                                        st.error("Title is required.")
 
         if can_edit:
             with st.expander("Add / Remove Steps"):
