@@ -515,7 +515,8 @@ def _form_kpi_setup(supabase, pid, project, checklist, cw, name, can_edit):
                      "target_date":str(kpi_date),"sub_components":json.dumps(subs),
                      "historical_context":kpi_hist}
             if kpi.get("id"):
-                supabase.table("fi_project_kpi").update(payload).eq("id",kpi["id"]).execute()
+                update_payload = {k:v for k,v in payload.items() if k != "project_id"}
+                supabase.table("fi_project_kpi").update(update_payload).eq("id",kpi["id"]).execute()
             else:
                 supabase.table("fi_project_kpi").insert(payload).execute()
             # save KPI link on project
@@ -523,7 +524,8 @@ def _form_kpi_setup(supabase, pid, project, checklist, cw, name, can_edit):
             # save weekly reading
             wu_payload={"project_id":pid,"week_number":cw,"kpi_value":kv,"updated_by":name}
             if cur_wu.get("id"):
-                supabase.table("fi_weekly_updates").update(wu_payload).eq("id",cur_wu["id"]).execute()
+                wu_update = {k:v for k,v in wu_payload.items() if k != "project_id"}
+                supabase.table("fi_weekly_updates").update(wu_update).eq("id",cur_wu["id"]).execute()
             else:
                 supabase.table("fi_weekly_updates").insert(wu_payload).execute()
             # auto-mark related requirements
@@ -1229,8 +1231,8 @@ def render_fi_projects_tab(supabase, role, pillar, name):
 
     for r in reqs_w:
         is_done  = bool(checklist.get(r["id"],{}).get("done"))
-        card_cls = "req-done" if is_done else ("req-late" if is_past else ("req-future" if is_future else "req-open"))
-        icon = "✅" if is_done else ("🔴" if is_past else ("⬜" if not is_future else "🔒"))
+        card_cls = "req-done" if is_done else ("req-future" if is_future else ("req-late" if is_past else "req-open"))
+        icon = "✅" if is_done else ("🔒" if is_future else ("🔴" if is_past else "⬜"))
         fm   = FORM_META[r["form"]]
 
         links_html = "".join(f'<span class="link-chip">📋 {l}</span>' for l in r["links"])
