@@ -1347,20 +1347,25 @@ def render_fi_projects_tab(supabase, role, pillar, name):
         icon = "✅" if is_done else ("🔒" if is_future else ("🔴" if is_past else "⬜"))
         fm   = FORM_META[r["form"]]
 
+        r_text  = r["text"]
+        r_pts   = r["pts"]
+        r_pts_s = "pts" if r_pts > 1 else "pt"
+        fm_col  = fm["color"]
+        fm_icon = fm["icon"]
+        fm_lbl  = fm["label"]
         st.markdown(f"""
         <div class="req-card {card_cls}">
           <div style="display:flex;align-items:flex-start;gap:10px">
             <span style="font-size:18px;flex-shrink:0">{icon}</span>
             <div style="flex:1">
               <div style="font-size:14px;font-weight:600;color:#1E293B">
-                {r['text']}
-                <span class="pts-pill">{r['pts']}pt{'s' if r['pts']>1 else ''}</span>
+                {r_text}
+                <span class="pts-pill">{r_pts} {r_pts_s}</span>
               </div>
-
             </div>
-            <div style="flex-shrink:0;text-align:right;font-size:11px;color:{fm['color']};
+            <div style="flex-shrink:0;text-align:right;font-size:11px;color:{fm_col};
                  font-weight:600;min-width:90px">
-              {fm['icon']} {fm['label']}
+              {fm_icon} {fm_lbl}
             </div>
           </div>
         </div>
