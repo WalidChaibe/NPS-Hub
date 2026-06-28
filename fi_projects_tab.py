@@ -290,69 +290,118 @@ def _sync_checklist_from_data(supabase, pid, name):
         prog = abs(readings[-1]["kpi_value"]-base)/gap if gap else 0
         goal_ok = prog>=0.80
 
+    # Helper to safely parse analysis data
+    def _adata(a):
+        d = a.get("data", {})
+        return _pj(d, {}) if isinstance(d, str) else (d if isinstance(d, dict) else {})
+
+    has_subs = len([s for s in subs if isinstance(s, dict) and s.get("name")]) > 0
+
     results = {
-        # Team
-        1:  len(team)>=1,
-        2:  len(team)>=1 and all(m.get("role") for m in team),
-        12: bool(next((a for a in analyses if a.get("analysis_type")=="methodology_check"),None)) or
-            bool(stab.get("methodology_confirmed")),
-        13: bool(stab.get("activity_board_confirmed")),
-        # KPI
-        3:  bool(proj.get("company_kpi_link")),
-        4:  bool(kpi.get("historical_context")) or (base!=0 and len(readings)>0),
-        5:  len([s for s in subs if isinstance(s,dict) and s.get("name")])>0,
-        8:  tgt!=0 and bool(kpi.get("target_date")),
-        14: bool(kpi.get("cost_benefit_done")) or float(kpi.get("baseline_value") or 0)!=0,
-        30: trend_ok,
-        36: goal_ok,
-        # Master Plan
-        6:  len(steps)>=1,
-        9:  len(steps)>=1 and all(s.get("planned_end_week") for s in steps),
-        11: any(bool(_pj(wu.get("step_progress"),[])) for wu in wu_rows),
-        # Meetings
-        7:  len(meets)>=1,
-        10: any(m.get("attendance_pct",0)>=80 for m in meets),
-        # RCA
+        # ── WEEK 1 ──────────────────────────────────────────────────────────
+        # Req 1: team members listed
+        1:  len(team) >= 1,
+        # Req 2: all members have roles
+        2:  len(team) >= 1 and all(m.get("role") for m in team),
+        # Req 3: clear link to company KPI
+        3:  bool(proj.get("company_kpi_link")) or bool(kpi.get("kpi_name")),
+        # Req 4: historical data shown — baseline set OR historical_context filled
+        4:  base != 0 or bool(kpi.get("historical_context")),
+        # Req 5: KPI subdivided into components
+        5:  has_subs,
+        # Req 6: master plan visible — at least 1 step
+        6:  len(steps) >= 1,
+        # Req 7: meetings held
+        7:  len(meets) >= 1,
+        # ── WEEK 2 ──────────────────────────────────────────────────────────
+        # Req 8: target clearly shown
+        8:  tgt != 0 and bool(kpi.get("target_date")),
+        # Req 9: target of each step clear
+        9:  len(steps) >= 1 and all(s.get("planned_end_week") for s in steps),
+        # Req 10: data collection consistent — meeting with >=80% attendance
+        10: any(int(m.get("attendance_pct") or 0) >= 80 for m in meets) or len(meets) >= 2,
+        # ── WEEK 3 ──────────────────────────────────────────────────────────
+        # Req 11: step targets subdivided into activities — any step progress logged
+        11: any(bool(_pj(wu.get("step_progress"), [])) for wu in wu_rows),
+        # Req 12: methodology understood — team has roles + at least 1 meeting
+        12: len(team) >= 1 and all(m.get("role") for m in team) and len(meets) >= 1,
+        # Req 13: random member can explain board — same proxy
+        13: len(team) >= 1 and len(meets) >= 1,
+        # ── WEEK 4 ──────────────────────────────────────────────────────────
+        # Req 14: cost/benefit — baseline AND target set
+        14: base != 0 and tgt != 0,
+        # Req 15: RCA documented
         15: has_rca,
-        18: has_root,
-        19: has_rca,
-        27: has_rca,
-        28: any((_pj(a.get("data"),{}) if isinstance(a.get("data"),str) else a.get("data",{})).get("reoccurrence")
-                for a in analyses),
-        29: has_root,
-        # Actions
-        17: len(actions)>0 and any(a.get("target_date") for a in actions),
-        20: len(actions)>0 and all(a.get("owner") for a in actions),
-        21: len(actions)>0,
-        22: bool(past_due) and len(on_time)/len(past_due)>=0.5 if past_due else False,
-        23: len(opls)>0 or bool(stab.get("opl_evidence")),
-        26: len(opls)>0,
-        # CIL
+        # Req 16: basic conditions restored
         16: bool(stab.get("basic_conditions_done")),
-        24: bool(stab.get("cil_standards_defined")) and float(stab.get("cil_audit_score") or 0)>=90,
-        # 5S
-        25: int(stab.get("five_s_rating") or 0)>=3,
-        # Monitoring
+        # Req 17: planned actions visible with dates
+        17: len(actions) > 0 and any(a.get("target_date") for a in actions),
+        # ── WEEK 5 ──────────────────────────────────────────────────────────
+        # Req 18: causes verified — root cause filled in 5-Why
+        18: has_root,
+        # Req 19: used route methods/tools — any RCA done
+        19: has_rca,
+        # Req 20: owner on each action
+        20: len(actions) > 0 and all(a.get("owner") for a in actions),
+        # Req 21: action plan up-to-date — actions exist
+        21: len(actions) > 0,
+        # Req 22: majority completed on time
+        22: (bool(past_due) and len(on_time) / len(past_due) >= 0.5) if past_due else False,
+        # Req 23: evidence of actions — OPLs or evidence text
+        23: len(opls) > 0 or bool(stab.get("opl_evidence")),
+        # Req 24: CIL standards + >=90% audit
+        24: bool(stab.get("cil_standards_defined")) and float(stab.get("cil_audit_score") or 0) >= 90,
+        # Req 25: 5S organized
+        25: int(stab.get("five_s_rating") or 0) >= 3,
+        # Req 26: improvements evident
+        26: bool(stab.get("improvements_visible")) or len(opls) > 0,
+        # ── WEEK 6 ──────────────────────────────────────────────────────────
+        # Req 27: logical countermeasures — fishbone or 5-why with root cause
+        27: has_rca and has_root,
+        # ── WEEK 7 ──────────────────────────────────────────────────────────
+        # Req 28: reoccurrence analysis
+        28: any(_adata(a).get("reoccurrence") for a in analyses),
+        # Req 29: single problem analysis
+        29: has_root,
+        # Req 30: KPI trend positive
+        30: trend_ok,
+        # Req 31: monitoring in place
         31: bool(stab.get("monitoring_in_place")),
+        # ── WEEK 8 ──────────────────────────────────────────────────────────
+        # Req 32: monitoring active and up-to-date
         32: bool(stab.get("monitoring_active")),
-        33: bool(stab.get("procedures_created")) or bool(stab.get("monitoring_active")),
-        # OPLs
-        34: len(opls)>0,
-        # Training
-        35: bool(_pj(stab.get("training_matrix"),[])),
+        # ── WEEK 10 ─────────────────────────────────────────────────────────
+        # Req 33: procedures to hold gains
+        33: bool(stab.get("procedures_created")),
+        # Req 34: OPLs/SOPs created
+        34: len(opls) > 0,
+        # Req 35: training matrix in place
+        35: bool(_pj(stab.get("training_matrix"), [])),
+        # ── WEEK 11 ─────────────────────────────────────────────────────────
+        # Req 36: goal achieved or substantial progress
+        36: goal_ok,
     }
 
-    for req_id, done in results.items():
-        try:
-            supabase.table("fi_project_checklist").upsert({
-                "project_id": pid,
-                "req_id":     req_id,
-                "done":       bool(done),
-                "updated_by": "system",
-                "updated_at": date.today().isoformat(),
-            }, on_conflict="project_id,req_id").execute()
-        except:
-            pass
+    # Batch upsert — suppress individual errors, show nothing to user
+    rows = [
+        {"project_id": pid, "req_id": req_id,
+         "done": bool(done), "updated_by": "system",
+         "updated_at": date.today().isoformat()}
+        for req_id, done in results.items()
+    ]
+    try:
+        supabase.table("fi_project_checklist").upsert(
+            rows, on_conflict="project_id,req_id"
+        ).execute()
+    except Exception:
+        # RLS or other error — fall back to one-by-one silently
+        for row in rows:
+            try:
+                supabase.table("fi_project_checklist").upsert(
+                    row, on_conflict="project_id,req_id"
+                ).execute()
+            except Exception:
+                pass
 
 
 def _mark_req(supabase, pid, req_id, done, user):
