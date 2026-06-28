@@ -244,6 +244,117 @@ def _load_checklist(supabase, pid):
         return {r["req_id"]: r for r in rows}
     except: return {}
 
+def _sync_checklist_from_data(supabase, pid, name):
+    """
+    Re-evaluate every requirement from live Supabase data and write
+    the result to fi_project_checklist. Called on every page load.
+    This ensures requirements show as done as soon as the data exists,
+    regardless of whether the user explicitly submitted a form.
+    """
+    try:
+        team    = supabase.table("fi_project_team").select("*").eq("project_id",pid).execute().data or []
+        kpi_r   = supabase.table("fi_project_kpi").select("*").eq("project_id",pid).execute().data or []
+        kpi     = kpi_r[0] if kpi_r else {}
+        steps   = supabase.table("fi_project_steps").select("*").eq("project_id",pid).execute().data or []
+        wu_rows = supabase.table("fi_weekly_updates").select("*").eq("project_id",pid).execute().data or []
+        actions = supabase.table("fi_actions").select("*").eq("project_id",pid).execute().data or []
+        stab_r  = supabase.table("fi_stabilisation").select("*").eq("project_id",pid).execute().data or []
+        stab    = stab_r[0] if stab_r else {}
+        proj_r  = supabase.table("fi_projects").select("*").eq("id",pid).execute().data or []
+        proj    = proj_r[0] if proj_r else {}
+        meets   = supabase.table("fi_meetings").select("*").eq("project_id",pid).execute().data or []
+        analyses= supabase.table("fi_project_analysis").select("*").eq("project_id",pid).execute().data or []
+    except:
+        return  # silently skip if tables missing
+
+    subs      = _pj(kpi.get("sub_components"),[])
+    readings  = sorted([w for w in wu_rows if w.get("kpi_value") is not None], key=lambda x:x["week_number"])
+    base      = float(kpi.get("baseline_value") or 0)
+    tgt       = float(kpi.get("target_value")   or 0)
+    has_rca   = any(a.get("analysis_type") in ("5why","fishbone") for a in analyses)
+    has_root  = any((_pj(a.get("data"),{}) if isinstance(a.get("data"),str) else a.get("data",{})).get("root_cause")
+                    for a in analyses if a.get("analysis_type")=="5why")
+    past_due  = [a for a in actions if _safe_date(a.get("target_date")) and _safe_date(a["target_date"])<date.today()]
+    on_time   = [a for a in past_due if a.get("status")=="Completed"]
+    opls      = _pj(stab.get("opls"),[])
+
+    # trend positive
+    trend_ok = False
+    if len(readings)>=3 and base!=tgt:
+        trend_ok = (tgt>base and readings[-1]["kpi_value"]>readings[-3]["kpi_value"]) or                    (tgt<base and readings[-1]["kpi_value"]<readings[-3]["kpi_value"])
+
+    # goal achieved
+    goal_ok = False
+    if readings and base!=0 and tgt!=0:
+        gap  = abs(tgt-base)
+        prog = abs(readings[-1]["kpi_value"]-base)/gap if gap else 0
+        goal_ok = prog>=0.80
+
+    results = {
+        # Team
+        1:  len(team)>=1,
+        2:  len(team)>=1 and all(m.get("role") for m in team),
+        12: bool(next((a for a in analyses if a.get("analysis_type")=="methodology_check"),None)) or
+            bool(stab.get("methodology_confirmed")),
+        13: bool(stab.get("activity_board_confirmed")),
+        # KPI
+        3:  bool(proj.get("company_kpi_link")),
+        4:  bool(kpi.get("historical_context")) or (base!=0 and len(readings)>0),
+        5:  len([s for s in subs if isinstance(s,dict) and s.get("name")])>0,
+        8:  tgt!=0 and bool(kpi.get("target_date")),
+        14: bool(kpi.get("cost_benefit_done")) or float(kpi.get("baseline_value") or 0)!=0,
+        30: trend_ok,
+        36: goal_ok,
+        # Master Plan
+        6:  len(steps)>=1,
+        9:  len(steps)>=1 and all(s.get("planned_end_week") for s in steps),
+        11: any(any(_pj(wu.get("step_progress"),[]) for wu in wu_rows)),
+        # Meetings
+        7:  len(meets)>=1,
+        10: any(m.get("attendance_pct",0)>=80 for m in meets),
+        # RCA
+        15: has_rca,
+        18: has_root,
+        19: has_rca,
+        27: has_rca,
+        28: any((_pj(a.get("data"),{}) if isinstance(a.get("data"),str) else a.get("data",{})).get("reoccurrence")
+                for a in analyses),
+        29: has_root,
+        # Actions
+        17: len(actions)>0 and any(a.get("target_date") for a in actions),
+        20: len(actions)>0 and all(a.get("owner") for a in actions),
+        21: len(actions)>0,
+        22: bool(past_due) and len(on_time)/len(past_due)>=0.5 if past_due else False,
+        23: len(opls)>0 or bool(stab.get("opl_evidence")),
+        26: len(opls)>0,
+        # CIL
+        16: bool(stab.get("basic_conditions_done")),
+        24: bool(stab.get("cil_standards_defined")) and float(stab.get("cil_audit_score") or 0)>=90,
+        # 5S
+        25: int(stab.get("five_s_rating") or 0)>=3,
+        # Monitoring
+        31: bool(stab.get("monitoring_in_place")),
+        32: bool(stab.get("monitoring_active")),
+        33: bool(stab.get("procedures_created")) or bool(stab.get("monitoring_active")),
+        # OPLs
+        34: len(opls)>0,
+        # Training
+        35: bool(_pj(stab.get("training_matrix"),[])),
+    }
+
+    for req_id, done in results.items():
+        try:
+            supabase.table("fi_project_checklist").upsert({
+                "project_id": pid,
+                "req_id":     req_id,
+                "done":       bool(done),
+                "updated_by": "system",
+                "updated_at": date.today().isoformat(),
+            }, on_conflict="project_id,req_id").execute()
+        except:
+            pass
+
+
 def _mark_req(supabase, pid, req_id, done, user):
     try:
         supabase.table("fi_project_checklist").upsert({
@@ -1126,6 +1237,7 @@ def render_fi_projects_tab(supabase, role, pillar, name):
 
     pid = selected_project["id"]
     cw  = _cw(selected_project.get("launch_date"))
+    _sync_checklist_from_data(supabase, pid, name)
     checklist = _load_checklist(supabase, pid)
     total_score = _score(checklist)
     target_now  = TARGET_RAMP.get(cw,100)
@@ -1235,8 +1347,6 @@ def render_fi_projects_tab(supabase, role, pillar, name):
         icon = "✅" if is_done else ("🔒" if is_future else ("🔴" if is_past else "⬜"))
         fm   = FORM_META[r["form"]]
 
-        links_html = "".join(f'<span class="link-chip">📋 {l}</span>' for l in r["links"])
-
         st.markdown(f"""
         <div class="req-card {card_cls}">
           <div style="display:flex;align-items:flex-start;gap:10px">
@@ -1246,10 +1356,7 @@ def render_fi_projects_tab(supabase, role, pillar, name):
                 {r['text']}
                 <span class="pts-pill">{r['pts']}pt{'s' if r['pts']>1 else ''}</span>
               </div>
-              <div style="font-size:11px;color:#94A3B8;margin:3px 0 5px">
-                📁 {r['where']}
-              </div>
-              <div>{links_html}</div>
+
             </div>
             <div style="flex-shrink:0;text-align:right;font-size:11px;color:{fm['color']};
                  font-weight:600;min-width:90px">
