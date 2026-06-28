@@ -308,7 +308,7 @@ def _sync_checklist_from_data(supabase, pid, name):
         # Master Plan
         6:  len(steps)>=1,
         9:  len(steps)>=1 and all(s.get("planned_end_week") for s in steps),
-        11: any(any(_pj(wu.get("step_progress"),[]) for wu in wu_rows)),
+        11: any(bool(_pj(wu.get("step_progress"),[])) for wu in wu_rows),
         # Meetings
         7:  len(meets)>=1,
         10: any(m.get("attendance_pct",0)>=80 for m in meets),
