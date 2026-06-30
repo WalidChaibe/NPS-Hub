@@ -279,6 +279,32 @@ def _sync_checklist_from_data(supabase, pid, name):
     on_time   = [a for a in past_due if a.get("status")=="Completed"]
     opls      = _pj(stab.get("opls"),[])
 
+    # Data-chart based evidence (purpose-tagged) — used for reqs 4,10,14,18,30,36
+    def _has_chart(purpose):
+        for a in analyses:
+            if a.get("analysis_type") != "data_chart": continue
+            d = _pj(a.get("data"), {}) if isinstance(a.get("data"), str) else a.get("data", {})
+            if d.get("purpose") == purpose:
+                return True
+        return False
+
+    def _latest_chart(purpose):
+        cands = []
+        for a in analyses:
+            if a.get("analysis_type") != "data_chart": continue
+            d = _pj(a.get("data"), {}) if isinstance(a.get("data"), str) else a.get("data", {})
+            if d.get("purpose") == purpose:
+                cands.append((a.get("created_at",""), d))
+        if not cands: return None
+        cands.sort(key=lambda x: x[0], reverse=True)
+        return cands[0][1]
+
+    has_hist_chart = _has_chart("historical")
+    has_cb_chart   = _has_chart("cost_benefit")
+    has_dc_chart   = _has_chart("data_collection")
+    has_quant_chart= _has_chart("rca_quantify")
+    trend_chart    = _latest_chart("trend")
+
     # trend positive
     trend_ok = False
     if len(readings)>=3 and base!=tgt:
@@ -308,8 +334,8 @@ def _sync_checklist_from_data(supabase, pid, name):
                 for m in team),
         # Req 3: clear link to company KPI
         3:  bool(proj.get("company_kpi_link")) or bool(kpi.get("kpi_name")),
-        # Req 4: historical data shown — baseline value set is sufficient
-        4:  base != 0,
+        # Req 4: historical data shown — baseline OR an uploaded historical chart
+        4:  base != 0 or has_hist_chart,
         # Req 5: KPI subdivided into components
         5:  has_subs,
         # Req 6: master plan visible — at least 1 step
@@ -321,8 +347,8 @@ def _sync_checklist_from_data(supabase, pid, name):
         8:  tgt != 0 and bool(kpi.get("target_date")),
         # Req 9: target of each step clear
         9:  len(steps) >= 1 and all(s.get("planned_end_week") for s in steps),
-        # Req 10: data collection consistent — meeting with >=80% attendance
-        10: any(int(m.get("attendance_pct") or 0) >= 80 for m in meets) or len(meets) >= 2,
+        # Req 10: data collection consistent — shift-split chart uploaded, or fallback to meeting attendance
+        10: has_dc_chart or any(int(m.get("attendance_pct") or 0) >= 80 for m in meets) or len(meets) >= 2,
         # ── WEEK 3 ──────────────────────────────────────────────────────────
         # Req 11: step targets subdivided into activities — any step progress logged
         11: any(bool(_pj(wu.get("step_progress"), [])) for wu in wu_rows),
@@ -331,8 +357,8 @@ def _sync_checklist_from_data(supabase, pid, name):
         # Req 13: random member can explain board — same proxy
         13: len(team) >= 1 and len(meets) >= 1,
         # ── WEEK 4 ──────────────────────────────────────────────────────────
-        # Req 14: cost/benefit — baseline AND target set
-        14: base != 0 and tgt != 0,
+        # Req 14: cost/benefit — chart uploaded, or baseline+target set as fallback
+        14: has_cb_chart or (base != 0 and tgt != 0),
         # Req 15: RCA documented
         15: has_rca,
         # Req 16: basic conditions restored
@@ -340,8 +366,8 @@ def _sync_checklist_from_data(supabase, pid, name):
         # Req 17: planned actions visible with dates
         17: len(actions) > 0 and any(a.get("target_date") for a in actions),
         # ── WEEK 5 ──────────────────────────────────────────────────────────
-        # Req 18: causes verified — root cause filled in 5-Why
-        18: has_root,
+        # Req 18: causes verified & quantified — root cause filled OR quantify chart uploaded
+        18: has_root or has_quant_chart,
         # Req 19: used route methods/tools — any RCA done
         19: has_rca,
         # Req 20: owner on each action
@@ -366,8 +392,9 @@ def _sync_checklist_from_data(supabase, pid, name):
         28: any(_adata(a).get("reoccurrence") for a in analyses),
         # Req 29: single problem analysis
         29: has_root,
-        # Req 30: KPI trend positive
-        30: trend_ok,
+        # Req 30: KPI trend positive — from weekly readings OR uploaded trend chart
+        30: trend_ok or (bool(trend_chart) and bool(_chart_trend_info(trend_chart)) and
+            _chart_trend_info(trend_chart).get("trend_up")),
         # Req 31: monitoring in place
         31: bool(stab.get("monitoring_in_place")),
         # ── WEEK 8 ──────────────────────────────────────────────────────────
@@ -381,8 +408,8 @@ def _sync_checklist_from_data(supabase, pid, name):
         # Req 35: training matrix in place
         35: bool(_pj(stab.get("training_matrix"), [])),
         # ── WEEK 11 ─────────────────────────────────────────────────────────
-        # Req 36: goal achieved or substantial progress
-        36: goal_ok,
+        # Req 36: goal achieved or substantial progress — from readings OR uploaded trend chart
+        36: goal_ok or _chart_goal_ok(trend_chart),
     }
 
     # Batch upsert — suppress individual errors, show nothing to user
@@ -680,6 +707,218 @@ def _form_team(supabase, pid, project, checklist, cw, name, can_edit):
             st.success("Saved"); st.rerun()
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# REUSABLE: Data Upload → Auto-Chart Component
+# Powers requirements: 4, 8, 10, 14, 15, 18, 30, 36
+# Forgiving of layout — user confirms what's category vs value after preview.
+# Always supports baseline marker + target line.
+# Saved to fi_project_analysis with analysis_type="data_chart" + a "purpose" tag
+# so each requirement's evidence is distinguishable.
+# ─────────────────────────────────────────────────────────────────────────────
+def _data_upload_chart(supabase, pid, cw, name, purpose, title="Data Chart",
+                        baseline_label="Baseline", target_label="Target",
+                        allow_shift_split=False):
+    """
+    purpose: a short tag like "historical","kpi_target","cost_benefit",
+             "data_collection","rca_quantify","trend"
+    Returns: True if a chart was generated+saved this run (for auto-marking reqs)
+    """
+    st.markdown(f"**{title}**")
+
+    # Show previously saved charts for this purpose
+    try:
+        saved = supabase.table("fi_project_analysis").select("*")\
+            .eq("project_id", pid).eq("analysis_type","data_chart")\
+            .order("created_at", desc=True).execute().data or []
+        saved = [s for s in saved
+                 if (_pj(s.get("data"),{}) if isinstance(s.get("data"),str) else s.get("data",{})).get("purpose")==purpose]
+    except:
+        saved = []
+
+    generated_now = False
+
+    if saved:
+        with st.expander(f"📊 Saved charts ({len(saved)})", expanded=False):
+            for s in saved[:5]:
+                d = _pj(s["data"],{}) if isinstance(s["data"],str) else s["data"]
+                sc1, sc2 = st.columns([5,1])
+                sc1.caption(f"W{s.get('week_number','?')} · {s.get('created_by','')} · {str(s.get('created_at',''))[:10]}")
+                if sc2.button("🗑", key=f"del_chart_{s['id']}"):
+                    supabase.table("fi_project_analysis").delete().eq("id", s["id"]).execute()
+                    st.rerun()
+            # Render the most recent chart inline
+            latest = saved[0]
+            d = _pj(latest["data"],{}) if isinstance(latest["data"],str) else latest["data"]
+            fig = _render_chart_from_payload(d)
+            if fig:
+                st.pyplot(fig, use_container_width=True); plt.close(fig)
+
+    with st.expander(f"➕ Upload data for {title}", expanded=not bool(saved)):
+        up_file = st.file_uploader("Upload CSV or Excel", type=["csv","xlsx","xls"],
+                                   key=f"upload_{purpose}")
+        if up_file is not None:
+            try:
+                if up_file.name.endswith(".csv"):
+                    df_up = pd.read_csv(up_file)
+                else:
+                    df_up = pd.read_excel(up_file)
+            except Exception as e:
+                st.error(f"Could not read file: {e}")
+                df_up = None
+
+            if df_up is not None:
+                st.caption("Preview — confirm which row/column holds categories vs values")
+                st.dataframe(df_up.head(15), use_container_width=True)
+
+                # Detect orientation: if first row looks like labels (Jan, Feb...) treat as wide format
+                cols = list(df_up.columns)
+                layout = st.radio("Data layout", ["Columns are categories (e.g. Jan, Feb… across columns)",
+                                                   "Rows are categories (standard table — pick X and Y columns)"],
+                                  key=f"layout_{purpose}")
+
+                cc1, cc2 = st.columns(2)
+                if layout.startswith("Rows"):
+                    x_col = cc1.selectbox("Category column (X-axis)", cols, key=f"xcol_{purpose}")
+                    y_cols = cc2.multiselect("Value column(s) (Y-axis)", [c for c in cols if c!=x_col],
+                                             key=f"ycol_{purpose}")
+                    if allow_shift_split:
+                        shift_col = st.selectbox("Optional: Shift/Split column", ["— None —"]+cols,
+                                                 key=f"shiftcol_{purpose}")
+                    else:
+                        shift_col = None
+                    categories = df_up[x_col].astype(str).tolist() if x_col else []
+                    series = {yc: df_up[yc].tolist() for yc in y_cols} if y_cols else {}
+                else:
+                    # Wide format: first row = categories, pick which row(s) are values
+                    categories = [str(c) for c in cols[1:]] if len(cols)>1 else []
+                    label_col = cc1.selectbox("Label column (row names)", cols, key=f"lblcol_{purpose}")
+                    value_rows = cc2.multiselect("Value row(s) — pick by label",
+                                                  df_up[label_col].astype(str).tolist(),
+                                                  key=f"vrows_{purpose}")
+                    series = {}
+                    for vr in value_rows:
+                        row = df_up[df_up[label_col].astype(str)==vr]
+                        if not row.empty:
+                            vals = row.iloc[0, 1:].tolist() if label_col==cols[0] else \
+                                   [v for c,v in zip(cols,row.iloc[0]) if c!=label_col]
+                            series[vr] = vals
+                    shift_col = None
+
+                chart_type = st.radio("Chart type", ["Line","Bar"], horizontal=True, key=f"ctype_{purpose}")
+                bc1, bc2 = st.columns(2)
+                baseline_val = bc1.number_input(f"{baseline_label} value (optional)", value=0.0, key=f"base_{purpose}")
+                target_val   = bc2.number_input(f"{target_label} value (optional)",   value=0.0, key=f"tgt_{purpose}")
+                use_baseline = st.checkbox(f"Show {baseline_label} line", key=f"usebase_{purpose}")
+                use_target   = st.checkbox(f"Show {target_label} line",   key=f"usetgt_{purpose}")
+
+                if categories and series and st.button(f"Generate & Save Chart", key=f"gen_{purpose}", type="primary"):
+                    payload = {
+                        "purpose": purpose, "categories": categories, "series": series,
+                        "chart_type": chart_type,
+                        "baseline": baseline_val if use_baseline else None,
+                        "target": target_val if use_target else None,
+                    }
+                    fig = _render_chart_from_payload(payload)
+                    if fig:
+                        st.pyplot(fig, use_container_width=True); plt.close(fig)
+                    supabase.table("fi_project_analysis").insert({
+                        "project_id": pid, "week_number": cw, "analysis_type": "data_chart",
+                        "data": json.dumps(payload), "created_by": name,
+                    }).execute()
+                    generated_now = True
+                    st.success("Chart saved ✓")
+                elif not categories or not series:
+                    st.info("Select category and value columns to enable chart generation.")
+
+    return generated_now or bool(saved)
+
+
+def _render_chart_from_payload(d):
+    """Render a matplotlib figure from a saved data_chart payload."""
+    categories = d.get("categories", [])
+    series     = d.get("series", {})
+    if not categories or not series:
+        return None
+    chart_type = d.get("chart_type","Line")
+    baseline   = d.get("baseline")
+    target     = d.get("target")
+
+    fig, ax = plt.subplots(figsize=(10,4))
+    fig.patch.set_facecolor("#fff"); ax.set_facecolor("#FAFAFA")
+    palette = ["#0C5595","#DE201B","#1E8449","#D68910","#8E44AD","#566573"]
+    x_idx = range(len(categories))
+
+    if chart_type == "Line":
+        for ci, (label, vals) in enumerate(series.items()):
+            try:
+                num_vals = [float(v) for v in vals]
+            except (ValueError, TypeError):
+                continue
+            ax.plot(x_idx, num_vals, "o-", color=palette[ci%len(palette)], lw=2.2, ms=6, label=label)
+    else:
+        n_s = len(series)
+        width = 0.8 / max(n_s,1)
+        for ci, (label, vals) in enumerate(series.items()):
+            try:
+                num_vals = [float(v) for v in vals]
+            except (ValueError, TypeError):
+                continue
+            offset = (ci - n_s/2)*width + width/2
+            ax.bar([x+offset for x in x_idx], num_vals, width=width,
+                   color=palette[ci%len(palette)], label=label, alpha=0.88)
+
+    if baseline is not None:
+        ax.axhline(baseline, color="#BDC3C7", lw=1.5, ls=":", label=f"Baseline {baseline}")
+    if target is not None:
+        ax.axhline(target, color="#1E8449", lw=1.5, ls="--", label=f"Target {target}")
+
+    ax.set_xticks(list(x_idx)); ax.set_xticklabels(categories, rotation=30, ha="right", fontsize=8)
+    ax.legend(fontsize=9, frameon=False)
+    ax.grid(axis="y", color="#eee", lw=0.5)
+    for s in ["top","right"]: ax.spines[s].set_visible(False)
+    fig.tight_layout(pad=0.5)
+    return fig
+
+
+def _chart_trend_info(d):
+    """Extract latest value, trend direction, min/max from a saved chart payload."""
+    series = d.get("series", {})
+    if not series:
+        return None
+    first_series = next(iter(series.values()))
+    try:
+        nums = [float(v) for v in first_series]
+    except (ValueError, TypeError):
+        return None
+    if not nums:
+        return None
+    return {
+        "latest": nums[-1],
+        "first": nums[0],
+        "min": min(nums),
+        "max": max(nums),
+        "trend_up": nums[-1] > nums[0] if len(nums) > 1 else None,
+    }
+
+
+def _chart_goal_ok(d):
+    """Check if a trend chart shows >=80% progress toward its target, using baseline/target lines."""
+    if not d:
+        return False
+    info = _chart_trend_info(d)
+    if not info:
+        return False
+    baseline = d.get("baseline")
+    target   = d.get("target")
+    if baseline is None or target is None:
+        return False
+    gap = abs(target - baseline)
+    if gap == 0:
+        return False
+    prog = abs(info["latest"] - baseline) / gap
+    return prog >= 0.80
+
+
 def _form_kpi_setup(supabase, pid, project, checklist, cw, name, can_edit):
     """KPI baseline, target, components, trend."""
     st.markdown('<div class="section-hdr">📈 KPI & Results</div>', unsafe_allow_html=True)
@@ -797,59 +1036,51 @@ def _form_kpi_setup(supabase, pid, project, checklist, cw, name, can_edit):
             fig.tight_layout(pad=0.4)
             st.pyplot(fig,use_container_width=True); plt.close(fig)
 
-    # ── OPTIONAL: Upload historical data → auto-generate chart ───────────────
-    st.markdown("**Historical Data Chart** *(optional — upload a file to visualize trends)*")
-    with st.expander("📊 Upload data & generate chart"):
-        up_file = st.file_uploader("Upload CSV or Excel", type=["csv","xlsx","xls"], key="kpi_hist_upload")
-        if up_file is not None:
-            try:
-                if up_file.name.endswith(".csv"):
-                    df_up = pd.read_csv(up_file)
-                else:
-                    df_up = pd.read_excel(up_file)
-                st.dataframe(df_up.head(20), use_container_width=True)
-                cols = list(df_up.columns)
-                cc1, cc2 = st.columns(2)
-                x_col = cc1.selectbox("X-axis column (e.g. Week / Date)", cols, key="hist_x")
-                y_cols = cc2.multiselect("Y-axis column(s) — values to plot", cols, key="hist_y")
-                chart_type = st.radio("Chart type", ["Line","Bar"], horizontal=True, key="hist_ctype")
-                if y_cols and st.button("Generate Chart", key="hist_gen"):
-                    fig2, ax2 = plt.subplots(figsize=(10,4))
-                    fig2.patch.set_facecolor("#fff"); ax2.set_facecolor("#FAFAFA")
-                    palette = ["#0C5595","#DE201B","#1E8449","#D68910","#8E44AD","#566573"]
-                    x_vals = df_up[x_col]
-                    if chart_type=="Line":
-                        for ci, yc in enumerate(y_cols):
-                            ax2.plot(x_vals, df_up[yc], "o-", color=palette[ci%len(palette)],
-                                     lw=2.2, ms=6, label=yc)
-                    else:
-                        n_series = len(y_cols)
-                        width = 0.8 / max(n_series,1)
-                        x_idx = range(len(x_vals))
-                        for ci, yc in enumerate(y_cols):
-                            offset = (ci - n_series/2)*width + width/2
-                            ax2.bar([x+offset for x in x_idx], df_up[yc], width=width,
-                                    color=palette[ci%len(palette)], label=yc, alpha=0.88)
-                        ax2.set_xticks(list(x_idx)); ax2.set_xticklabels(x_vals, rotation=30, ha="right", fontsize=8)
-                    ax2.set_xlabel(x_col, fontsize=9, color="#566573")
-                    ax2.legend(fontsize=9, frameon=False)
-                    ax2.grid(axis="y", color="#eee", lw=0.5)
-                    for s in ["top","right"]: ax2.spines[s].set_visible(False)
-                    fig2.tight_layout(pad=0.5)
-                    st.pyplot(fig2, use_container_width=True)
-                    buf = io.BytesIO(); fig2.savefig(buf, format="png", dpi=200, bbox_inches="tight")
-                    buf.seek(0); plt.close(fig2)
-                    st.download_button("Download Chart PNG", data=buf, file_name="historical_data_chart.png", mime="image/png")
-                    # Save chart data to project_analysis for reuse in reports
-                    supabase.table("fi_project_analysis").insert({
-                        "project_id":pid,"week_number":cw,"analysis_type":"historical_chart",
-                        "data":json.dumps({"x_col":x_col,"y_cols":y_cols,"chart_type":chart_type,
-                                          "rows":df_up.to_dict(orient="records")}),
-                        "created_by":name,
-                    }).execute()
-                    st.success("Chart saved to project.")
-            except Exception as e:
-                st.error(f"Could not read file: {e}")
+    # ── Historical data (req 4) — reusable Data Upload → Chart ───────────────
+    st.divider()
+    has_hist = _data_upload_chart(
+        supabase, pid, cw, name, purpose="historical",
+        title="Historical Data (req. 4)",
+        baseline_label="Baseline", target_label="Target",
+    )
+    if has_hist:
+        _mark_req(supabase, pid, 4, True, name)
+
+    # ── Cost / Benefit chart (req 14) ─────────────────────────────────────────
+    st.divider()
+    has_cb = _data_upload_chart(
+        supabase, pid, cw, name, purpose="cost_benefit",
+        title="Cost / Benefit Chart (req. 14)",
+        baseline_label="Starting Cost", target_label="Target Savings",
+    )
+    if has_cb:
+        _mark_req(supabase, pid, 14, True, name)
+
+    # ── KPI trend chart (req 30, 36) — separate from the readings table above ─
+    st.divider()
+    has_trend = _data_upload_chart(
+        supabase, pid, cw, name, purpose="trend",
+        title="KPI / Financial Trend Chart (req. 30 & 36)",
+        baseline_label="Baseline", target_label="Target",
+    )
+    if has_trend:
+        # check trend direction from the saved chart
+        try:
+            saved_trend = supabase.table("fi_project_analysis").select("*")\
+                .eq("project_id", pid).eq("analysis_type","data_chart")\
+                .order("created_at", desc=True).execute().data or []
+            saved_trend = [s for s in saved_trend
+                          if (_pj(s.get("data"),{}) if isinstance(s.get("data"),str) else s.get("data",{})).get("purpose")=="trend"]
+            if saved_trend:
+                d = _pj(saved_trend[0]["data"],{}) if isinstance(saved_trend[0]["data"],str) else saved_trend[0]["data"]
+                info = _chart_trend_info(d)
+                if info:
+                    _mark_req(supabase, pid, 30, bool(info.get("trend_up")), name)
+                    if d.get("target") is not None and d.get("baseline") is not None:
+                        gap = abs(d["target"] - d["baseline"])
+                        prog = abs(info["latest"] - d["baseline"]) / gap if gap else 0
+                        _mark_req(supabase, pid, 36, prog >= 0.80, name)
+        except: pass
 
 
 def _form_master_plan(supabase, pid, project, checklist, cw, name, can_edit):
@@ -1024,6 +1255,17 @@ def _form_meeting(supabase, pid, project, checklist, cw, name, can_edit):
                     ).eq("id", src_meeting["id"]).execute()
                     st.rerun()
 
+    # ── Data collection consistency (req 10) ──────────────────────────────────
+    st.divider()
+    has_dc = _data_upload_chart(
+        supabase, pid, cw, name, purpose="data_collection",
+        title="Data Collection Across Shifts (req. 10)",
+        baseline_label="Baseline", target_label="Target",
+        allow_shift_split=True,
+    )
+    if has_dc:
+        _mark_req(supabase, pid, 10, True, name)
+
     # ── Log new meeting ────────────────────────────────────────────────────────
     if can_edit:
         with st.expander(f"➕ Log Week {cw} Meeting", expanded=not bool(meetings)):
@@ -1102,6 +1344,17 @@ def _form_rca(supabase, pid, project, checklist, cw, name, can_edit):
                         supabase.table("fi_project_analysis").delete().eq("id",a["id"]).execute(); st.rerun()
 
     if can_edit:
+        # ── Quantify causes with data (req 18) ────────────────────────────────
+        st.divider()
+        has_quant = _data_upload_chart(
+            supabase, pid, cw, name, purpose="rca_quantify",
+            title="Quantify Root Causes with Data (req. 18)",
+            baseline_label="Before", target_label="After",
+        )
+        if has_quant:
+            _mark_req(supabase, pid, 18, True, name)
+        st.divider()
+
         tool=st.radio("Analysis Tool",["5-Why","Fishbone"],horizontal=True,key="rca_tool_sel")
         prob_default=project.get("problem_statement","")
 
