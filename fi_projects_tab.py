@@ -264,6 +264,7 @@ def _sync_checklist_from_data(supabase, pid, name):
         proj    = proj_r[0] if proj_r else {}
         meets   = supabase.table("fi_meetings").select("*").eq("project_id",pid).execute().data or []
         analyses= supabase.table("fi_project_analysis").select("*").eq("project_id",pid).execute().data or []
+        wdw     = supabase.table("fi_who_does_what").select("*").eq("project_id",pid).execute().data or []
     except:
         return  # silently skip if tables missing
 
@@ -301,12 +302,14 @@ def _sync_checklist_from_data(supabase, pid, name):
         # ── WEEK 1 ──────────────────────────────────────────────────────────
         # Req 1: team members listed
         1:  len(team) >= 1,
-        # Req 2: all members have roles
-        2:  len(team) >= 1 and all(m.get("role") for m in team),
+        # Req 2: all members assigned clear roles — checked via Who Does What
+        2:  len(team) >= 1 and len(wdw) >= len(team) and
+            all((next((w for w in wdw if w["member_name"]==m["member_name"]), {}) or {}).get("responsibility","").strip()
+                for m in team),
         # Req 3: clear link to company KPI
         3:  bool(proj.get("company_kpi_link")) or bool(kpi.get("kpi_name")),
-        # Req 4: historical data shown — baseline set OR historical_context filled
-        4:  base != 0 or bool(kpi.get("historical_context")),
+        # Req 4: historical data shown — baseline value set is sufficient
+        4:  base != 0,
         # Req 5: KPI subdivided into components
         5:  has_subs,
         # Req 6: master plan visible — at least 1 step
@@ -542,12 +545,33 @@ def _meeting_pdf(meetings, project):
             c.drawString(36,y,line); y -= 13
         y -= 8
 
-        # Action items
+        # Action items — structured with owner, due date, status
         c.setFont("Helvetica-Bold",10); c.setFillColor(HexColor("#0C5595"))
-        c.drawString(24,y,"Actions Raised"); y -= 14
-        for act in _pj(mtg.get("actions_raised"),[]):
-            c.setFont("Helvetica",9); c.setFillColor(HexColor("#334155"))
-            c.drawString(36,y,f"• {str(act)[:90]}"); y -= 13
+        c.drawString(24,y,"Action Items"); y -= 16
+        acts = _pj(mtg.get("actions_raised"),[])
+        if acts:
+            c.setFont("Helvetica-Bold",8); c.setFillColor(HexColor("#64748B"))
+            c.drawString(36,y,"Action"); c.drawString(280,y,"Owner"); c.drawString(380,y,"Due"); c.drawString(450,y,"Status")
+            y -= 12
+            c.setFillColor(HexColor("#E2E8F0")); c.rect(36,y+4,W-72,0.6,fill=1,stroke=0); y -= 10
+            for act in acts:
+                if isinstance(act, dict):
+                    txt = act.get("text","")[:42]
+                    owner = act.get("owner","—")[:16]
+                    due = str(act.get("due","—"))[:10]
+                    closed = act.get("closed", False)
+                    status = "Closed" if closed else "Open"
+                    s_col = "#1E8449" if closed else "#DE201B"
+                    c.setFont("Helvetica",9); c.setFillColor(HexColor("#334155"))
+                    c.drawString(36,y,txt)
+                    c.drawString(280,y,owner)
+                    c.drawString(380,y,due)
+                    c.setFillColor(HexColor(s_col)); c.setFont("Helvetica-Bold",8)
+                    c.drawString(450,y,status)
+                else:
+                    c.setFont("Helvetica",9); c.setFillColor(HexColor("#334155"))
+                    c.drawString(36,y,f"• {str(act)[:90]}")
+                y -= 14
         y -= 8
 
         # Next steps
@@ -570,7 +594,7 @@ def _meeting_pdf(meetings, project):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _form_team(supabase, pid, project, checklist, cw, name, can_edit):
-    """Team setup — list, roles, methodology understanding."""
+    """Team setup — list, roles, Who Does What, methodology understanding."""
     st.markdown('<div class="section-hdr">👥 Team Setup</div>', unsafe_allow_html=True)
     try:
         team = supabase.table("fi_project_team").select("*").eq("project_id",pid).execute().data or []
@@ -606,20 +630,54 @@ def _form_team(supabase, pid, project, checklist, cw, name, can_edit):
                     supabase.table("fi_project_team").delete().eq("id",mid).execute()
                     st.rerun()
 
+    # ── WHO DOES WHAT ──────────────────────────────────────────────────────
+    st.markdown("**Who Does What** *(req. 2 — clear roles)*")
+    st.caption("Assign each team member a specific responsibility / area of ownership.")
+    try:
+        wdw = supabase.table("fi_who_does_what").select("*").eq("project_id",pid).execute().data or []
+    except: wdw = []
+    wdw_map = {w["member_name"]: w for w in wdw}
+
+    if team:
+        with st.form("fi_wdw_form"):
+            new_wdw = []
+            for mi, m in enumerate(team):
+                mn = m["member_name"]
+                ex = wdw_map.get(mn, {})
+                wc1, wc2, wc3 = st.columns([1.5, 2, 2])
+                wc1.markdown(f"**{mn}**  \n_{m.get('role','')}_")
+                resp = wc2.text_input("Responsibility", value=ex.get("responsibility",""),
+                                      key=f"wdw_resp_{mi}", placeholder="e.g. Data collection on night shift")
+                area = wc3.text_input("Area / Scope", value=ex.get("area",""),
+                                      key=f"wdw_area_{mi}", placeholder="e.g. Flute C bearings")
+                new_wdw.append({"member_name":mn,"responsibility":resp,"area":area})
+            if st.form_submit_button("Save Who Does What", type="primary") and can_edit:
+                for w in new_wdw:
+                    payload = {"project_id":pid, **w, "updated_by":name}
+                    ex_row = wdw_map.get(w["member_name"])
+                    if ex_row:
+                        upd = {k:v for k,v in payload.items() if k!="project_id"}
+                        supabase.table("fi_who_does_what").update(upd).eq("id",ex_row["id"]).execute()
+                    else:
+                        supabase.table("fi_who_does_what").insert(payload).execute()
+                # req 2 done if every member has a responsibility filled
+                all_assigned = all(w["responsibility"].strip() for w in new_wdw)
+                _mark_req(supabase, pid, 2, all_assigned, name)
+                st.success("Saved ✓"); st.rerun()
+    else:
+        st.info("Add team members first to assign responsibilities.")
+
     # Methodology understanding — req 12,13 (auditor confirms)
-    if is_auditor := True:
-        st.markdown("**Methodology Understanding** *(req. 12 & 13)*")
-        with st.form("fi_meth"):
-            m_ok  = st.checkbox("Team demonstrated understanding of methodology",
-                                value=bool(checklist.get(12,{}).get("done")))
-            mb_ok = st.checkbox("Random member can explain the activity board",
-                                value=bool(checklist.get(13,{}).get("done")))
-            m_note = st.text_area("Notes", height=60,
-                                  value=checklist.get(12,{}).get("note",""))
-            if st.form_submit_button("Save", type="primary") and can_edit:
-                _mark_req(supabase,pid,12,m_ok,name)
-                _mark_req(supabase,pid,13,mb_ok,name)
-                st.success("Saved"); st.rerun()
+    st.markdown("**Methodology Understanding** *(req. 12 & 13)*")
+    with st.form("fi_meth"):
+        m_ok  = st.checkbox("Team demonstrated understanding of methodology",
+                            value=bool(checklist.get(12,{}).get("done")))
+        mb_ok = st.checkbox("Random member can explain the activity board",
+                            value=bool(checklist.get(13,{}).get("done")))
+        if st.form_submit_button("Save", type="primary") and can_edit:
+            _mark_req(supabase,pid,12,m_ok,name)
+            _mark_req(supabase,pid,13,mb_ok,name)
+            st.success("Saved"); st.rerun()
 
 
 def _form_kpi_setup(supabase, pid, project, checklist, cw, name, can_edit):
@@ -690,7 +748,7 @@ def _form_kpi_setup(supabase, pid, project, checklist, cw, name, can_edit):
                 supabase.table("fi_weekly_updates").insert(wu_payload).execute()
             # auto-mark related requirements
             _mark_req(supabase,pid,3, bool(kpi_link), name)
-            _mark_req(supabase,pid,4, bool(kpi_hist) and kpi_base!=0, name)
+            _mark_req(supabase,pid,4, kpi_base!=0, name)   # baseline alone satisfies this
             _mark_req(supabase,pid,5, len(subs)>0, name)
             _mark_req(supabase,pid,8, kpi_tgt!=0, name)
             # trend positive? (need 3+ readings going right way)
@@ -738,6 +796,60 @@ def _form_kpi_setup(supabase, pid, project, checklist, cw, name, can_edit):
             for s in ["top","right"]: ax.spines[s].set_visible(False)
             fig.tight_layout(pad=0.4)
             st.pyplot(fig,use_container_width=True); plt.close(fig)
+
+    # ── OPTIONAL: Upload historical data → auto-generate chart ───────────────
+    st.markdown("**Historical Data Chart** *(optional — upload a file to visualize trends)*")
+    with st.expander("📊 Upload data & generate chart"):
+        up_file = st.file_uploader("Upload CSV or Excel", type=["csv","xlsx","xls"], key="kpi_hist_upload")
+        if up_file is not None:
+            try:
+                if up_file.name.endswith(".csv"):
+                    df_up = pd.read_csv(up_file)
+                else:
+                    df_up = pd.read_excel(up_file)
+                st.dataframe(df_up.head(20), use_container_width=True)
+                cols = list(df_up.columns)
+                cc1, cc2 = st.columns(2)
+                x_col = cc1.selectbox("X-axis column (e.g. Week / Date)", cols, key="hist_x")
+                y_cols = cc2.multiselect("Y-axis column(s) — values to plot", cols, key="hist_y")
+                chart_type = st.radio("Chart type", ["Line","Bar"], horizontal=True, key="hist_ctype")
+                if y_cols and st.button("Generate Chart", key="hist_gen"):
+                    fig2, ax2 = plt.subplots(figsize=(10,4))
+                    fig2.patch.set_facecolor("#fff"); ax2.set_facecolor("#FAFAFA")
+                    palette = ["#0C5595","#DE201B","#1E8449","#D68910","#8E44AD","#566573"]
+                    x_vals = df_up[x_col]
+                    if chart_type=="Line":
+                        for ci, yc in enumerate(y_cols):
+                            ax2.plot(x_vals, df_up[yc], "o-", color=palette[ci%len(palette)],
+                                     lw=2.2, ms=6, label=yc)
+                    else:
+                        n_series = len(y_cols)
+                        width = 0.8 / max(n_series,1)
+                        x_idx = range(len(x_vals))
+                        for ci, yc in enumerate(y_cols):
+                            offset = (ci - n_series/2)*width + width/2
+                            ax2.bar([x+offset for x in x_idx], df_up[yc], width=width,
+                                    color=palette[ci%len(palette)], label=yc, alpha=0.88)
+                        ax2.set_xticks(list(x_idx)); ax2.set_xticklabels(x_vals, rotation=30, ha="right", fontsize=8)
+                    ax2.set_xlabel(x_col, fontsize=9, color="#566573")
+                    ax2.legend(fontsize=9, frameon=False)
+                    ax2.grid(axis="y", color="#eee", lw=0.5)
+                    for s in ["top","right"]: ax2.spines[s].set_visible(False)
+                    fig2.tight_layout(pad=0.5)
+                    st.pyplot(fig2, use_container_width=True)
+                    buf = io.BytesIO(); fig2.savefig(buf, format="png", dpi=200, bbox_inches="tight")
+                    buf.seek(0); plt.close(fig2)
+                    st.download_button("Download Chart PNG", data=buf, file_name="historical_data_chart.png", mime="image/png")
+                    # Save chart data to project_analysis for reuse in reports
+                    supabase.table("fi_project_analysis").insert({
+                        "project_id":pid,"week_number":cw,"analysis_type":"historical_chart",
+                        "data":json.dumps({"x_col":x_col,"y_cols":y_cols,"chart_type":chart_type,
+                                          "rows":df_up.to_dict(orient="records")}),
+                        "created_by":name,
+                    }).execute()
+                    st.success("Chart saved to project.")
+            except Exception as e:
+                st.error(f"Could not read file: {e}")
 
 
 def _form_master_plan(supabase, pid, project, checklist, cw, name, can_edit):
@@ -841,27 +953,48 @@ def _form_master_plan(supabase, pid, project, checklist, cw, name, can_edit):
 
 
 def _form_meeting(supabase, pid, project, checklist, cw, name, can_edit):
-    """Meeting minutes — every week, printable."""
+    """Meeting minutes — every week, printable. Actions have owner + due date,
+    carried forward and closeable in the next meeting."""
     st.markdown('<div class="section-hdr">📋 Meeting Minutes</div>', unsafe_allow_html=True)
     try:
         team     = supabase.table("fi_project_team").select("*").eq("project_id",pid).execute().data or []
         meetings = supabase.table("fi_meetings").select("*").eq("project_id",pid)\
             .order("week_number",desc=True).execute().data or []
-    except: team=[]; meetings=[]
+    except Exception as e:
+        st.error(f"Could not load meetings: {e}")
+        team=[]; meetings=[]
+
+    # ── Gather all open action items from past meetings (carry-forward) ──────
+    open_mom_actions = []
+    for m in meetings:
+        for act in _pj(m.get("actions_raised"), []):
+            if isinstance(act, dict) and not act.get("closed"):
+                open_mom_actions.append({**act, "_meeting_id": m["id"], "_week": m.get("week_number")})
 
     # Past meetings list
     if meetings:
         for m in meetings[:5]:
             att_pct = m.get("attendance_pct","?")
-            with st.expander(f"📋 Week {m.get('week_number','?')} — {m.get('meeting_date','')[:10]} — {m.get('attendees','?')[:40]}"):
+            with st.expander(f"📋 Week {m.get('week_number','?')} — {str(m.get('meeting_date',''))[:10]} — {m.get('attendees','?')[:40]}"):
                 st.markdown(f"**Attendance:** {m.get('attendees','—')} ({att_pct}%)")
                 st.markdown(f"**Notes:** {m.get('notes','—')}")
-                for label, key in [("Agenda","agenda"),("Actions Raised","actions_raised"),("Next Steps","next_steps")]:
-                    items=_pj(m.get(key),[])
-                    if items:
-                        st.markdown(f"**{label}:**")
-                        for it in items: st.markdown(f"  - {it}")
-        # Download all meetings as PDF
+                agenda_items = _pj(m.get("agenda"),[])
+                if agenda_items:
+                    st.markdown("**Agenda:**")
+                    for it in agenda_items: st.markdown(f"  - {it}")
+                act_items = _pj(m.get("actions_raised"),[])
+                if act_items:
+                    st.markdown("**Actions Raised:**")
+                    for act in act_items:
+                        if isinstance(act, dict):
+                            status_icon = "✅" if act.get("closed") else "🔴"
+                            st.markdown(f"  {status_icon} {act.get('text','')} — 👤 {act.get('owner','—')} · 📅 {act.get('due','—')}")
+                        else:
+                            st.markdown(f"  - {act}")
+                next_items = _pj(m.get("next_steps"),[])
+                if next_items:
+                    st.markdown("**Next Steps:**")
+                    for it in next_items: st.markdown(f"  - {it}")
         pdf_buf = _meeting_pdf(meetings, project)
         st.download_button(
             "📥 Download All Meeting Minutes (PDF)",
@@ -872,22 +1005,56 @@ def _form_meeting(supabase, pid, project, checklist, cw, name, can_edit):
     else:
         st.info("No meetings logged yet.")
 
-    # Log new meeting
+    # ── Close out previous open actions ───────────────────────────────────────
+    if open_mom_actions and can_edit:
+        st.markdown(f"**🔓 Open Actions from Previous Meetings ({len(open_mom_actions)})**")
+        for oi, act in enumerate(open_mom_actions):
+            oc1, oc2 = st.columns([4,1])
+            oc1.markdown(f"🔴 {act.get('text','')} — 👤 {act.get('owner','—')} · 📅 {act.get('due','—')} *(from W{act.get('_week','?')})*")
+            if oc2.button("✓ Close", key=f"close_mom_{oi}"):
+                # update the original meeting's actions_raised to mark closed
+                src_meeting = next((m for m in meetings if m["id"]==act["_meeting_id"]), None)
+                if src_meeting:
+                    acts = _pj(src_meeting.get("actions_raised"), [])
+                    for a2 in acts:
+                        if isinstance(a2, dict) and a2.get("text")==act.get("text") and a2.get("owner")==act.get("owner"):
+                            a2["closed"] = True
+                    supabase.table("fi_meetings").update(
+                        {"actions_raised": json.dumps(acts)}
+                    ).eq("id", src_meeting["id"]).execute()
+                    st.rerun()
+
+    # ── Log new meeting ────────────────────────────────────────────────────────
     if can_edit:
         with st.expander(f"➕ Log Week {cw} Meeting", expanded=not bool(meetings)):
-            with st.form("fi_meeting_form"):
-                m1,m2=st.columns(2)
-                m_date=m1.date_input("Meeting Date",value=date.today())
-                m_attendees=m2.multiselect("Attendees",[t["member_name"] for t in team])
-                m_agenda_raw=st.text_area("Agenda (one item per line)",height=80)
-                m_notes=st.text_area("Discussion Notes",height=100)
-                m_actions_raw=st.text_area("Actions Raised (one per line)",height=70)
-                m_next_raw=st.text_area("Next Steps (one per line)",height=70)
-                if st.form_submit_button("Save Meeting Minutes",type="primary"):
-                    att_pct=round(len(m_attendees)/max(len(team),1)*100)
-                    agenda=[l.strip() for l in m_agenda_raw.split("\n") if l.strip()]
-                    actions=[l.strip() for l in m_actions_raw.split("\n") if l.strip()]
-                    nexts=[l.strip() for l in m_next_raw.split("\n") if l.strip()]
+            m1,m2=st.columns(2)
+            m_date=m1.date_input("Meeting Date",value=date.today(),key="mom_date")
+            m_attendees=m2.multiselect("Attendees",[t["member_name"] for t in team],key="mom_att")
+            m_agenda_raw=st.text_area("Agenda (one item per line)",height=80,key="mom_agenda")
+            m_notes=st.text_area("Discussion Notes",height=100,key="mom_notes")
+
+            st.caption("**New Action Items** — each needs an owner and due date")
+            if "mom_action_rows" not in st.session_state:
+                st.session_state["mom_action_rows"] = 1
+            ac1, ac2 = st.columns([1,5])
+            if ac1.button("➕ Add action row", key="mom_add_row"):
+                st.session_state["mom_action_rows"] += 1
+            new_actions = []
+            for ri in range(st.session_state["mom_action_rows"]):
+                rc1, rc2, rc3 = st.columns([3,1.3,1.3])
+                a_text = rc1.text_input(f"Action {ri+1}", key=f"mom_act_text_{ri}", placeholder="What needs to be done?")
+                a_owner = rc2.selectbox("Owner", [""]+[t["member_name"] for t in team], key=f"mom_act_owner_{ri}")
+                a_due = rc3.date_input("Due", value=date.today()+timedelta(weeks=1), key=f"mom_act_due_{ri}")
+                if a_text.strip():
+                    new_actions.append({"text":a_text.strip(),"owner":a_owner,"due":str(a_due),"closed":False})
+
+            m_next_raw=st.text_area("Next Steps (one per line)",height=70,key="mom_next")
+
+            if st.button("Save Meeting Minutes", type="primary", key="mom_save_btn"):
+                att_pct=round(len(m_attendees)/max(len(team),1)*100)
+                agenda=[l.strip() for l in m_agenda_raw.split("\n") if l.strip()]
+                nexts=[l.strip() for l in m_next_raw.split("\n") if l.strip()]
+                try:
                     supabase.table("fi_meetings").insert({
                         "project_id":pid,"week_number":cw,
                         "meeting_date":str(m_date),
@@ -895,13 +1062,16 @@ def _form_meeting(supabase, pid, project, checklist, cw, name, can_edit):
                         "attendance_pct":att_pct,
                         "notes":m_notes,
                         "agenda":json.dumps(agenda),
-                        "actions_raised":json.dumps(actions),
+                        "actions_raised":json.dumps(new_actions),
                         "next_steps":json.dumps(nexts),
                         "created_by":name,
                     }).execute()
                     _mark_req(supabase,pid,7,True,name)
                     _mark_req(supabase,pid,10,att_pct>=80,name)
+                    st.session_state["mom_action_rows"] = 1
                     st.success("Saved ✓"); st.rerun()
+                except Exception as e:
+                    st.error(f"Could not save meeting: {e}")
 
 
 def _form_rca(supabase, pid, project, checklist, cw, name, can_edit):
