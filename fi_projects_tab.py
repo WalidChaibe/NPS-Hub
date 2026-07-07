@@ -208,7 +208,21 @@ PLANT_SECTIONS = {
     "Maintenance":   [],
 }
 
-TEAM_ROLES    = ["Team Leader","Analyst","Operator","Maintenance","Quality","Other"]
+TEAM_ROLES = [
+    "Team Leader", "Assistant Team Leader", "Analyst",
+    "Operator", "Maintenance", "Quality",
+    "Day Shift Section Head", "Night Shift Section Head",
+    "Secretary", "Other",
+]
+DEPARTMENTS = [
+    "Production", "Maintenance", "Quality", "Technical",
+    "Customer Service", "Supply Chain", "Material Handling",
+    "Product Management", "Planning", "HR", "Process Improvement",
+]
+WDW_FREQUENCY = [
+    "Daily", "Weekly", "Every Two Weeks", "Monthly", "Quarterly",
+    "Day Shift", "Night Shift",
+]
 ACTION_STATUS = ["Open","In Progress","Completed","Overdue"]
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -308,7 +322,8 @@ def _sync_checklist_from_data(supabase, pid, name):
     # trend positive
     trend_ok = False
     if len(readings)>=3 and base!=tgt:
-        trend_ok = (tgt>base and readings[-1]["kpi_value"]>readings[-3]["kpi_value"]) or                    (tgt<base and readings[-1]["kpi_value"]<readings[-3]["kpi_value"])
+        trend_ok = (tgt>base and readings[-1]["kpi_value"]>readings[-3]["kpi_value"]) or \
+                   (tgt<base and readings[-1]["kpi_value"]<readings[-3]["kpi_value"])
 
     # goal achieved
     goal_ok = False
@@ -639,7 +654,7 @@ def _form_team(supabase, pid, project, checklist, cw, name, can_edit):
                 c1,c2,c3 = st.columns(3)
                 t_name = c1.text_input("Name *")
                 t_role = c2.selectbox("Role", TEAM_ROLES)
-                t_dept = c3.text_input("Department")
+                t_dept = c3.selectbox("Department", DEPARTMENTS)
                 if st.form_submit_button("Add", type="primary"):
                     if t_name:
                         supabase.table("fi_project_team").insert({
@@ -659,38 +674,93 @@ def _form_team(supabase, pid, project, checklist, cw, name, can_edit):
 
     # ── WHO DOES WHAT ──────────────────────────────────────────────────────
     st.markdown("**Who Does What** *(req. 2 — clear roles)*")
-    st.caption("Assign each team member a specific responsibility / area of ownership.")
+    st.caption("For each person: what they are responsible for, how often, and which area/machine.")
     try:
         wdw = supabase.table("fi_who_does_what").select("*").eq("project_id",pid).execute().data or []
     except: wdw = []
     wdw_map = {w["member_name"]: w for w in wdw}
 
     if team:
-        with st.form("fi_wdw_form"):
-            new_wdw = []
+        # Show existing assignments as a readable table first
+        if wdw:
+            rows = []
+            for w in wdw:
+                resps = _pj(w.get("responsibilities"), [])
+                for r in resps:
+                    rows.append({
+                        "Person": w["member_name"],
+                        "What (Responsibility)": r.get("what",""),
+                        "When (Frequency)": r.get("when",""),
+                        "Area / Scope": r.get("area",""),
+                    })
+            if rows:
+                st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+        if can_edit:
             for mi, m in enumerate(team):
                 mn = m["member_name"]
-                ex = wdw_map.get(mn, {})
-                wc1, wc2, wc3 = st.columns([1.5, 2, 2])
-                wc1.markdown(f"**{mn}**  \n_{m.get('role','')}_")
-                resp = wc2.text_input("Responsibility", value=ex.get("responsibility",""),
-                                      key=f"wdw_resp_{mi}", placeholder="e.g. Data collection on night shift")
-                area = wc3.text_input("Area / Scope", value=ex.get("area",""),
-                                      key=f"wdw_area_{mi}", placeholder="e.g. Flute C bearings")
-                new_wdw.append({"member_name":mn,"responsibility":resp,"area":area})
-            if st.form_submit_button("Save Who Does What", type="primary") and can_edit:
-                for w in new_wdw:
-                    payload = {"project_id":pid, **w, "updated_by":name}
-                    ex_row = wdw_map.get(w["member_name"])
-                    if ex_row:
-                        upd = {k:v for k,v in payload.items() if k!="project_id"}
-                        supabase.table("fi_who_does_what").update(upd).eq("id",ex_row["id"]).execute()
-                    else:
-                        supabase.table("fi_who_does_what").insert(payload).execute()
-                # req 2 done if every member has a responsibility filled
-                all_assigned = all(w["responsibility"].strip() for w in new_wdw)
-                _mark_req(supabase, pid, 2, all_assigned, name)
-                st.success("Saved ✓"); st.rerun()
+                ex_row = wdw_map.get(mn, {})
+                ex_resps = _pj(ex_row.get("responsibilities"), [])
+
+                with st.expander(f"✏️ {mn} — {m.get('role','')} · {m.get('department','')}",
+                                 expanded=not bool(ex_resps)):
+                    # Session state key for number of responsibility rows
+                    sk = f"wdw_nrows_{mi}"
+                    if sk not in st.session_state:
+                        st.session_state[sk] = max(1, len(ex_resps))
+
+                    if st.button("➕ Add responsibility row", key=f"wdw_add_{mi}"):
+                        st.session_state[sk] += 1
+
+                    with st.form(f"fi_wdw_{mi}"):
+                        new_resps = []
+                        for ri in range(st.session_state[sk]):
+                            er = ex_resps[ri] if ri < len(ex_resps) else {}
+                            rc1, rc2, rc3, rc4 = st.columns([3, 1.5, 2, 0.5])
+                            what = rc1.text_area(
+                                f"Responsibility {ri+1}",
+                                value=er.get("what",""),
+                                height=80,
+                                key=f"wdw_what_{mi}_{ri}",
+                                placeholder="e.g. Collect OEE data every shift and update the activity board"
+                            )
+                            when = rc2.selectbox(
+                                "When",
+                                WDW_FREQUENCY,
+                                index=WDW_FREQUENCY.index(er["when"]) if er.get("when") in WDW_FREQUENCY else 0,
+                                key=f"wdw_when_{mi}_{ri}"
+                            )
+                            area = rc3.text_input(
+                                "Area / Machine",
+                                value=er.get("area",""),
+                                key=f"wdw_area_{mi}_{ri}",
+                                placeholder="e.g. BHS Corrugator — Flute C"
+                            )
+                            if what.strip():
+                                new_resps.append({"what": what.strip(), "when": when, "area": area.strip()})
+
+                        if st.form_submit_button("Save", type="primary"):
+                            payload = {
+                                "project_id": pid,
+                                "member_name": mn,
+                                "responsibilities": json.dumps(new_resps),
+                                # keep old fields for backward compat
+                                "responsibility": "; ".join(r["what"] for r in new_resps),
+                                "area": "; ".join(r["area"] for r in new_resps if r.get("area")),
+                                "updated_by": name,
+                            }
+                            if ex_row.get("id"):
+                                upd = {k:v for k,v in payload.items() if k!="project_id"}
+                                supabase.table("fi_who_does_what").update(upd).eq("id",ex_row["id"]).execute()
+                            else:
+                                supabase.table("fi_who_does_what").insert(payload).execute()
+                            all_assigned = all(
+                                bool(_pj(wdw_map.get(m2["member_name"],{}).get("responsibilities"),[]))
+                                or m2["member_name"]==mn
+                                for m2 in team
+                            )
+                            _mark_req(supabase, pid, 2, all_assigned, name)
+                            st.success("Saved ✓"); st.rerun()
     else:
         st.info("Add team members first to assign responsibilities.")
 
