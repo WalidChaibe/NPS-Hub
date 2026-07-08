@@ -212,7 +212,7 @@ with tab2:
     mpl.rcParams["figure.dpi"] = 160
     mpl.rcParams["savefig.dpi"] = 320
     mpl.rcParams["savefig.bbox"] = "tight"
-    COLORS = {"Service": "#C1A02E", "Quality": "#006394", "Invalid": "#D8C37D"}
+    COLORS = {"Service": "#C1A02E", "Quality": "#006394", "Invalid": "#D8C37D", "Commercial": "#2E8449"}
 
     def fig_to_png_bytes(fig, dpi=300):
         buf = io.BytesIO()
@@ -589,7 +589,7 @@ with tab2:
                 df_ncr_dash    = df_ncr
 
                 def donut_chart(ax, counts):
-                    labels = ["Service","Quality","Invalid"]
+                    labels = ["Service","Quality","Invalid","Commercial"]
                     values = np.array([int(counts.get(l,0)) for l in labels], dtype=float)
                     if values.sum()==0:
                         ax.text(0.5,0.5,"No data",ha="center",va="center"); ax.axis("off"); return
@@ -1754,6 +1754,112 @@ with tab2:
                 try:
                     pdf_slides.append({"title": "Service Complaints Value (CN at Cost) by Defect — To Date", "fig": slide_service_cn_cost_fig(selected_year, selected_month, TOPN_COST_DEFECT)})
                 except Exception: pass
+
+# ── Commercial Reasons slides ──────────────────────────────────
+                def slide_commercial_count_fig(year, month):
+                    comm_dfs = []
+                    for _df_src in [df_final, df_issued]:
+                        _c = _df_src[
+                            (_df_src["Complaint_Category"] == "Commercial") &
+                            (_df_src["Year"] == year) &
+                            (_df_src["Month"].between(1, month))
+                        ].copy()
+                        comm_dfs.append(_c)
+                    comm = pd.concat(comm_dfs, ignore_index=True) if comm_dfs else pd.DataFrame()
+                    if comm.empty:
+                        fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=300)
+                        ax.text(0.5, 0.5, "No Commercial CRMs found", ha="center", va="center", fontsize=20)
+                        ax.axis("off"); return fig
+                    comm["_Reason"] = comm["Reason"].astype(str).str.strip()
+                    cm_counts  = comm[comm["Month"] == month]["_Reason"].value_counts()
+                    ytd_counts = comm["_Reason"].value_counts()
+                    all_r      = pd.Index(ytd_counts.index).union(cm_counts.index)
+                    summ = pd.DataFrame({
+                        "CM":  cm_counts.reindex(all_r, fill_value=0),
+                        "YTD": ytd_counts.reindex(all_r, fill_value=0),
+                    }).sort_values("YTD", ascending=False)
+                    x = np.arange(len(summ)); w = 0.35
+                    fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=300)
+                    b1 = ax.bar(x - w/2, summ["CM"],  w, color="#006394", label="Current Month")
+                    b2 = ax.bar(x + w/2, summ["YTD"], w, color="#2E8449", label="YTD")
+                    for bars_g in [b1, b2]:
+                        for bar in bars_g:
+                            h = bar.get_height()
+                            if h > 0:
+                                ax.text(bar.get_x() + bar.get_width()/2, h + 0.3,
+                                        f"{int(h)}", ha="center", va="bottom",
+                                        fontsize=11, color="#000000", fontweight="bold")
+                    ax.set_xticks(x)
+                    ax.set_xticklabels(summ.index.tolist(), fontsize=12)
+                    ax.set_ylabel("Count")
+                    ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False)
+                    ax.grid(False)
+                    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.08), ncol=2, frameon=False)
+                    plt.tight_layout(rect=[0, 0.05, 1, 1])
+                    return fig
+
+                def slide_commercial_cost_fig(year, month):
+                    dec_col = next((c for c in df_final.columns if "decision" in c.lower()), None)
+                    if dec_col is None:
+                        dec_col = next((c for c in df_final.columns if "dec" in c.lower() and "approv" not in c.lower()), None)
+                    comm_dfs = []
+                    for _df_src in [df_final, df_issued]:
+                        _c = _df_src[
+                            (_df_src["Complaint_Category"] == "Commercial") &
+                            (_df_src["Year"] == year) &
+                            (_df_src["Month"].between(1, month))
+                        ].copy()
+                        if dec_col and dec_col in _c.columns:
+                            _c = _c[_c[dec_col].astype(str).str.strip().str.lower() == "credit note"]
+                        comm_dfs.append(_c)
+                    comm = pd.concat(comm_dfs, ignore_index=True) if comm_dfs else pd.DataFrame()
+                    if comm.empty:
+                        fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=300)
+                        ax.text(0.5, 0.5, "No Commercial Credit Notes found", ha="center", va="center", fontsize=20)
+                        ax.axis("off"); return fig
+                    comm["_Reason"] = comm["Reason"].astype(str).str.strip()
+                    comm["_Cost"]   = pd.to_numeric(comm["Cost Amount"], errors="coerce").fillna(0)
+                    cm_cost  = comm[comm["Month"] == month].groupby("_Reason")["_Cost"].sum()
+                    ytd_cost = comm.groupby("_Reason")["_Cost"].sum()
+                    all_r    = pd.Index(ytd_cost.index).union(cm_cost.index)
+                    summ = pd.DataFrame({
+                        "CM":  cm_cost.reindex(all_r, fill_value=0),
+                        "YTD": ytd_cost.reindex(all_r, fill_value=0),
+                    }).sort_values("YTD", ascending=False)
+                    def fmt_sar(v):
+                        if v >= 1_000_000: return f"SAR {v/1_000_000:.1f}M"
+                        if v >= 1000:      return f"SAR {int(v/1000)}K"
+                        return f"SAR {int(v)}"
+                    x = np.arange(len(summ)); w = 0.35
+                    fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=300)
+                    b1 = ax.bar(x - w/2, summ["CM"],  w, color="#006394", label="Current Month (Credit Notes)")
+                    b2 = ax.bar(x + w/2, summ["YTD"], w, color="#2E8449", label="YTD (Credit Notes)")
+                    ymax = summ.to_numpy().max() if summ.to_numpy().max() > 0 else 1
+                    for bars_g in [b1, b2]:
+                        for bar in bars_g:
+                            h = bar.get_height()
+                            if h > 0:
+                                ax.text(bar.get_x() + bar.get_width()/2, h + ymax * 0.015,
+                                        fmt_sar(h), ha="center", va="bottom",
+                                        fontsize=10, color="#000000", fontweight="bold")
+                    ax.set_xticks(x)
+                    ax.set_xticklabels(summ.index.tolist(), fontsize=12)
+                    ax.set_ylabel("Cost Amount (SAR)")
+                    ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False)
+                    ax.grid(False)
+                    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.08), ncol=2, frameon=False)
+                    plt.tight_layout(rect=[0, 0.05, 1, 1])
+                    return fig
+
+                pdf_slides.append({"title": "Commercial Reasons", "section": True})
+                pdf_slides.append({
+                    "title": "Commercial CRMs — Count by Reason (CM vs YTD)",
+                    "fig": slide_commercial_count_fig(selected_year, selected_month),
+                })
+                pdf_slides.append({
+                    "title": "Commercial CRMs — Cost Amount by Reason (CM vs YTD)",
+                    "fig": slide_commercial_cost_fig(selected_year, selected_month),
+                })
 
                 # Intro slide — Cost of Quality
                 pdf_slides.append({"title": "Cost of Quality", "section": True})
