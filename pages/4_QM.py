@@ -603,6 +603,7 @@ with tab2:
                         ax.text(lr*np.cos(np.deg2rad(ang)),lr*np.sin(np.deg2rad(ang)),
                                 f"{int(v)}",ha="center",va="center",fontsize=11,color="#4D4D4D")
                     ax.axis("equal")
+                    ax.legend( handles=[plt.Rectangle((0,0),1,1,fc=COLORS[l]) for l in labels if values[labels.index(l)]>0], labels=[l for l in labels if values[labels.index(l)]>0], loc="lower center", bbox_to_anchor=(0.5,-0.15), ncol=len(labels),frameon=False, fontsize=10 )
 
                 def add_simple_value_labels(ax, bars, fmt_fn, pad):
                     for b in bars:
