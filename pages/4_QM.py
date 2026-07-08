@@ -1859,7 +1859,7 @@ with tab2:
                     base = df_final[
                         (df_final["Year"] == year) &
                         (df_final["Month"].between(1, month)) &
-                        (df_final[dec_col].astype(str).str.strip().str.lower() == "customer return")
+                        (df_final[dec_col].astype(str).str.strip().str.lower() == "return material from customer")
                     ].copy()
                     if base.empty:
                         fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=300)
