@@ -601,7 +601,7 @@ with tab2:
                         if v<=0: continue
                         ang=(w.theta2+w.theta1)/2.0
                         ax.text(lr*np.cos(np.deg2rad(ang)),lr*np.sin(np.deg2rad(ang)),
-                                f"{int(v)}",ha="center",va="center",fontsize=11,color="#4D4D4D")
+                                f"{int(v)}",ha="center",va="center",fontsize=11,color="white")
                     ax.axis("equal")
                     ax.legend(handles=[plt.Rectangle((0,0),1,1,fc=COLORS[l]) for l in labels if values[labels.index(l)]>0], labels=[l for l in labels if values[labels.index(l)]>0], loc="upper center", bbox_to_anchor=(0.5, -0.05), ncol=len(labels),frameon=False, fontsize=10)
 
