@@ -165,10 +165,12 @@ def add_date_and_flags_final_issued(df, date_col, df_name="df", classifier=None)
 
     categories = []
     for valid, rsn, idx in zip(df["Is_Valid"].tolist(), reason.tolist(), df.index):
-        if not valid:
-            categories.append("Invalid")
-        elif _is_commercial(rsn, df.at[idx, rc_col] if rc_col else None):
+        # Commercial check runs FIRST — bypasses Is_Valid so these rows
+        # are never miscategorised as Invalid
+        if _is_commercial(rsn, df.at[idx, rc_col] if rc_col else None):
             categories.append("Commercial")
+        elif not valid:
+            categories.append("Invalid")
         else:
             categories.append(classifier(rsn))
     df["Complaint_Category"] = categories
@@ -190,10 +192,10 @@ def add_date_and_flags_ncr(df, date_col, df_name="NCR", classifier=None):
 
     categories = []
     for valid, rsn, idx in zip(df["Is_Valid"].tolist(), reason.tolist(), df.index):
-        if not valid:
-            categories.append("Invalid")
-        elif _is_commercial(rsn, df.at[idx, rc_col] if rc_col else None):
+        if _is_commercial(rsn, df.at[idx, rc_col] if rc_col else None):
             categories.append("Commercial")
+        elif not valid:
+            categories.append("Invalid")
         else:
             categories.append(classifier(rsn))
     df["Complaint_Category"] = categories
