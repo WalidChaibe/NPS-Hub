@@ -1757,15 +1757,12 @@ with tab2:
 
 # ── Commercial Reasons slides ──────────────────────────────────
                 def slide_commercial_count_fig(year, month):
-                    comm_dfs = []
-                    for _df_src in [df_final, df_issued]:
-                        _c = _df_src[
-                            (_df_src["Complaint_Category"] == "Commercial") &
-                            (_df_src["Year"] == year) &
-                            (_df_src["Month"].between(1, month))
-                        ].copy()
-                        comm_dfs.append(_c)
-                    comm = pd.concat(comm_dfs, ignore_index=True) if comm_dfs else pd.DataFrame()
+                    # Source: FINAL file only (approved CRMs), YTD up to selected month
+                    comm = df_final[
+                        (df_final["Complaint_Category"] == "Commercial") &
+                        (df_final["Year"] == year) &
+                        (df_final["Month"].between(1, month))
+                    ].copy()
                     if comm.empty:
                         fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=300)
                         ax.text(0.5, 0.5, "No Commercial CRMs found", ha="center", va="center", fontsize=20)
@@ -1799,20 +1796,17 @@ with tab2:
                     return fig
 
                 def slide_commercial_cost_fig(year, month):
+                    # Source: FINAL file only, Credit Notes only, YTD up to selected month
                     dec_col = next((c for c in df_final.columns if "decision" in c.lower()), None)
                     if dec_col is None:
                         dec_col = next((c for c in df_final.columns if "dec" in c.lower() and "approv" not in c.lower()), None)
-                    comm_dfs = []
-                    for _df_src in [df_final, df_issued]:
-                        _c = _df_src[
-                            (_df_src["Complaint_Category"] == "Commercial") &
-                            (_df_src["Year"] == year) &
-                            (_df_src["Month"].between(1, month))
-                        ].copy()
-                        if dec_col and dec_col in _c.columns:
-                            _c = _c[_c[dec_col].astype(str).str.strip().str.lower() == "credit note"]
-                        comm_dfs.append(_c)
-                    comm = pd.concat(comm_dfs, ignore_index=True) if comm_dfs else pd.DataFrame()
+                    comm = df_final[
+                        (df_final["Complaint_Category"] == "Commercial") &
+                        (df_final["Year"] == year) &
+                        (df_final["Month"].between(1, month))
+                    ].copy()
+                    if dec_col and dec_col in comm.columns:
+                        comm = comm[comm[dec_col].astype(str).str.strip().str.lower() == "credit note"]
                     if comm.empty:
                         fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=300)
                         ax.text(0.5, 0.5, "No Commercial Credit Notes found", ha="center", va="center", fontsize=20)
@@ -1851,6 +1845,70 @@ with tab2:
                     plt.tight_layout(rect=[0, 0.05, 1, 1])
                     return fig
 
+                def slide_customer_return_cost_fig(year, month):
+                    # Source: FINAL file, Decision = "Customer Return"
+                    # Cost = count of claims × 3,918 SAR per claim
+                    COST_PER_CLAIM = 3918.0
+                    dec_col = next((c for c in df_final.columns if "decision" in c.lower()), None)
+                    if dec_col is None:
+                        dec_col = next((c for c in df_final.columns if "dec" in c.lower() and "approv" not in c.lower()), None)
+                    if dec_col is None:
+                        fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=300)
+                        ax.text(0.5, 0.5, "Decision column not found", ha="center", va="center", fontsize=20)
+                        ax.axis("off"); return fig
+                    base = df_final[
+                        (df_final["Year"] == year) &
+                        (df_final["Month"].between(1, month)) &
+                        (df_final[dec_col].astype(str).str.strip().str.lower() == "customer return")
+                    ].copy()
+                    if base.empty:
+                        fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=300)
+                        ax.text(0.5, 0.5, "No Customer Returns found", ha="center", va="center", fontsize=20)
+                        ax.axis("off"); return fig
+                    base["_Reason"] = base["Reason"].astype(str).str.strip()
+                    cm_counts  = base[base["Month"] == month]["_Reason"].value_counts()
+                    ytd_counts = base["_Reason"].value_counts()
+                    all_r      = pd.Index(ytd_counts.index).union(cm_counts.index)
+                    summ = pd.DataFrame({
+                        "CM_count":  cm_counts.reindex(all_r, fill_value=0),
+                        "YTD_count": ytd_counts.reindex(all_r, fill_value=0),
+                    }).sort_values("YTD_count", ascending=False)
+                    summ["CM_cost"]  = summ["CM_count"]  * COST_PER_CLAIM
+                    summ["YTD_cost"] = summ["YTD_count"] * COST_PER_CLAIM
+                    def fmt_sar(v):
+                        if v >= 1_000_000: return f"SAR {v/1_000_000:.1f}M"
+                        if v >= 1000:      return f"SAR {int(v/1000)}K"
+                        return f"SAR {int(v)}"
+                    x = np.arange(len(summ)); w = 0.35
+                    fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=300)
+                    b1 = ax.bar(x - w/2, summ["CM_cost"],  w, color="#006394", label="Current Month")
+                    b2 = ax.bar(x + w/2, summ["YTD_cost"], w, color="#C1A02E", label="YTD")
+                    ymax = summ[["CM_cost","YTD_cost"]].to_numpy().max() if summ[["CM_cost","YTD_cost"]].to_numpy().max() > 0 else 1
+                    for bars_g, counts_col in [(b1, "CM_count"), (b2, "YTD_count")]:
+                        for bar, (_, row) in zip(bars_g, summ.iterrows()):
+                            h = bar.get_height()
+                            if h > 0:
+                                n = int(row[counts_col])
+                                ax.text(bar.get_x() + bar.get_width()/2, h + ymax * 0.015,
+                                        f"{fmt_sar(h)}\n({n} claims)",
+                                        ha="center", va="bottom",
+                                        fontsize=9, color="#000000", fontweight="bold",
+                                        linespacing=1.4)
+                    ax.set_xticks(x)
+                    ax.set_xticklabels([fill(r, 20) for r in summ.index.tolist()], fontsize=11, rotation=15, ha="right")
+                    ax.set_ylabel("Estimated Cost (SAR)")
+                    ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False)
+                    ax.grid(False)
+                    cm_total  = int(summ["CM_count"].sum())
+                    ytd_total = int(summ["YTD_count"].sum())
+                    ax.set_title(
+                        f"Rate: SAR 3,918 / claim  |  CM: {cm_total} claims = {fmt_sar(cm_total * COST_PER_CLAIM)}  |  YTD: {ytd_total} claims = {fmt_sar(ytd_total * COST_PER_CLAIM)}",
+                        fontsize=10, color="#555555", pad=10
+                    )
+                    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.12), ncol=2, frameon=False)
+                    plt.tight_layout(rect=[0, 0.05, 1, 1])
+                    return fig
+
                 pdf_slides.append({"title": "Commercial Reasons", "section": True})
                 pdf_slides.append({
                     "title": "Commercial CRMs — Count by Reason (CM vs YTD)",
@@ -1860,10 +1918,13 @@ with tab2:
                     "title": "Commercial CRMs — Cost Amount by Reason (CM vs YTD)",
                     "fig": slide_commercial_cost_fig(selected_year, selected_month),
                 })
+                pdf_slides.append({
+                    "title": "Customer Returns — Estimated Cost by Reason",
+                    "fig": slide_customer_return_cost_fig(selected_year, selected_month),
+                })
 
                 # Intro slide — Cost of Quality
                 pdf_slides.append({"title": "Cost of Quality", "section": True})
-
                 # 24 - COQ CM (single month bar — reuse breakdown fig)
                 if coq_ready:
                     pdf_slides.append({"title": f"Cost of Quality — {month_name}", "fig": slide_coq_breakdown_fig(selected_year, selected_month)})
