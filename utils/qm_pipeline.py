@@ -15,6 +15,16 @@ COST_COL              = "Cost Amount"
 GEN_CAT_ALLOWED       = {"Customer Complaint", "Customer Return", "Process Improvement"}
 PHYS_STATUS_BLOCKLIST = {"Baled Waste", "Plastic/Wood Waste"}
 
+# ── Commercial Reasons ────────────────────────────────────────────────────
+# Rows where Root Cause == "Pre-Agreement" AND Reason is one of these
+# are classified as "Commercial" instead of going through the normal classifier.
+_COMMERCIAL_REASONS = {
+    "Sales Discount",
+    "FOC",
+    "Tools cost reimbursement",
+}
+_COMMERCIAL_ROOT_CAUSE_LOWER = "pre-agreement"  # matched case-insensitively
+
 _CRM_DELETE_MAP_DEFAULT = {
     "EPAK-CRM-10376": 14, "EPAK-CRM-10439": 10, "EPAK-CRM-10452": 3,
     "EPAK-CRM-10514": 10, "EPAK-CRM-10573": 4,  "EPAK-CRM-10561": 8,
@@ -108,6 +118,17 @@ def make_classifier(quality_set, service_set, invalid_set):
 
 _classify_reason_default = make_classifier(_QUALITY_REASONS_DEFAULT, _SERVICE_REASONS_DEFAULT, set())
 
+def _is_commercial(reason_clean: str, root_cause_val) -> bool:
+    """Return True if this row should be classified as Commercial."""
+    if reason_clean not in _COMMERCIAL_REASONS:
+        return False
+    # If root cause column exists, also require Pre-Agreement
+    if root_cause_val is not None:
+        rc = _clean_text(str(root_cause_val)).lower()
+        return rc == _COMMERCIAL_ROOT_CAUSE_LOWER
+    # No root cause column — reason alone is sufficient
+    return True
+
 def apply_crm_deletions(df, crm_delete_map, crm_col=CRM_COL, df_name="df"):
     rows_to_drop = []
     crm_series = df[crm_col].astype(str).str.strip()
@@ -136,10 +157,21 @@ def add_date_and_flags_final_issued(df, date_col, df_name="df", classifier=None)
         reason.ne("Invalid") & u_is_nonzero &
         (~phys_status.isin(PHYS_STATUS_BLOCKLIST)) & gen_cat.isin(GEN_CAT_ALLOWED)
     )
-    df["Complaint_Category"] = [
-        "Invalid" if not v else classifier(r)
-        for v, r in zip(df["Is_Valid"].tolist(), reason.tolist())
-    ]
+
+    # Auto-detect Root Cause column
+    rc_col = next((c for c in df.columns if "root" in c.lower() and "cause" in c.lower()), None)
+    if rc_col is None:
+        rc_col = next((c for c in df.columns if "root" in c.lower()), None)
+
+    categories = []
+    for valid, rsn, idx in zip(df["Is_Valid"].tolist(), reason.tolist(), df.index):
+        if not valid:
+            categories.append("Invalid")
+        elif _is_commercial(rsn, df.at[idx, rc_col] if rc_col else None):
+            categories.append("Commercial")
+        else:
+            categories.append(classifier(rsn))
+    df["Complaint_Category"] = categories
     return df
 
 def add_date_and_flags_ncr(df, date_col, df_name="NCR", classifier=None):
@@ -150,10 +182,21 @@ def add_date_and_flags_ncr(df, date_col, df_name="NCR", classifier=None):
     gen_cat = df[GEN_CAT_COL].map(_clean_text)
     reason  = df[REASON_COL].map(_clean_text)
     df["Is_Valid"] = gen_cat.eq("Work In Progress")
-    df["Complaint_Category"] = [
-        "Invalid" if not v else classifier(r)
-        for v, r in zip(df["Is_Valid"].tolist(), reason.tolist())
-    ]
+
+    # Auto-detect Root Cause column
+    rc_col = next((c for c in df.columns if "root" in c.lower() and "cause" in c.lower()), None)
+    if rc_col is None:
+        rc_col = next((c for c in df.columns if "root" in c.lower()), None)
+
+    categories = []
+    for valid, rsn, idx in zip(df["Is_Valid"].tolist(), reason.tolist(), df.index):
+        if not valid:
+            categories.append("Invalid")
+        elif _is_commercial(rsn, df.at[idx, rc_col] if rc_col else None):
+            categories.append("Commercial")
+        else:
+            categories.append(classifier(rsn))
+    df["Complaint_Category"] = categories
     return df
 
 def show_unclassified_counts(df):
