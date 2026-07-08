@@ -603,7 +603,7 @@ with tab2:
                         ax.text(lr*np.cos(np.deg2rad(ang)),lr*np.sin(np.deg2rad(ang)),
                                 f"{int(v)}",ha="center",va="center",fontsize=11,color="#4D4D4D")
                     ax.axis("equal")
-                    ax.legend( handles=[plt.Rectangle((0,0),1,1,fc=COLORS[l]) for l in labels if values[labels.index(l)]>0], labels=[l for l in labels if values[labels.index(l)]>0], loc="lower center", bbox_to_anchor=(0.5,-0.15), ncol=len(labels),frameon=False, fontsize=10 )
+                    ax.legend(handles=[plt.Rectangle((0,0),1,1,fc=COLORS[l]) for l in labels if values[labels.index(l)]>0], labels=[l for l in labels if values[labels.index(l)]>0], loc="upper center", bbox_to_anchor=(0.5, -0.05), ncol=len(labels),frameon=False, fontsize=10)
 
                 def add_simple_value_labels(ax, bars, fmt_fn, pad):
                     for b in bars:
@@ -667,8 +667,7 @@ with tab2:
                     m_lbl=pd.to_datetime(f"{year}-{month:02d}-01").strftime("%b-%y")
                     axes[0].text(0.5,-0.10,m_lbl,transform=axes[0].transAxes,ha="center",va="top",fontsize=13,color="#4D4D4D")
                     axes[1].text(0.5,-0.10,f"{year} YTD",transform=axes[1].transAxes,ha="center",va="top",fontsize=13,color="#4D4D4D")
-                    fig.legend(["Service","Quality","Invalid"],loc="lower center",ncol=3,frameon=False,prop={"size":14})
-                    plt.tight_layout(rect=[0,0.08,1,1]); return fig
+                    plt.tight_layout(rect=[0,0.14,1,1]); return fig
                 show_fig(slide_1_final_donuts_fig(selected_year,selected_month))
                 slides_for_pdf.append({"title":"FINAL - Total Complaints Issued","fig":slide_1_final_donuts_fig(selected_year,selected_month)})
 
@@ -890,8 +889,7 @@ with tab2:
                     m_lbl=pd.to_datetime(f"{year}-{month:02d}-01").strftime("%b-%y")
                     axes[0].text(0.5,-0.10,f"ISSUED – {m_lbl}",transform=axes[0].transAxes,ha="center",va="top",fontsize=13,color="#4D4D4D")
                     axes[1].text(0.5,-0.10,f"ISSUED – {year} YTD",transform=axes[1].transAxes,ha="center",va="top",fontsize=13,color="#4D4D4D")
-                    fig.legend(["Service","Quality","Invalid"],loc="lower center",ncol=3,frameon=False,prop={"size":14})
-                    plt.tight_layout(rect=[0,0.08,1,1]); return fig
+                    plt.tight_layout(rect=[0,0.14,1,1]); return fig
                 show_fig(slide_issued_1_donuts_fig(selected_year,selected_month))
                 slides_for_pdf.append({"title":"ISSUED - Total Complaints","fig":slide_issued_1_donuts_fig(selected_year,selected_month)})
 
@@ -1900,67 +1898,120 @@ with tab2:
                     return fig
 
                 def slide_classification_guide_fig():
-                    W, H = 13.33, 7.5
-                    fig, ax = plt.subplots(figsize=(W, H), dpi=300)
-                    ax.set_xlim(0, W); ax.set_ylim(0, H); ax.axis("off")
+                    import textwrap as _tw
                     categories = [
                         {
                             "label": "Quality",
                             "color": "#006394",
-                            "desc": (
-                                "Physical or functional defects caused during production.\n"
-                                "Examples: Score Cracking, Ink rubbing, Delamination,\n"
-                                "Warped Sheets, Poor Die Cutting, Wet boards, GSM Downgrade."
-                            ),
+                            "text_color": "white",
+                            "lines": [
+                                "Physical or functional",
+                                "defects from production.",
+                                "",
+                                "Score Cracking, Ink",
+                                "rubbing, Delamination,",
+                                "Warped Sheets, Poor Die",
+                                "Cutting, Wet boards,",
+                                "GSM Downgrade.",
+                            ],
                         },
                         {
                             "label": "Service",
                             "color": "#C1A02E",
-                            "desc": (
-                                "Failures in delivery, invoicing, or administration.\n"
-                                "Examples: Wrong Item Delivered, Deviation from delivery\n"
-                                "Schedule, Incorrect Sales Contract Pricing, Wrong Unit Price."
-                            ),
+                            "text_color": "white",
+                            "lines": [
+                                "Failures in delivery,",
+                                "invoicing, or admin.",
+                                "",
+                                "Wrong Item Delivered,",
+                                "Deviation from delivery",
+                                "Schedule, Incorrect",
+                                "Sales Contract Pricing,",
+                                "Wrong Unit Price.",
+                            ],
                         },
                         {
                             "label": "Commercial",
                             "color": "#2E8449",
-                            "desc": (
-                                "Pre-agreed commercial arrangements — not product or\n"
-                                "service failures. Root Cause = Pre-Agreement.\n"
-                                "Reasons: Sales Discount, FOC, Tools cost reimbursement."
-                            ),
+                            "text_color": "white",
+                            "lines": [
+                                "Pre-agreed commercial",
+                                "arrangements — not a",
+                                "product or service",
+                                "failure.",
+                                "",
+                                "Root Cause:",
+                                "  Pre-Agreement",
+                                "Reasons: Sales Discount,",
+                                "  FOC, Tools reimb.",
+                            ],
                         },
                         {
                             "label": "Invalid",
-                            "color": "#D8C37D",
-                            "desc": (
-                                "Excluded from quality KPIs. Includes:\n"
-                                "• Reason Type = 0 or blank\n"
-                                "• Physical Status: Baled Waste / Plastic-Wood Waste\n"
-                                "• Gen. Category not in allowed list\n"
-                                "• Reason explicitly marked Invalid."
-                            ),
+                            "color": "#B8A040",
+                            "text_color": "white",
+                            "lines": [
+                                "Excluded from KPIs.",
+                                "",
+                                "• Reason Type = 0",
+                                "  or blank",
+                                "• Physical Status:",
+                                "  Baled / Plastic Waste",
+                                "• Gen. Category not",
+                                "  in allowed list",
+                                "• Reason = Invalid",
+                            ],
                         },
                     ]
-                    card_w = W / 4
+                    fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=300)
+                    ax.set_xlim(0, 1); ax.set_ylim(0, 1); ax.axis("off")
+                    fig.patch.set_facecolor("white")
+                    n = len(categories)
+                    pad = 0.02
+                    card_w = (1 - pad * (n + 1)) / n
+                    header_h = 0.13
+                    body_top = 0.88
+                    body_bot = 0.04
                     for i, cat in enumerate(categories):
-                        x0 = i * card_w + 0.15
-                        # Color header bar
-                        ax.add_patch(plt.Rectangle((x0, H - 1.4), card_w - 0.3, 1.1,
-                                                   facecolor=cat["color"], edgecolor="none", zorder=2))
-                        ax.text(x0 + (card_w - 0.3)/2, H - 0.85, cat["label"],
-                                ha="center", va="center", fontsize=18, fontweight="bold",
-                                color="white", zorder=3)
-                        # Description box
-                        ax.add_patch(plt.Rectangle((x0, 0.3), card_w - 0.3, H - 1.9,
-                                                   facecolor="#F7F7F7", edgecolor=cat["color"],
-                                                   linewidth=1.5, zorder=1))
-                        ax.text(x0 + (card_w - 0.3)/2, (H - 1.9)/2 + 0.3,
-                                cat["desc"], ha="center", va="center",
-                                fontsize=10, color="#333333", zorder=3,
-                                linespacing=1.6,
-                                wrap=True)
+                        x0 = pad + i * (card_w + pad)
+                        x1 = x0 + card_w
+                        # Header rectangle
+                        ax.add_patch(plt.Rectangle(
+                            (x0, body_top), card_w, header_h,
+                            transform=ax.transAxes,
+                            facecolor=cat["color"], edgecolor="none", zorder=2,
+                            clip_on=False
+                        ))
+                        # Header label
+                        ax.text(
+                            (x0 + x1) / 2, body_top + header_h / 2,
+                            cat["label"],
+                            transform=ax.transAxes,
+                            ha="center", va="center",
+                            fontsize=16, fontweight="bold",
+                            color=cat["text_color"], zorder=3
+                        )
+                        # Body rectangle
+                        ax.add_patch(plt.Rectangle(
+                            (x0, body_bot), card_w, body_top - body_bot,
+                            transform=ax.transAxes,
+                            facecolor="#F5F5F5",
+                            edgecolor=cat["color"], linewidth=2,
+                            zorder=1, clip_on=False
+                        ))
+                        # Body text — line by line, evenly spaced inside the box
+                        lines = cat["lines"]
+                        n_lines = len(lines)
+                        line_h = (body_top - body_bot - 0.04) / max(n_lines, 1)
+                        for j, line in enumerate(lines):
+                            y_pos = body_top - 0.02 - (j + 0.5) * line_h
+                            ax.text(
+                                (x0 + x1) / 2, y_pos,
+                                line,
+                                transform=ax.transAxes,
+                                ha="center", va="center",
+                                fontsize=9, color="#333333", zorder=4
+                            )
                     plt.tight_layout()
                     return fig
 
