@@ -220,9 +220,12 @@ with tab2:
         buf.seek(0)
         return buf
 
-    def show_fig(fig, dpi=300):
-        st.image(fig_to_png_bytes(fig, dpi=dpi))
+    def show_fig(fig, dpi=150):
+        buf = fig_to_png_bytes(fig, dpi=dpi)
+        st.image(buf)
         plt.close(fig)
+        buf.seek(0)
+        return buf
 
     def ppt_slide_title_bar(c, title, W, H):
         # Title text
@@ -329,9 +332,14 @@ with tab2:
                 draw_section_slide(c, W, H, s.get("title", ""))
             else:
                 ppt_slide_title_bar(c, s["title"], W, H)
-                img = ImageReader(fig_to_png_bytes(s["fig"], dpi=dpi))
+                # Accept either pre-rendered PNG bytes or a figure object
+                if "png_bytes" in s:
+                    img = ImageReader(s["png_bytes"])
+                else:
+                    img = ImageReader(fig_to_png_bytes(s["fig"], dpi=dpi))
+                    if s.get("fig"):
+                        plt.close(s["fig"])
                 c.drawImage(img, 40, 40, width=W-80, height=H-92-40, preserveAspectRatio=True, anchor="c")
-                plt.close(s["fig"])
             c.showPage()
         c.save()
         pdf_buf.seek(0)
@@ -686,8 +694,8 @@ with tab2:
                     axes[0].text(0.5,-0.10,m_lbl,transform=axes[0].transAxes,ha="center",va="top",fontsize=13,color="#4D4D4D")
                     axes[1].text(0.5,-0.10,f"{year} YTD",transform=axes[1].transAxes,ha="center",va="top",fontsize=13,color="#4D4D4D")
                     plt.tight_layout(rect=[0,0.14,1,1]); return fig
-                show_fig(slide_1_final_donuts_fig(selected_year,selected_month))
-                slides_for_pdf.append({"title":"FINAL - Total Complaints Issued","fig":slide_1_final_donuts_fig(selected_year,selected_month)})
+                _pdf_png = show_fig(slide_1_final_donuts_fig(selected_year,selected_month))
+                if _pdf_png: slides_for_pdf.append({"title":"FINAL - Total Complaints Issued","png_bytes":_pdf_png})
 
                 # Lead Time
                 st.subheader("Lead Time")
@@ -717,8 +725,8 @@ with tab2:
                     ax.legend(loc="upper center",bbox_to_anchor=(0.5,-0.08),ncol=2,frameon=False)
                     ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False); ax.grid(False)
                     plt.tight_layout(rect=[0,0.05,1,1]); return fig
-                show_fig(slide_2_leadtime_fig(selected_year,selected_month))
-                slides_for_pdf.append({"title":"FINAL - Lead Time (Days)","fig":slide_2_leadtime_fig(selected_year,selected_month)})
+                _pdf_png = show_fig(slide_2_leadtime_fig(selected_year,selected_month))
+                if _pdf_png: slides_for_pdf.append({"title":"FINAL - Lead Time (Days)","png_bytes":_pdf_png})
 
                 # Quality Count
                 st.subheader("Quality")
@@ -739,8 +747,8 @@ with tab2:
                     ax.legend(loc="upper center",bbox_to_anchor=(0.5,-0.08),ncol=3,frameon=False)
                     ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False); ax.grid(False)
                     plt.tight_layout(rect=[0,0.05,1,1]); return fig
-                show_fig(slide_3_valid_quality_count_fig(selected_year,selected_month))
-                slides_for_pdf.append({"title":"FINAL - Valid Quality Count","fig":slide_3_valid_quality_count_fig(selected_year,selected_month)})
+                _pdf_png = show_fig(slide_3_valid_quality_count_fig(selected_year,selected_month))
+                if _pdf_png: slides_for_pdf.append({"title":"FINAL - Valid Quality Count","png_bytes":_pdf_png})
 
                 def slide_4_quality_defect_cm_vs_ytd_fig(selected_year,selected_month,top_n=15):
                     base=df[(df["Is_Valid"]==True)&(df["Complaint_Category"]=="Quality")].copy()
@@ -767,8 +775,8 @@ with tab2:
                     ax.legend(loc="upper center",bbox_to_anchor=(0.5,-0.22),ncol=4,frameon=False,fontsize=10)
                     fig.subplots_adjust(bottom=0.35); return fig
                 st.subheader("Quality Defects (CM vs YTD)")
-                show_fig(slide_4_quality_defect_cm_vs_ytd_fig(selected_year,selected_month,TOPN_QUALITY_DEFECT))
-                slides_for_pdf.append({"title":"FINAL - Quality Defects (CM vs YTD)","fig":slide_4_quality_defect_cm_vs_ytd_fig(selected_year,selected_month,TOPN_QUALITY_DEFECT)})
+                _pdf_png = show_fig(slide_4_quality_defect_cm_vs_ytd_fig(selected_year,selected_month,TOPN_QUALITY_DEFECT))
+                if _pdf_png: slides_for_pdf.append({"title":"FINAL - Quality Defects (CM vs YTD)","png_bytes":_pdf_png})
 
                 def slide_5_quality_defect_current_month_fig(selected_year,selected_month,top_n=10):
                     base=df[(df["Is_Valid"]==True)&(df["Complaint_Category"]=="Quality")].copy()
@@ -783,8 +791,8 @@ with tab2:
                     ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False); ax.grid(False)
                     plt.tight_layout(); return fig
                 st.subheader("Quality Defects (Current Month)")
-                show_fig(slide_5_quality_defect_current_month_fig(selected_year,selected_month,TOPN_QUALITY_CM))
-                slides_for_pdf.append({"title":"FINAL - Quality Defects (Current Month)","fig":slide_5_quality_defect_current_month_fig(selected_year,selected_month,TOPN_QUALITY_CM)})
+                _pdf_png = show_fig(slide_5_quality_defect_current_month_fig(selected_year,selected_month,TOPN_QUALITY_CM))
+                if _pdf_png: slides_for_pdf.append({"title":"FINAL - Quality Defects (Current Month)","png_bytes":_pdf_png})
 
 
 
@@ -823,8 +831,8 @@ with tab2:
                     fig.subplots_adjust(bottom=0.35); return fig
                 try:
                     st.subheader("Quality Cost (Credit Note)")
-                    show_fig(slide_6_quality_cost_cm_vs_ytd_fig(selected_year,selected_month,TOPN_COST_DEFECT))
-                    slides_for_pdf.append({"title":"FINAL - Quality Cost (Credit Note)","fig":slide_6_quality_cost_cm_vs_ytd_fig(selected_year,selected_month,TOPN_COST_DEFECT)})
+                    _pdf_png = show_fig(slide_6_quality_cost_cm_vs_ytd_fig(selected_year,selected_month,TOPN_COST_DEFECT))
+                    if _pdf_png: slides_for_pdf.append({"title":"FINAL - Quality Cost (Credit Note)","png_bytes":_pdf_png})
                 except Exception as e:
                     st.warning(f"Cost slide skipped: {e}")
 
@@ -848,8 +856,8 @@ with tab2:
                     ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False); ax.grid(False)
                     plt.tight_layout(rect=[0,0.05,1,1]); return fig
                 st.subheader("Valid Service Count")
-                show_fig(slide_s1_valid_service_count_fig(selected_year,selected_month))
-                slides_for_pdf.append({"title":"FINAL - Valid Service Count","fig":slide_s1_valid_service_count_fig(selected_year,selected_month)})
+                _pdf_png = show_fig(slide_s1_valid_service_count_fig(selected_year,selected_month))
+                if _pdf_png: slides_for_pdf.append({"title":"FINAL - Valid Service Count","png_bytes":_pdf_png})
 
                 def slide_s2_service_reason_cm_vs_ytd_fig(selected_year,selected_month,top_n=15):
                     base=df[(df["Is_Valid"]==True)&(df["Complaint_Category"]=="Service")].copy()
@@ -876,8 +884,8 @@ with tab2:
                     ax.legend(loc="upper center",bbox_to_anchor=(0.5,-0.22),ncol=4,frameon=False,fontsize=10)
                     fig.subplots_adjust(bottom=0.35); return fig
                 st.subheader("Service Reasons (CM vs YTD)")
-                show_fig(slide_s2_service_reason_cm_vs_ytd_fig(selected_year,selected_month,TOPN_SERVICE_REASON))
-                slides_for_pdf.append({"title":"FINAL - Service Reasons (CM vs YTD)","fig":slide_s2_service_reason_cm_vs_ytd_fig(selected_year,selected_month,TOPN_SERVICE_REASON)})
+                _pdf_png = show_fig(slide_s2_service_reason_cm_vs_ytd_fig(selected_year,selected_month,TOPN_SERVICE_REASON))
+                if _pdf_png: slides_for_pdf.append({"title":"FINAL - Service Reasons (CM vs YTD)","png_bytes":_pdf_png})
 
                 def slide_s3_service_reason_current_month_fig(selected_year,selected_month,top_n=10):
                     base=df[(df["Is_Valid"]==True)&(df["Complaint_Category"]=="Service")].copy()
@@ -892,8 +900,8 @@ with tab2:
                     ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False); ax.grid(False)
                     plt.tight_layout(); return fig
                 st.subheader("Service Reasons (Current Month)")
-                show_fig(slide_s3_service_reason_current_month_fig(selected_year,selected_month,TOPN_SERVICE_CM))
-                slides_for_pdf.append({"title":"FINAL - Service Reasons (Current Month)","fig":slide_s3_service_reason_current_month_fig(selected_year,selected_month,TOPN_SERVICE_CM)})
+                _pdf_png = show_fig(slide_s3_service_reason_current_month_fig(selected_year,selected_month,TOPN_SERVICE_CM))
+                if _pdf_png: slides_for_pdf.append({"title":"FINAL - Service Reasons (Current Month)","png_bytes":_pdf_png})
 
                 st.divider()
 
@@ -908,8 +916,8 @@ with tab2:
                     axes[0].text(0.5,-0.10,f"ISSUED – {m_lbl}",transform=axes[0].transAxes,ha="center",va="top",fontsize=13,color="#4D4D4D")
                     axes[1].text(0.5,-0.10,f"ISSUED – {year} YTD",transform=axes[1].transAxes,ha="center",va="top",fontsize=13,color="#4D4D4D")
                     plt.tight_layout(rect=[0,0.14,1,1]); return fig
-                show_fig(slide_issued_1_donuts_fig(selected_year,selected_month))
-                slides_for_pdf.append({"title":"ISSUED - Total Complaints","fig":slide_issued_1_donuts_fig(selected_year,selected_month)})
+                _pdf_png = show_fig(slide_issued_1_donuts_fig(selected_year,selected_month))
+                if _pdf_png: slides_for_pdf.append({"title":"ISSUED - Total Complaints","png_bytes":_pdf_png})
 
                 st.subheader("Valid Count")
                 def slide_issued_valid_count_fig(selected_year,selected_month):
@@ -929,8 +937,8 @@ with tab2:
                     ax.legend(loc="upper center",bbox_to_anchor=(0.5,-0.08),ncol=3,frameon=False)
                     ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False); ax.grid(False)
                     plt.tight_layout(rect=[0,0.05,1,1]); return fig
-                show_fig(slide_issued_valid_count_fig(selected_year,selected_month))
-                slides_for_pdf.append({"title":"ISSUED - Valid Count","fig":slide_issued_valid_count_fig(selected_year,selected_month)})
+                _pdf_png = show_fig(slide_issued_valid_count_fig(selected_year,selected_month))
+                if _pdf_png: slides_for_pdf.append({"title":"ISSUED - Valid Count","png_bytes":_pdf_png})
 
                 st.subheader("Quality (Current Month)")
                 def slide_issued_quality_reason_current_month_fig(selected_year,selected_month,top_n=12):
@@ -945,8 +953,8 @@ with tab2:
                     ax.set_ylim(0,max(1,counts.max())*1.15)
                     ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False); ax.grid(False)
                     plt.tight_layout(); return fig
-                show_fig(slide_issued_quality_reason_current_month_fig(selected_year,selected_month,TOPN_QUALITY_CM))
-                slides_for_pdf.append({"title":"ISSUED - Quality Reasons (CM)","fig":slide_issued_quality_reason_current_month_fig(selected_year,selected_month,TOPN_QUALITY_CM)})
+                _pdf_png = show_fig(slide_issued_quality_reason_current_month_fig(selected_year,selected_month,TOPN_QUALITY_CM))
+                if _pdf_png: slides_for_pdf.append({"title":"ISSUED - Quality Reasons (CM)","png_bytes":_pdf_png})
 
                 # ── Quality Root Cause Drill-Down ──
                 st.subheader("Quality — Root Cause by Reason (Current Month)")
@@ -1022,9 +1030,8 @@ with tab2:
                 if err_rc_q:
                     st.warning(f"Quality root cause: {err_rc_q}")
                 else:
-                    show_fig(fig_rc_q)
-                    slides_for_pdf.append({"title": "ISSUED - Quality Root Cause by Reason",
-                        "fig": slide_rootcause_fig("Quality", selected_year, selected_month, TOPN_RC_REASONS or 4)[0]})
+                    _pdf_png = show_fig(fig_rc_q)
+                    if _pdf_png: slides_for_pdf.append({"title": "ISSUED - Quality Root Cause by Reason", "png_bytes": _pdf_png})
 
                 st.subheader("Service (Current Month)")
                 def slide_issued_service_reason_current_month_fig(selected_year,selected_month,top_n=10):
@@ -1039,8 +1046,8 @@ with tab2:
                     ax.set_ylim(0,max(1,counts.max())*1.15)
                     ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False); ax.grid(False)
                     plt.tight_layout(); return fig
-                show_fig(slide_issued_service_reason_current_month_fig(selected_year,selected_month,TOPN_SERVICE_CM))
-                slides_for_pdf.append({"title":"ISSUED - Service Reasons (CM)","fig":slide_issued_service_reason_current_month_fig(selected_year,selected_month,TOPN_SERVICE_CM)})
+                _pdf_png = show_fig(slide_issued_service_reason_current_month_fig(selected_year,selected_month,TOPN_SERVICE_CM))
+                if _pdf_png: slides_for_pdf.append({"title":"ISSUED - Service Reasons (CM)","png_bytes":_pdf_png})
 
                 # ── Service Root Cause Drill-Down ──
                 st.subheader("Service — Root Cause by Reason (Current Month)")
@@ -1048,9 +1055,8 @@ with tab2:
                 if err_rc_s:
                     st.warning(f"Service root cause: {err_rc_s}")
                 else:
-                    show_fig(fig_rc_s)
-                    slides_for_pdf.append({"title": "ISSUED - Service Root Cause by Reason",
-                        "fig": slide_rootcause_fig("Service", selected_year, selected_month, TOPN_RC_REASONS or 4)[0]})
+                    _pdf_png = show_fig(fig_rc_s)
+                    if _pdf_png: slides_for_pdf.append({"title": "ISSUED - Service Root Cause by Reason", "png_bytes": _pdf_png})
 
                 st.divider()
 
@@ -1076,8 +1082,8 @@ with tab2:
                     ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False); ax.grid(False)
                     ax.legend(loc="upper center",bbox_to_anchor=(0.5,-0.08),ncol=2,frameon=False,fontsize=12)
                     fig.subplots_adjust(bottom=0.22); return fig
-                show_fig(slide_ncr_quality_defect_cm_vs_ytd_fig(selected_year,selected_month,TOPN_NCR_DEFECT))
-                slides_for_pdf.append({"title":"NCR - Quality Defects (CM vs YTD)","fig":slide_ncr_quality_defect_cm_vs_ytd_fig(selected_year,selected_month,TOPN_NCR_DEFECT)})
+                _pdf_png = show_fig(slide_ncr_quality_defect_cm_vs_ytd_fig(selected_year,selected_month,TOPN_NCR_DEFECT))
+                if _pdf_png: slides_for_pdf.append({"title":"NCR - Quality Defects (CM vs YTD)","png_bytes":_pdf_png})
 
                 st.subheader("Valid NCR Count Table")
                 base_tbl=df_ncr_dash[(df_ncr_dash["Year"]==selected_year)&(df_ncr_dash["Month"].between(1,selected_month))&(df_ncr_dash["Is_Valid"]==True)]
@@ -1111,8 +1117,8 @@ with tab2:
                     ax.legend(loc="upper center",bbox_to_anchor=(0.5,-0.08),ncol=2,frameon=False,fontsize=12)
                     ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False); ax.grid(False)
                     fig.subplots_adjust(left=0.28,right=0.98,top=0.90,bottom=0.18); return fig
-                show_fig(slide_ncr_vs_crm_correlation_ytd_fig(selected_year,selected_month,TOPN_CORRELATION))
-                slides_for_pdf.append({"title":"NCR vs CRM - Correlation (YTD)","fig":slide_ncr_vs_crm_correlation_ytd_fig(selected_year,selected_month,TOPN_CORRELATION)})
+                _pdf_png = show_fig(slide_ncr_vs_crm_correlation_ytd_fig(selected_year,selected_month,TOPN_CORRELATION))
+                if _pdf_png: slides_for_pdf.append({"title":"NCR vs CRM - Correlation (YTD)","png_bytes":_pdf_png})
 
                 st.subheader("Top Customers (FINAL)")
                 def slide_valid_quality_by_customer_top5_cm_vs_ytd_fig(selected_year,selected_month,top_n=5):
@@ -1138,8 +1144,8 @@ with tab2:
                     ax.legend(loc="upper center",bbox_to_anchor=(0.5,-0.08),ncol=2,frameon=False,fontsize=12)
                     fig.subplots_adjust(bottom=0.20); return fig
                 try:
-                    show_fig(slide_valid_quality_by_customer_top5_cm_vs_ytd_fig(selected_year,selected_month,TOPN_CUSTOMER))
-                    slides_for_pdf.append({"title":"FINAL - Top Customers (CM vs YTD)","fig":slide_valid_quality_by_customer_top5_cm_vs_ytd_fig(selected_year,selected_month,TOPN_CUSTOMER)})
+                    _pdf_png = show_fig(slide_valid_quality_by_customer_top5_cm_vs_ytd_fig(selected_year,selected_month,TOPN_CUSTOMER))
+                    if _pdf_png: slides_for_pdf.append({"title":"FINAL - Top Customers (CM vs YTD)","png_bytes":_pdf_png})
                 except Exception as e:
                     st.warning(f"Customer slide skipped: {e}")
 
@@ -1286,12 +1292,12 @@ with tab2:
                         return fig
 
                     st.subheader("Total Customer Complaints Ratio (Quality + Service)")
-                    show_fig(slide_cc_ratio_fig(selected_year, category_filter=None, title_label="Total CC Ratio"))
-                    slides_for_pdf.append({"title": "Total CC Ratio", "fig": slide_cc_ratio_fig(selected_year, category_filter=None, title_label="Total CC Ratio")})
+                    _pdf_png = show_fig(slide_cc_ratio_fig(selected_year, category_filter=None, title_label="Total CC Ratio"))
+                    if _pdf_png: slides_for_pdf.append({"title": "Total CC Ratio", "png_bytes": _pdf_png})
 
                     st.subheader("Quality Customer Complaints Ratio")
-                    show_fig(slide_cc_ratio_fig(selected_year, category_filter="Quality", title_label="Quality CC Ratio"))
-                    slides_for_pdf.append({"title": "Quality CC Ratio", "fig": slide_cc_ratio_fig(selected_year, category_filter="Quality", title_label="Quality CC Ratio")})
+                    _pdf_png = show_fig(slide_cc_ratio_fig(selected_year, category_filter="Quality", title_label="Quality CC Ratio"))
+                    if _pdf_png: slides_for_pdf.append({"title": "Quality CC Ratio", "png_bytes": _pdf_png})
 
                 else:
                     st.info("Enter FG Invoiced values above to generate CC Ratio charts.")
@@ -1434,8 +1440,8 @@ with tab2:
                         return fig
 
                     st.subheader("COQ Breakdown — CM vs YTD")
-                    show_fig(slide_coq_breakdown_fig(selected_year, selected_month))
-                    slides_for_pdf.append({"title": "Cost of Quality — Breakdown", "fig": slide_coq_breakdown_fig(selected_year, selected_month)})
+                    _pdf_png = show_fig(slide_coq_breakdown_fig(selected_year, selected_month))
+                    if _pdf_png: slides_for_pdf.append({"title": "Cost of Quality — Breakdown", "png_bytes": _pdf_png})
 
                 else:
                     st.info("Fill in missing COQ data above to generate COQ charts.")
@@ -1578,9 +1584,8 @@ with tab2:
                         return fig
 
                     st.subheader("NCR Ratio")
-                    show_fig(slide_ncr_ratio_fig(selected_year))
-                    slides_for_pdf.append({"title": "NCR Ratio",
-                                           "fig": slide_ncr_ratio_fig(selected_year)})
+                    _pdf_png = show_fig(slide_ncr_ratio_fig(selected_year))
+                    if _pdf_png: slides_for_pdf.append({"title": "NCR Ratio", "png_bytes": _pdf_png})
                 else:
                     st.info("Fill in missing Work Order data above to generate NCR Ratio chart.")
 
@@ -1677,391 +1682,16 @@ with tab2:
 
                 month_name = pd.to_datetime(f"{selected_year}-{selected_month:02d}-01").strftime("%B %Y")
 
-                # ── Build ordered PDF ──
-                pdf_slides = []
-
-                # Cover slide
+                # ── Build ordered PDF using already-rendered PNG bytes ──
                 _month_full = pd.to_datetime(f"{selected_year}-{selected_month:02d}-01").strftime("%B %Y")
-                _today_str  = pd.Timestamp.now().strftime("%d \u2013 %B - %Y")
-                pdf_slides.append({
+                _today_str  = pd.Timestamp.now().strftime("%d – %B - %Y")
+                _cover = {
                     "cover":    True,
                     "title":    "Quality Indicators Report",
-                    "subtitle": f"Easternpak \u2013 {_month_full}",
+                    "subtitle": f"Easternpak – {_month_full}",
                     "date":     _today_str,
-                })
-
-                # 1 - Total Complaints Issued (ISSUED donut)
-                pdf_slides.append({"title": "Total Complaints Issued", "fig": slide_issued_1_donuts_fig(selected_year, selected_month)})
-
-                # 2 - Total Complaints Approved (FINAL donut)
-                pdf_slides.append({"title": "Total Complaints Approved", "fig": slide_1_final_donuts_fig(selected_year, selected_month)})
-
-                # 3 - Complaints Lead Time
-                pdf_slides.append({"title": "Complaints Lead Time — First Approval", "fig": slide_2_leadtime_fig(selected_year, selected_month)})
-
-                # 4 - Complaints Ratio (Total)
-                if months_with_fg:
-                    pdf_slides.append({"title": "Complaints Ratio", "fig": slide_cc_ratio_fig(selected_year, category_filter=None)})
-                    # 5 - Quality Complaints Ratio
-                    pdf_slides.append({"title": "Quality Complaints Ratio", "fig": slide_cc_ratio_fig(selected_year, category_filter="Quality")})
-                    # 6 - Service Complaints Ratio
-                    pdf_slides.append({"title": "Service Complaints Ratio", "fig": slide_service_cc_ratio_fig(selected_year)})
-
-                # 7 - Total Complaints Issued YoY
-                pdf_slides.append({"title": "Total Complaints Issued — YoY", "fig": slide_issued_valid_count_fig(selected_year, selected_month)})
-
-                # Intro slide — Month overview
-                pdf_slides.append({"title": f"{month_name} Overview", "section": True})
-
-                # 8 - Breakdown Quality Complaints Issued CM
-                pdf_slides.append({"title": f"Breakdown of Quality Complaints Issued — {month_name}", "fig": slide_issued_quality_reason_current_month_fig(selected_year, selected_month, TOPN_QUALITY_CM)})
-
-                # 9 - Root Cause Quality Complaints Issued CM
-                _fig_rcq, _err_rcq = slide_rootcause_fig("Quality", selected_year, selected_month, TOPN_RC_REASONS or 4)
-                if _fig_rcq:
-                    pdf_slides.append({"title": f"Root Cause of Quality Complaints Issued — {month_name}", "fig": _fig_rcq})
-
-                # 10 - Breakdown Service Complaints Issued CM
-                pdf_slides.append({"title": f"Breakdown of Service Complaints Issued — {month_name}", "fig": slide_issued_service_reason_current_month_fig(selected_year, selected_month, TOPN_SERVICE_CM)})
-
-                # 11 - Root Cause Service Complaints Issued CM
-                _fig_rcs, _err_rcs = slide_rootcause_fig("Service", selected_year, selected_month, TOPN_RC_REASONS or 4)
-                if _fig_rcs:
-                    pdf_slides.append({"title": f"Root Cause of Service Complaints Issued — {month_name}", "fig": _fig_rcs})
-
-                # Intro slide — Quality Complaints Overview
-                pdf_slides.append({"title": "Quality Complaints Overview", "section": True})
-
-                # 12 - Valid Quality Complaints Count
-                pdf_slides.append({"title": "Valid Quality Complaints Count — To Date", "fig": slide_3_valid_quality_count_fig(selected_year, selected_month)})
-
-                # 13 - Quality Defects CM vs YTD
-                pdf_slides.append({"title": "Valid Quality Complaints by Defect — CM vs To Date", "fig": slide_4_quality_defect_cm_vs_ytd_fig(selected_year, selected_month, TOPN_QUALITY_DEFECT)})
-
-                # 14 - Quality Defects CM
-                pdf_slides.append({"title": f"Valid Quality Complaints by Reason — {month_name}", "fig": slide_5_quality_defect_current_month_fig(selected_year, selected_month, TOPN_QUALITY_CM)})
-
-                # 15 - Quality CN Cost
-                try:
-                    pdf_slides.append({"title": "Quality Complaints Value (CN at Cost) by Defect — To Date", "fig": slide_6_quality_cost_cm_vs_ytd_fig(selected_year, selected_month, TOPN_COST_DEFECT)})
-                except Exception: pass
-
-                # 18 - Internal Defect Ratio Trend (= NCR Ratio)
-                if wo_ready:
-                    pdf_slides.append({"title": "Internal Defect Ratio Trend", "fig": slide_ncr_ratio_fig(selected_year)})
-
-                # 19 - NCR Root Cause
-                _fig_ncr_rc, _err_ncr_rc = slide_ncr_rootcause_fig(selected_year, selected_month, TOPN_RC_REASONS or 4)
-                if _fig_ncr_rc:
-                    pdf_slides.append({"title": "NCR Breakdown by Root Cause", "fig": _fig_ncr_rc})
-
-                # 20 - NCR and CRM Correlation
-                pdf_slides.append({"title": "NCR and CRM Correlation — YTD", "fig": slide_ncr_vs_crm_correlation_ytd_fig(selected_year, selected_month, TOPN_CORRELATION)})
-
-                # Intro slide — Service Complaints Overview
-                pdf_slides.append({"title": "Service Complaints Overview", "section": True})
-
-                # 21 - Valid Service Count
-                pdf_slides.append({"title": "Valid Service Complaints Count", "fig": slide_s1_valid_service_count_fig(selected_year, selected_month)})
-
-                # 22 - Service Reasons CM vs YTD
-                pdf_slides.append({"title": "Valid Service Complaints — CM vs YTD", "fig": slide_s2_service_reason_cm_vs_ytd_fig(selected_year, selected_month, TOPN_SERVICE_REASON)})
-
-                # 23 - Service CN Cost
-                try:
-                    pdf_slides.append({"title": "Service Complaints Value (CN at Cost) by Defect — To Date", "fig": slide_service_cn_cost_fig(selected_year, selected_month, TOPN_COST_DEFECT)})
-                except Exception: pass
-
-# ── Commercial Reasons slides ──────────────────────────────────
-                def slide_commercial_count_fig(year, month):
-                    comm = df_final[
-                        (df_final["Complaint_Category"] == "Commercial") &
-                        (df_final["Year"] == year) &
-                        (df_final["Month"].between(1, month))
-                    ].copy()
-                    if comm.empty:
-                        fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=150)
-                        ax.text(0.5, 0.5, "No Commercial CRMs found", ha="center", va="center", fontsize=20)
-                        ax.axis("off"); return fig
-                    comm["_Reason"] = comm["Reason"].astype(str).str.strip()
-                    cm_counts  = comm[comm["Month"] == month]["_Reason"].value_counts()
-                    ytd_counts = comm["_Reason"].value_counts()
-                    all_r      = pd.Index(ytd_counts.index).union(cm_counts.index)
-                    summ = pd.DataFrame({
-                        "CM":  cm_counts.reindex(all_r, fill_value=0),
-                        "YTD": ytd_counts.reindex(all_r, fill_value=0),
-                    }).sort_values("YTD", ascending=False)
-                    x = np.arange(len(summ)); w = 0.35
-                    fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=150)
-                    b1 = ax.bar(x - w/2, summ["CM"],  w, color="#006394", label="Current Month")
-                    b2 = ax.bar(x + w/2, summ["YTD"], w, color="#2E8449", label="YTD")
-                    for bars_g in [b1, b2]:
-                        for bar in bars_g:
-                            h = bar.get_height()
-                            if h > 0:
-                                ax.text(bar.get_x() + bar.get_width()/2, h + 0.3,
-                                        f"{int(h)}", ha="center", va="bottom",
-                                        fontsize=10, color="#4D4D4D")
-                    ax.set_xticks(x)
-                    ax.set_xticklabels(summ.index.tolist(), fontsize=12)
-                    ax.set_ylabel("Count")
-                    ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False)
-                    ax.grid(False)
-                    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.08), ncol=2, frameon=False)
-                    plt.tight_layout(rect=[0, 0.05, 1, 1])
-                    return fig
-
-                def slide_commercial_cost_fig(year, month):
-                    dec_col = next((c for c in df_final.columns if "decision" in c.lower()), None)
-                    if dec_col is None:
-                        dec_col = next((c for c in df_final.columns if "dec" in c.lower() and "approv" not in c.lower()), None)
-                    comm = df_final[
-                        (df_final["Complaint_Category"] == "Commercial") &
-                        (df_final["Year"] == year) &
-                        (df_final["Month"].between(1, month))
-                    ].copy()
-                    if dec_col and dec_col in comm.columns:
-                        comm = comm[comm[dec_col].astype(str).str.strip().str.lower() == "credit note"]
-                    if comm.empty:
-                        fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=150)
-                        ax.text(0.5, 0.5, "No Commercial Credit Notes found", ha="center", va="center", fontsize=20)
-                        ax.axis("off"); return fig
-                    comm["_Reason"] = comm["Reason"].astype(str).str.strip()
-                    comm["_Cost"]   = pd.to_numeric(comm["Cost Amount"], errors="coerce").fillna(0)
-                    cm_cost  = comm[comm["Month"] == month].groupby("_Reason")["_Cost"].sum()
-                    ytd_cost = comm.groupby("_Reason")["_Cost"].sum()
-                    all_r    = pd.Index(ytd_cost.index).union(cm_cost.index)
-                    summ = pd.DataFrame({
-                        "CM":  cm_cost.reindex(all_r, fill_value=0),
-                        "YTD": ytd_cost.reindex(all_r, fill_value=0),
-                    }).sort_values("YTD", ascending=False)
-                    def fmt_sar(v):
-                        if v >= 1_000_000: return f"SAR {v/1_000_000:.1f}M"
-                        if v >= 1000:      return f"SAR {int(v/1000)}K"
-                        return f"SAR {int(v)}"
-                    x = np.arange(len(summ)); w = 0.35
-                    fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=150)
-                    b1 = ax.bar(x - w/2, summ["CM"],  w, color="#006394", label="Current Month (Credit Notes)")
-                    b2 = ax.bar(x + w/2, summ["YTD"], w, color="#2E8449", label="YTD (Credit Notes)")
-                    ymax = summ.to_numpy().max() if summ.to_numpy().max() > 0 else 1
-                    for bars_g in [b1, b2]:
-                        for bar in bars_g:
-                            h = bar.get_height()
-                            if h > 0:
-                                ax.text(bar.get_x() + bar.get_width()/2, h + ymax * 0.015,
-                                        fmt_sar(h), ha="center", va="bottom",
-                                        fontsize=9, rotation=90, color="#333333")
-                    ax.set_xticks(x)
-                    ax.set_xticklabels(summ.index.tolist(), fontsize=12)
-                    ax.set_ylabel("Cost Amount (SAR)")
-                    ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False)
-                    ax.grid(False)
-                    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.08), ncol=2, frameon=False)
-                    plt.tight_layout(rect=[0, 0.05, 1, 1])
-                    return fig
-
-                def slide_customer_return_cost_fig(year, month, top_n=10):
-                    COST_PER_CLAIM = 3918.0
-                    dec_col = next((c for c in df_final.columns if "decision" in c.lower()), None)
-                    if dec_col is None:
-                        dec_col = next((c for c in df_final.columns if "dec" in c.lower() and "approv" not in c.lower()), None)
-                    if dec_col is None:
-                        fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=150)
-                        ax.text(0.5, 0.5, "Decision column not found", ha="center", va="center", fontsize=20)
-                        ax.axis("off"); return fig
-                    base = df_final[
-                        (df_final["Year"] == year) &
-                        (df_final["Month"].between(1, month)) &
-                        (df_final[dec_col].astype(str).str.strip().str.lower() == "return material from customer")
-                    ].copy()
-                    if base.empty:
-                        fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=150)
-                        ax.text(0.5, 0.5, "No Customer Returns found", ha="center", va="center", fontsize=20)
-                        ax.axis("off"); return fig
-                    base["_Reason"] = base["Reason"].astype(str).str.strip()
-                    cm_counts  = base[base["Month"] == month]["_Reason"].value_counts()
-                    ytd_counts = base["_Reason"].value_counts()
-                    all_r      = pd.Index(ytd_counts.index).union(cm_counts.index)
-                    summ = pd.DataFrame({
-                        "CM_count":  cm_counts.reindex(all_r, fill_value=0),
-                        "YTD_count": ytd_counts.reindex(all_r, fill_value=0),
-                    }).sort_values("YTD_count", ascending=False)
-                    if top_n:
-                        summ = summ.head(int(top_n))
-                    summ["CM_cost"]  = summ["CM_count"]  * COST_PER_CLAIM
-                    summ["YTD_cost"] = summ["YTD_count"] * COST_PER_CLAIM
-                    def fmt_sar(v):
-                        if v >= 1_000_000: return f"SAR {v/1_000_000:.1f}M"
-                        if v >= 1000:      return f"SAR {int(v/1000)}K"
-                        return f"SAR {int(v)}"
-                    x = np.arange(len(summ)); w = 0.35
-                    fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=150)
-                    b1 = ax.bar(x - w/2, summ["CM_cost"],  w, color="#006394", label=f"Current Month  [n={int(summ['CM_count'].sum())}]")
-                    b2 = ax.bar(x + w/2, summ["YTD_cost"], w, color="#C1A02E", label=f"YTD  [n={int(summ['YTD_count'].sum())}]")
-                    ymax = summ[["CM_cost","YTD_cost"]].to_numpy().max() if summ[["CM_cost","YTD_cost"]].to_numpy().max() > 0 else 1
-                    for bars_g in [b1, b2]:
-                        for bar in bars_g:
-                            h = bar.get_height()
-                            if h > 0:
-                                ax.text(bar.get_x() + bar.get_width()/2, h + ymax * 0.015,
-                                        fmt_sar(h), ha="center", va="bottom",
-                                        fontsize=9, rotation=90, color="#333333")
-                    ax.set_xticks(x)
-                    ax.set_xticklabels([fill(r, 20) for r in summ.index.tolist()], fontsize=10, rotation=25, ha="right")
-                    ax.set_ylabel("Estimated Cost (SAR)  [@ SAR 3,918 / claim]")
-                    ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False)
-                    ax.grid(False)
-                    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.18), ncol=2, frameon=False)
-                    fig.subplots_adjust(bottom=0.25)
-                    return fig
-
-                def slide_classification_guide_fig():
-                    import textwrap as _tw
-                    categories = [
-                        {
-                            "label": "Quality",
-                            "color": "#006394",
-                            "text_color": "white",
-                            "lines": [
-                                "Physical or functional",
-                                "defects from production.",
-                                "",
-                                "Score Cracking, Ink",
-                                "rubbing, Delamination,",
-                                "Warped Sheets, Poor Die",
-                                "Cutting, Wet boards,",
-                                "GSM Downgrade.",
-                            ],
-                        },
-                        {
-                            "label": "Service",
-                            "color": "#C1A02E",
-                            "text_color": "white",
-                            "lines": [
-                                "Failures in delivery,",
-                                "invoicing, or admin.",
-                                "",
-                                "Wrong Item Delivered,",
-                                "Deviation from delivery",
-                                "Schedule, Incorrect",
-                                "Sales Contract Pricing,",
-                                "Wrong Unit Price.",
-                            ],
-                        },
-                        {
-                            "label": "Commercial",
-                            "color": "#2E8449",
-                            "text_color": "white",
-                            "lines": [
-                                "Pre-agreed commercial",
-                                "arrangements — not a",
-                                "product or service",
-                                "failure.",
-                                "",
-                                "Root Cause:",
-                                "  Pre-Agreement",
-                                "Reasons: Sales Discount,",
-                                "  FOC, Tools reimb.",
-                            ],
-                        },
-                        {
-                            "label": "Invalid",
-                            "color": "#B8A040",
-                            "text_color": "white",
-                            "lines": [
-                                "Excluded from KPIs.",
-                                "",
-                                "• Reason Type = 0",
-                                "  or blank",
-                                "• Physical Status:",
-                                "  Baled / Plastic Waste",
-                                "• Gen. Category not",
-                                "  in allowed list",
-                                "• Reason = Invalid",
-                            ],
-                        },
-                    ]
-                    fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=150)
-                    ax.set_xlim(0, 1); ax.set_ylim(0, 1); ax.axis("off")
-                    fig.patch.set_facecolor("white")
-                    n = len(categories)
-                    pad = 0.02
-                    card_w = (1 - pad * (n + 1)) / n
-                    header_h = 0.13
-                    body_top = 0.88
-                    body_bot = 0.04
-                    for i, cat in enumerate(categories):
-                        x0 = pad + i * (card_w + pad)
-                        x1 = x0 + card_w
-                        # Header rectangle
-                        ax.add_patch(plt.Rectangle(
-                            (x0, body_top), card_w, header_h,
-                            transform=ax.transAxes,
-                            facecolor=cat["color"], edgecolor="none", zorder=2,
-                            clip_on=False
-                        ))
-                        # Header label
-                        ax.text(
-                            (x0 + x1) / 2, body_top + header_h / 2,
-                            cat["label"],
-                            transform=ax.transAxes,
-                            ha="center", va="center",
-                            fontsize=16, fontweight="bold",
-                            color=cat["text_color"], zorder=3
-                        )
-                        # Body rectangle
-                        ax.add_patch(plt.Rectangle(
-                            (x0, body_bot), card_w, body_top - body_bot,
-                            transform=ax.transAxes,
-                            facecolor="#F5F5F5",
-                            edgecolor=cat["color"], linewidth=2,
-                            zorder=1, clip_on=False
-                        ))
-                        # Body text — line by line, evenly spaced inside the box
-                        lines = cat["lines"]
-                        n_lines = len(lines)
-                        line_h = (body_top - body_bot - 0.04) / max(n_lines, 1)
-                        for j, line in enumerate(lines):
-                            y_pos = body_top - 0.02 - (j + 0.5) * line_h
-                            ax.text(
-                                (x0 + x1) / 2, y_pos,
-                                line,
-                                transform=ax.transAxes,
-                                ha="center", va="center",
-                                fontsize=9, color="#333333", zorder=4
-                            )
-                    plt.tight_layout()
-                    return fig
-
-                pdf_slides.append({"title": "Commercial Reasons", "section": True})
-                pdf_slides.append({
-                    "title": "Commercial CRMs — Count by Reason (CM vs YTD)",
-                    "fig": slide_commercial_count_fig(selected_year, selected_month),
-                })
-                pdf_slides.append({
-                    "title": "Commercial CRMs — Cost Amount by Reason (CM vs YTD)",
-                    "fig": slide_commercial_cost_fig(selected_year, selected_month),
-                })
-                pdf_slides.append({
-                    "title": "Customer Returns — Estimated Cost by Reason",
-                    "fig": slide_customer_return_cost_fig(selected_year, selected_month, TOPN_SERVICE_CM),
-                })
-                pdf_slides.append({
-                    "title": "CRM Classification Guide",
-                    "fig": slide_classification_guide_fig(),
-                })
-
-                # Intro slide — Cost of Quality
-                pdf_slides.append({"title": "Cost of Quality", "section": True})
-                # 24 - COQ CM (single month bar — reuse breakdown fig)
-                if coq_ready:
-                    pdf_slides.append({"title": f"Cost of Quality — {month_name}", "fig": slide_coq_breakdown_fig(selected_year, selected_month)})
-
-
-                # PDF Export
-                st.divider()
-                st.header("Export")
-                pdf_buf = build_ppt_pdf(pdf_slides, dpi=300)
+                }
+                pdf_buf = build_ppt_pdf([_cover] + slides_for_pdf, dpi=300)
                 st.download_button(
                     label="📥 Download PPT-style PDF",
                     data=pdf_buf,
