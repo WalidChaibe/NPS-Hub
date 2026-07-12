@@ -980,7 +980,8 @@ with tab2:
                 if err_rc_q:
                     st.warning(f"Quality root cause: {err_rc_q}")
                 else:
-                        "fig": slide_rootcause_fig("Quality", selected_year, selected_month, TOPN_RC_REASONS or 4)[0]})
+                    pass
+
 
                 st.subheader("Service (Current Month)")
                 def slide_issued_service_reason_current_month_fig(selected_year,selected_month,top_n=10):
@@ -1002,7 +1003,8 @@ with tab2:
                 if err_rc_s:
                     st.warning(f"Service root cause: {err_rc_s}")
                 else:
-                        "fig": slide_rootcause_fig("Service", selected_year, selected_month, TOPN_RC_REASONS or 4)[0]})
+                    pass
+
 
                 st.divider()
 
@@ -1086,6 +1088,7 @@ with tab2:
                     ax.legend(loc="upper center",bbox_to_anchor=(0.5,-0.08),ncol=2,frameon=False,fontsize=12)
                     fig.subplots_adjust(bottom=0.20); return fig
                 try:
+                    pass
                 except Exception as e:
                     st.warning(f"Customer slide skipped: {e}")
 
@@ -1518,7 +1521,6 @@ with tab2:
                         return fig
 
                     st.subheader("NCR Ratio")
-                                           "fig": slide_ncr_ratio_fig(selected_year)})
                 else:
                     st.info("Fill in missing Work Order data above to generate NCR Ratio chart.")
 
