@@ -346,42 +346,72 @@ with tab2:
         st.info("⬆️ Upload all 3 files above to enable the dashboard.")
     else:
         try:
-            with st.spinner("Loading data..."):
-                # Load settings from Supabase
-                _crm_map, _q_set, _s_set, _i_set = load_settings_from_supabase(supabase)
-                _classifier = make_classifier(_q_set, _s_set, _i_set)
+            # ── Session-state cache: parse Excel only once per upload ──
+            _cache_key = f"qm_loaded_{final_file.file_id}_{issued_file.file_id}_{ncr_file.file_id}"
 
-                df_final_loaded  = read_excel_from_upload(final_file)
-                df_issued_loaded = read_excel_from_upload(issued_file)
-                df_ncr_loaded    = read_excel_from_upload(ncr_file)
+            # Clean up stale cache keys from previous uploads to free memory
+            for _k in list(st.session_state.keys()):
+                if _k.startswith("qm_loaded_") and _k != _cache_key:
+                    del st.session_state[_k]
 
-                final_pkg  = build_dataset_final_issued(df_final_loaded,  date_col=FINAL_APPROVAL_COL,    dataset_name="FINAL",  crm_delete_map=_crm_map, classifier=_classifier)
-                issued_pkg = build_dataset_final_issued(df_issued_loaded, date_col=CREATION_DATETIME_COL, dataset_name="ISSUED", crm_delete_map=_crm_map, classifier=_classifier)
-                ncr_pkg    = build_dataset_ncr(df_ncr_loaded,             date_col=CREATION_DATETIME_COL, dataset_name="NCR",    classifier=_classifier)
+            if _cache_key not in st.session_state:
+                with st.spinner("Loading data..."):
+                    _crm_map, _q_set, _s_set, _i_set = load_settings_from_supabase(supabase)
+                    _classifier = make_classifier(_q_set, _s_set, _i_set)
 
-                df_final  = final_pkg["cleaned_flagged"].copy()
-                df_issued = issued_pkg["cleaned_flagged"].copy()
-                df_ncr    = ncr_pkg["cleaned_flagged"].copy()
+                    _df_final_loaded  = read_excel_from_upload(final_file)
+                    _df_issued_loaded = read_excel_from_upload(issued_file)
+                    _df_ncr_loaded    = read_excel_from_upload(ncr_file)
 
-                for _d in (df_final, df_issued, df_ncr):
-                    _d["Year"]  = pd.to_numeric(_d["Year"],  errors="coerce").astype("Int64")
-                    _d["Month"] = pd.to_numeric(_d["Month"], errors="coerce").astype("Int64")
-                df_final  = df_final.dropna(subset=["Year","Month"])
-                df_issued = df_issued.dropna(subset=["Year","Month"])
-                df_ncr    = df_ncr.dropna(subset=["Year","Month"])
-                df_final["Year"]   = df_final["Year"].astype(int)
-                df_final["Month"]  = df_final["Month"].astype(int)
-                df_issued["Year"]  = df_issued["Year"].astype(int)
-                df_issued["Month"] = df_issued["Month"].astype(int)
-                df_ncr["Year"]     = df_ncr["Year"].astype(int)
-                df_ncr["Month"]    = df_ncr["Month"].astype(int)
+                    _final_pkg  = build_dataset_final_issued(_df_final_loaded,  date_col=FINAL_APPROVAL_COL,    dataset_name="FINAL",  crm_delete_map=_crm_map, classifier=_classifier)
+                    _issued_pkg = build_dataset_final_issued(_df_issued_loaded, date_col=CREATION_DATETIME_COL, dataset_name="ISSUED", crm_delete_map=_crm_map, classifier=_classifier)
+                    _ncr_pkg    = build_dataset_ncr(_df_ncr_loaded,             date_col=CREATION_DATETIME_COL, dataset_name="NCR",    classifier=_classifier)
 
-                df_final_raw_flagged = final_pkg["raw_flagged"]
-                df            = df_final
-                df_raw_flagged= df_final_raw_flagged
-                df_ncr_dash   = df_ncr
+                    st.session_state[_cache_key] = {
+                        "df_final_loaded":  _df_final_loaded,
+                        "df_issued_loaded": _df_issued_loaded,
+                        "df_ncr_loaded":    _df_ncr_loaded,
+                        "final_pkg":        _final_pkg,
+                        "issued_pkg":       _issued_pkg,
+                        "ncr_pkg":          _ncr_pkg,
+                        "crm_map":          _crm_map,
+                        "q_set":            _q_set,
+                        "s_set":            _s_set,
+                        "i_set":            _i_set,
+                    }
+                st.success("✅ Files loaded!")
 
-            st.success("✅ Files loaded!")
+            # Unpack from cache
+            _cached          = st.session_state[_cache_key]
+            df_final_loaded  = _cached["df_final_loaded"]
+            df_issued_loaded = _cached["df_issued_loaded"]
+            df_ncr_loaded    = _cached["df_ncr_loaded"]
+            final_pkg        = _cached["final_pkg"]
+            issued_pkg       = _cached["issued_pkg"]
+            ncr_pkg          = _cached["ncr_pkg"]
+            _crm_map         = _cached["crm_map"]
+            _q_set           = _cached["q_set"]
+            _s_set           = _cached["s_set"]
+            _i_set           = _cached["i_set"]
+            _classifier      = make_classifier(_q_set, _s_set, _i_set)
+
+            def _clean_df(df_in):
+                df_out = df_in.copy()
+                df_out["Year"]  = pd.to_numeric(df_out["Year"],  errors="coerce").astype("Int64")
+                df_out["Month"] = pd.to_numeric(df_out["Month"], errors="coerce").astype("Int64")
+                df_out = df_out.dropna(subset=["Year","Month"])
+                df_out["Year"]  = df_out["Year"].astype(int)
+                df_out["Month"] = df_out["Month"].astype(int)
+                return df_out
+
+            df_final  = _clean_df(final_pkg["cleaned_flagged"])
+            df_issued = _clean_df(issued_pkg["cleaned_flagged"])
+            df_ncr    = _clean_df(ncr_pkg["cleaned_flagged"])
+
+            df_final_raw_flagged = final_pkg["raw_flagged"]
+            df            = df_final
+            df_raw_flagged= df_final_raw_flagged
+            df_ncr_dash   = df_ncr
 
             # ── Unknown reasons prompt ──
             _all_unclassified = set()
@@ -562,27 +592,15 @@ with tab2:
                 st.session_state["qm_selected_year"]  = selected_year
                 st.session_state["qm_selected_month"] = selected_month
 
-                # ── Always re-fetch settings + rebuild datasets on Generate ──
+                # ── Re-fetch settings + rebuild with latest classifications (uses cached raw dataframes) ──
                 _crm_map, _q_set, _s_set, _i_set = load_settings_from_supabase(supabase)
                 _classifier = make_classifier(_q_set, _s_set, _i_set)
                 final_pkg  = build_dataset_final_issued(df_final_loaded,  date_col=FINAL_APPROVAL_COL,    dataset_name="FINAL",  crm_delete_map=_crm_map, classifier=_classifier)
                 issued_pkg = build_dataset_final_issued(df_issued_loaded, date_col=CREATION_DATETIME_COL, dataset_name="ISSUED", crm_delete_map=_crm_map, classifier=_classifier)
                 ncr_pkg    = build_dataset_ncr(df_ncr_loaded,             date_col=CREATION_DATETIME_COL, dataset_name="NCR",    classifier=_classifier)
-                df_final   = final_pkg["cleaned_flagged"].copy()
-                df_issued  = issued_pkg["cleaned_flagged"].copy()
-                df_ncr     = ncr_pkg["cleaned_flagged"].copy()
-                for _d in (df_final, df_issued, df_ncr):
-                    _d["Year"]  = pd.to_numeric(_d["Year"],  errors="coerce").astype("Int64")
-                    _d["Month"] = pd.to_numeric(_d["Month"], errors="coerce").astype("Int64")
-                df_final  = df_final.dropna(subset=["Year","Month"])
-                df_issued = df_issued.dropna(subset=["Year","Month"])
-                df_ncr    = df_ncr.dropna(subset=["Year","Month"])
-                df_final["Year"]   = df_final["Year"].astype(int)
-                df_final["Month"]  = df_final["Month"].astype(int)
-                df_issued["Year"]  = df_issued["Year"].astype(int)
-                df_issued["Month"] = df_issued["Month"].astype(int)
-                df_ncr["Year"]     = df_ncr["Year"].astype(int)
-                df_ncr["Month"]    = df_ncr["Month"].astype(int)
+                df_final   = _clean_df(final_pkg["cleaned_flagged"])
+                df_issued  = _clean_df(issued_pkg["cleaned_flagged"])
+                df_ncr     = _clean_df(ncr_pkg["cleaned_flagged"])
                 df_final_raw_flagged = final_pkg["raw_flagged"]
                 df             = df_final
                 df_raw_flagged = df_final_raw_flagged
