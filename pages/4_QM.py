@@ -601,8 +601,9 @@ with tab2:
                         if v<=0: continue
                         ang=(w.theta2+w.theta1)/2.0
                         ax.text(lr*np.cos(np.deg2rad(ang)),lr*np.sin(np.deg2rad(ang)),
-                                f"{int(v)}",ha="center",va="center",fontsize=11,color="#4D4D4D")
+                                f"{int(v)}",ha="center",va="center",fontsize=11,color="white")
                     ax.axis("equal")
+                    ax.legend(handles=[plt.Rectangle((0,0),1,1,fc=COLORS[l]) for l in labels if values[labels.index(l)]>0], labels=[l for l in labels if values[labels.index(l)]>0], loc="upper center", bbox_to_anchor=(0.5, -0.05), ncol=len(labels),frameon=False, fontsize=10)
 
                 def add_simple_value_labels(ax, bars, fmt_fn, pad):
                     for b in bars:
@@ -666,8 +667,7 @@ with tab2:
                     m_lbl=pd.to_datetime(f"{year}-{month:02d}-01").strftime("%b-%y")
                     axes[0].text(0.5,-0.10,m_lbl,transform=axes[0].transAxes,ha="center",va="top",fontsize=13,color="#4D4D4D")
                     axes[1].text(0.5,-0.10,f"{year} YTD",transform=axes[1].transAxes,ha="center",va="top",fontsize=13,color="#4D4D4D")
-                    fig.legend(["Service","Quality","Invalid"],loc="lower center",ncol=3,frameon=False,prop={"size":14})
-                    plt.tight_layout(rect=[0,0.08,1,1]); return fig
+                    plt.tight_layout(rect=[0,0.14,1,1]); return fig
                 show_fig(slide_1_final_donuts_fig(selected_year,selected_month))
                 slides_for_pdf.append({"title":"FINAL - Total Complaints Issued","fig":slide_1_final_donuts_fig(selected_year,selected_month)})
 
@@ -889,8 +889,7 @@ with tab2:
                     m_lbl=pd.to_datetime(f"{year}-{month:02d}-01").strftime("%b-%y")
                     axes[0].text(0.5,-0.10,f"ISSUED – {m_lbl}",transform=axes[0].transAxes,ha="center",va="top",fontsize=13,color="#4D4D4D")
                     axes[1].text(0.5,-0.10,f"ISSUED – {year} YTD",transform=axes[1].transAxes,ha="center",va="top",fontsize=13,color="#4D4D4D")
-                    fig.legend(["Service","Quality","Invalid"],loc="lower center",ncol=3,frameon=False,prop={"size":14})
-                    plt.tight_layout(rect=[0,0.08,1,1]); return fig
+                    plt.tight_layout(rect=[0,0.14,1,1]); return fig
                 show_fig(slide_issued_1_donuts_fig(selected_year,selected_month))
                 slides_for_pdf.append({"title":"ISSUED - Total Complaints","fig":slide_issued_1_donuts_fig(selected_year,selected_month)})
 
@@ -1757,15 +1756,11 @@ with tab2:
 
 # ── Commercial Reasons slides ──────────────────────────────────
                 def slide_commercial_count_fig(year, month):
-                    comm_dfs = []
-                    for _df_src in [df_final, df_issued]:
-                        _c = _df_src[
-                            (_df_src["Complaint_Category"] == "Commercial") &
-                            (_df_src["Year"] == year) &
-                            (_df_src["Month"].between(1, month))
-                        ].copy()
-                        comm_dfs.append(_c)
-                    comm = pd.concat(comm_dfs, ignore_index=True) if comm_dfs else pd.DataFrame()
+                    comm = df_final[
+                        (df_final["Complaint_Category"] == "Commercial") &
+                        (df_final["Year"] == year) &
+                        (df_final["Month"].between(1, month))
+                    ].copy()
                     if comm.empty:
                         fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=300)
                         ax.text(0.5, 0.5, "No Commercial CRMs found", ha="center", va="center", fontsize=20)
@@ -1788,7 +1783,7 @@ with tab2:
                             if h > 0:
                                 ax.text(bar.get_x() + bar.get_width()/2, h + 0.3,
                                         f"{int(h)}", ha="center", va="bottom",
-                                        fontsize=11, color="#000000", fontweight="bold")
+                                        fontsize=10, color="#4D4D4D")
                     ax.set_xticks(x)
                     ax.set_xticklabels(summ.index.tolist(), fontsize=12)
                     ax.set_ylabel("Count")
@@ -1802,17 +1797,13 @@ with tab2:
                     dec_col = next((c for c in df_final.columns if "decision" in c.lower()), None)
                     if dec_col is None:
                         dec_col = next((c for c in df_final.columns if "dec" in c.lower() and "approv" not in c.lower()), None)
-                    comm_dfs = []
-                    for _df_src in [df_final, df_issued]:
-                        _c = _df_src[
-                            (_df_src["Complaint_Category"] == "Commercial") &
-                            (_df_src["Year"] == year) &
-                            (_df_src["Month"].between(1, month))
-                        ].copy()
-                        if dec_col and dec_col in _c.columns:
-                            _c = _c[_c[dec_col].astype(str).str.strip().str.lower() == "credit note"]
-                        comm_dfs.append(_c)
-                    comm = pd.concat(comm_dfs, ignore_index=True) if comm_dfs else pd.DataFrame()
+                    comm = df_final[
+                        (df_final["Complaint_Category"] == "Commercial") &
+                        (df_final["Year"] == year) &
+                        (df_final["Month"].between(1, month))
+                    ].copy()
+                    if dec_col and dec_col in comm.columns:
+                        comm = comm[comm[dec_col].astype(str).str.strip().str.lower() == "credit note"]
                     if comm.empty:
                         fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=300)
                         ax.text(0.5, 0.5, "No Commercial Credit Notes found", ha="center", va="center", fontsize=20)
@@ -1841,7 +1832,7 @@ with tab2:
                             if h > 0:
                                 ax.text(bar.get_x() + bar.get_width()/2, h + ymax * 0.015,
                                         fmt_sar(h), ha="center", va="bottom",
-                                        fontsize=10, color="#000000", fontweight="bold")
+                                        fontsize=9, rotation=90, color="#333333")
                     ax.set_xticks(x)
                     ax.set_xticklabels(summ.index.tolist(), fontsize=12)
                     ax.set_ylabel("Cost Amount (SAR)")
@@ -1849,6 +1840,179 @@ with tab2:
                     ax.grid(False)
                     ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.08), ncol=2, frameon=False)
                     plt.tight_layout(rect=[0, 0.05, 1, 1])
+                    return fig
+
+                def slide_customer_return_cost_fig(year, month, top_n=10):
+                    COST_PER_CLAIM = 3918.0
+                    dec_col = next((c for c in df_final.columns if "decision" in c.lower()), None)
+                    if dec_col is None:
+                        dec_col = next((c for c in df_final.columns if "dec" in c.lower() and "approv" not in c.lower()), None)
+                    if dec_col is None:
+                        fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=300)
+                        ax.text(0.5, 0.5, "Decision column not found", ha="center", va="center", fontsize=20)
+                        ax.axis("off"); return fig
+                    base = df_final[
+                        (df_final["Year"] == year) &
+                        (df_final["Month"].between(1, month)) &
+                        (df_final[dec_col].astype(str).str.strip().str.lower() == "return material from customer")
+                    ].copy()
+                    if base.empty:
+                        fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=300)
+                        ax.text(0.5, 0.5, "No Customer Returns found", ha="center", va="center", fontsize=20)
+                        ax.axis("off"); return fig
+                    base["_Reason"] = base["Reason"].astype(str).str.strip()
+                    cm_counts  = base[base["Month"] == month]["_Reason"].value_counts()
+                    ytd_counts = base["_Reason"].value_counts()
+                    all_r      = pd.Index(ytd_counts.index).union(cm_counts.index)
+                    summ = pd.DataFrame({
+                        "CM_count":  cm_counts.reindex(all_r, fill_value=0),
+                        "YTD_count": ytd_counts.reindex(all_r, fill_value=0),
+                    }).sort_values("YTD_count", ascending=False)
+                    if top_n:
+                        summ = summ.head(int(top_n))
+                    summ["CM_cost"]  = summ["CM_count"]  * COST_PER_CLAIM
+                    summ["YTD_cost"] = summ["YTD_count"] * COST_PER_CLAIM
+                    def fmt_sar(v):
+                        if v >= 1_000_000: return f"SAR {v/1_000_000:.1f}M"
+                        if v >= 1000:      return f"SAR {int(v/1000)}K"
+                        return f"SAR {int(v)}"
+                    x = np.arange(len(summ)); w = 0.35
+                    fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=300)
+                    b1 = ax.bar(x - w/2, summ["CM_cost"],  w, color="#006394", label=f"Current Month  [n={int(summ['CM_count'].sum())}]")
+                    b2 = ax.bar(x + w/2, summ["YTD_cost"], w, color="#C1A02E", label=f"YTD  [n={int(summ['YTD_count'].sum())}]")
+                    ymax = summ[["CM_cost","YTD_cost"]].to_numpy().max() if summ[["CM_cost","YTD_cost"]].to_numpy().max() > 0 else 1
+                    for bars_g in [b1, b2]:
+                        for bar in bars_g:
+                            h = bar.get_height()
+                            if h > 0:
+                                ax.text(bar.get_x() + bar.get_width()/2, h + ymax * 0.015,
+                                        fmt_sar(h), ha="center", va="bottom",
+                                        fontsize=9, rotation=90, color="#333333")
+                    ax.set_xticks(x)
+                    ax.set_xticklabels([fill(r, 20) for r in summ.index.tolist()], fontsize=10, rotation=25, ha="right")
+                    ax.set_ylabel("Estimated Cost (SAR)  [@ SAR 3,918 / claim]")
+                    ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False)
+                    ax.grid(False)
+                    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.18), ncol=2, frameon=False)
+                    fig.subplots_adjust(bottom=0.25)
+                    return fig
+
+                def slide_classification_guide_fig():
+                    import textwrap as _tw
+                    categories = [
+                        {
+                            "label": "Quality",
+                            "color": "#006394",
+                            "text_color": "white",
+                            "lines": [
+                                "Physical or functional",
+                                "defects from production.",
+                                "",
+                                "Score Cracking, Ink",
+                                "rubbing, Delamination,",
+                                "Warped Sheets, Poor Die",
+                                "Cutting, Wet boards,",
+                                "GSM Downgrade.",
+                            ],
+                        },
+                        {
+                            "label": "Service",
+                            "color": "#C1A02E",
+                            "text_color": "white",
+                            "lines": [
+                                "Failures in delivery,",
+                                "invoicing, or admin.",
+                                "",
+                                "Wrong Item Delivered,",
+                                "Deviation from delivery",
+                                "Schedule, Incorrect",
+                                "Sales Contract Pricing,",
+                                "Wrong Unit Price.",
+                            ],
+                        },
+                        {
+                            "label": "Commercial",
+                            "color": "#2E8449",
+                            "text_color": "white",
+                            "lines": [
+                                "Pre-agreed commercial",
+                                "arrangements — not a",
+                                "product or service",
+                                "failure.",
+                                "",
+                                "Root Cause:",
+                                "  Pre-Agreement",
+                                "Reasons: Sales Discount,",
+                                "  FOC, Tools reimb.",
+                            ],
+                        },
+                        {
+                            "label": "Invalid",
+                            "color": "#B8A040",
+                            "text_color": "white",
+                            "lines": [
+                                "Excluded from KPIs.",
+                                "",
+                                "• Reason Type = 0",
+                                "  or blank",
+                                "• Physical Status:",
+                                "  Baled / Plastic Waste",
+                                "• Gen. Category not",
+                                "  in allowed list",
+                                "• Reason = Invalid",
+                            ],
+                        },
+                    ]
+                    fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=300)
+                    ax.set_xlim(0, 1); ax.set_ylim(0, 1); ax.axis("off")
+                    fig.patch.set_facecolor("white")
+                    n = len(categories)
+                    pad = 0.02
+                    card_w = (1 - pad * (n + 1)) / n
+                    header_h = 0.13
+                    body_top = 0.88
+                    body_bot = 0.04
+                    for i, cat in enumerate(categories):
+                        x0 = pad + i * (card_w + pad)
+                        x1 = x0 + card_w
+                        # Header rectangle
+                        ax.add_patch(plt.Rectangle(
+                            (x0, body_top), card_w, header_h,
+                            transform=ax.transAxes,
+                            facecolor=cat["color"], edgecolor="none", zorder=2,
+                            clip_on=False
+                        ))
+                        # Header label
+                        ax.text(
+                            (x0 + x1) / 2, body_top + header_h / 2,
+                            cat["label"],
+                            transform=ax.transAxes,
+                            ha="center", va="center",
+                            fontsize=16, fontweight="bold",
+                            color=cat["text_color"], zorder=3
+                        )
+                        # Body rectangle
+                        ax.add_patch(plt.Rectangle(
+                            (x0, body_bot), card_w, body_top - body_bot,
+                            transform=ax.transAxes,
+                            facecolor="#F5F5F5",
+                            edgecolor=cat["color"], linewidth=2,
+                            zorder=1, clip_on=False
+                        ))
+                        # Body text — line by line, evenly spaced inside the box
+                        lines = cat["lines"]
+                        n_lines = len(lines)
+                        line_h = (body_top - body_bot - 0.04) / max(n_lines, 1)
+                        for j, line in enumerate(lines):
+                            y_pos = body_top - 0.02 - (j + 0.5) * line_h
+                            ax.text(
+                                (x0 + x1) / 2, y_pos,
+                                line,
+                                transform=ax.transAxes,
+                                ha="center", va="center",
+                                fontsize=9, color="#333333", zorder=4
+                            )
+                    plt.tight_layout()
                     return fig
 
                 pdf_slides.append({"title": "Commercial Reasons", "section": True})
@@ -1860,10 +2024,17 @@ with tab2:
                     "title": "Commercial CRMs — Cost Amount by Reason (CM vs YTD)",
                     "fig": slide_commercial_cost_fig(selected_year, selected_month),
                 })
+                pdf_slides.append({
+                    "title": "Customer Returns — Estimated Cost by Reason",
+                    "fig": slide_customer_return_cost_fig(selected_year, selected_month, TOPN_SERVICE_CM),
+                })
+                pdf_slides.append({
+                    "title": "CRM Classification Guide",
+                    "fig": slide_classification_guide_fig(),
+                })
 
                 # Intro slide — Cost of Quality
                 pdf_slides.append({"title": "Cost of Quality", "section": True})
-
                 # 24 - COQ CM (single month bar — reuse breakdown fig)
                 if coq_ready:
                     pdf_slides.append({"title": f"Cost of Quality — {month_name}", "fig": slide_coq_breakdown_fig(selected_year, selected_month)})
