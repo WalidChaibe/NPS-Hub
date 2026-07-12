@@ -446,7 +446,7 @@ with tab2:
                 c9, c10 = st.columns([1,7])
                 TOPN_RC_REASONS     = topn(c9, "Root Cause Top Reasons", 4, 15)
 
-            run = st.button("🔄 Generate Charts", type="primary", key="qm_run")
+            run = st.button("📄 Generate & Download PDF", type="primary", key="qm_run")
 
             # ── Persistent data forms (outside run block so they survive rerun) ──
             _months_range_pre = list(range(1, selected_month + 1))
@@ -668,8 +668,6 @@ with tab2:
                     axes[0].text(0.5,-0.10,m_lbl,transform=axes[0].transAxes,ha="center",va="top",fontsize=13,color="#4D4D4D")
                     axes[1].text(0.5,-0.10,f"{year} YTD",transform=axes[1].transAxes,ha="center",va="top",fontsize=13,color="#4D4D4D")
                     plt.tight_layout(rect=[0,0.14,1,1]); return fig
-                show_fig(slide_1_final_donuts_fig(selected_year,selected_month))
-                slides_for_pdf.append({"title":"FINAL - Total Complaints Issued","fig":slide_1_final_donuts_fig(selected_year,selected_month)})
 
                 # Lead Time
                 st.subheader("Lead Time")
@@ -699,8 +697,6 @@ with tab2:
                     ax.legend(loc="upper center",bbox_to_anchor=(0.5,-0.08),ncol=2,frameon=False)
                     ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False); ax.grid(False)
                     plt.tight_layout(rect=[0,0.05,1,1]); return fig
-                show_fig(slide_2_leadtime_fig(selected_year,selected_month))
-                slides_for_pdf.append({"title":"FINAL - Lead Time (Days)","fig":slide_2_leadtime_fig(selected_year,selected_month)})
 
                 # Quality Count
                 st.subheader("Quality")
@@ -721,8 +717,6 @@ with tab2:
                     ax.legend(loc="upper center",bbox_to_anchor=(0.5,-0.08),ncol=3,frameon=False)
                     ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False); ax.grid(False)
                     plt.tight_layout(rect=[0,0.05,1,1]); return fig
-                show_fig(slide_3_valid_quality_count_fig(selected_year,selected_month))
-                slides_for_pdf.append({"title":"FINAL - Valid Quality Count","fig":slide_3_valid_quality_count_fig(selected_year,selected_month)})
 
                 def slide_4_quality_defect_cm_vs_ytd_fig(selected_year,selected_month,top_n=15):
                     base=df[(df["Is_Valid"]==True)&(df["Complaint_Category"]=="Quality")].copy()
@@ -749,8 +743,6 @@ with tab2:
                     ax.legend(loc="upper center",bbox_to_anchor=(0.5,-0.22),ncol=4,frameon=False,fontsize=10)
                     fig.subplots_adjust(bottom=0.35); return fig
                 st.subheader("Quality Defects (CM vs YTD)")
-                show_fig(slide_4_quality_defect_cm_vs_ytd_fig(selected_year,selected_month,TOPN_QUALITY_DEFECT))
-                slides_for_pdf.append({"title":"FINAL - Quality Defects (CM vs YTD)","fig":slide_4_quality_defect_cm_vs_ytd_fig(selected_year,selected_month,TOPN_QUALITY_DEFECT)})
 
                 def slide_5_quality_defect_current_month_fig(selected_year,selected_month,top_n=10):
                     base=df[(df["Is_Valid"]==True)&(df["Complaint_Category"]=="Quality")].copy()
@@ -765,8 +757,6 @@ with tab2:
                     ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False); ax.grid(False)
                     plt.tight_layout(); return fig
                 st.subheader("Quality Defects (Current Month)")
-                show_fig(slide_5_quality_defect_current_month_fig(selected_year,selected_month,TOPN_QUALITY_CM))
-                slides_for_pdf.append({"title":"FINAL - Quality Defects (Current Month)","fig":slide_5_quality_defect_current_month_fig(selected_year,selected_month,TOPN_QUALITY_CM)})
 
 
 
@@ -805,8 +795,6 @@ with tab2:
                     fig.subplots_adjust(bottom=0.35); return fig
                 try:
                     st.subheader("Quality Cost (Credit Note)")
-                    show_fig(slide_6_quality_cost_cm_vs_ytd_fig(selected_year,selected_month,TOPN_COST_DEFECT))
-                    slides_for_pdf.append({"title":"FINAL - Quality Cost (Credit Note)","fig":slide_6_quality_cost_cm_vs_ytd_fig(selected_year,selected_month,TOPN_COST_DEFECT)})
                 except Exception as e:
                     st.warning(f"Cost slide skipped: {e}")
 
@@ -830,8 +818,6 @@ with tab2:
                     ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False); ax.grid(False)
                     plt.tight_layout(rect=[0,0.05,1,1]); return fig
                 st.subheader("Valid Service Count")
-                show_fig(slide_s1_valid_service_count_fig(selected_year,selected_month))
-                slides_for_pdf.append({"title":"FINAL - Valid Service Count","fig":slide_s1_valid_service_count_fig(selected_year,selected_month)})
 
                 def slide_s2_service_reason_cm_vs_ytd_fig(selected_year,selected_month,top_n=15):
                     base=df[(df["Is_Valid"]==True)&(df["Complaint_Category"]=="Service")].copy()
@@ -858,8 +844,6 @@ with tab2:
                     ax.legend(loc="upper center",bbox_to_anchor=(0.5,-0.22),ncol=4,frameon=False,fontsize=10)
                     fig.subplots_adjust(bottom=0.35); return fig
                 st.subheader("Service Reasons (CM vs YTD)")
-                show_fig(slide_s2_service_reason_cm_vs_ytd_fig(selected_year,selected_month,TOPN_SERVICE_REASON))
-                slides_for_pdf.append({"title":"FINAL - Service Reasons (CM vs YTD)","fig":slide_s2_service_reason_cm_vs_ytd_fig(selected_year,selected_month,TOPN_SERVICE_REASON)})
 
                 def slide_s3_service_reason_current_month_fig(selected_year,selected_month,top_n=10):
                     base=df[(df["Is_Valid"]==True)&(df["Complaint_Category"]=="Service")].copy()
@@ -874,8 +858,6 @@ with tab2:
                     ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False); ax.grid(False)
                     plt.tight_layout(); return fig
                 st.subheader("Service Reasons (Current Month)")
-                show_fig(slide_s3_service_reason_current_month_fig(selected_year,selected_month,TOPN_SERVICE_CM))
-                slides_for_pdf.append({"title":"FINAL - Service Reasons (Current Month)","fig":slide_s3_service_reason_current_month_fig(selected_year,selected_month,TOPN_SERVICE_CM)})
 
                 st.divider()
 
@@ -890,8 +872,6 @@ with tab2:
                     axes[0].text(0.5,-0.10,f"ISSUED – {m_lbl}",transform=axes[0].transAxes,ha="center",va="top",fontsize=13,color="#4D4D4D")
                     axes[1].text(0.5,-0.10,f"ISSUED – {year} YTD",transform=axes[1].transAxes,ha="center",va="top",fontsize=13,color="#4D4D4D")
                     plt.tight_layout(rect=[0,0.14,1,1]); return fig
-                show_fig(slide_issued_1_donuts_fig(selected_year,selected_month))
-                slides_for_pdf.append({"title":"ISSUED - Total Complaints","fig":slide_issued_1_donuts_fig(selected_year,selected_month)})
 
                 st.subheader("Valid Count")
                 def slide_issued_valid_count_fig(selected_year,selected_month):
@@ -911,8 +891,6 @@ with tab2:
                     ax.legend(loc="upper center",bbox_to_anchor=(0.5,-0.08),ncol=3,frameon=False)
                     ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False); ax.grid(False)
                     plt.tight_layout(rect=[0,0.05,1,1]); return fig
-                show_fig(slide_issued_valid_count_fig(selected_year,selected_month))
-                slides_for_pdf.append({"title":"ISSUED - Valid Count","fig":slide_issued_valid_count_fig(selected_year,selected_month)})
 
                 st.subheader("Quality (Current Month)")
                 def slide_issued_quality_reason_current_month_fig(selected_year,selected_month,top_n=12):
@@ -927,8 +905,6 @@ with tab2:
                     ax.set_ylim(0,max(1,counts.max())*1.15)
                     ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False); ax.grid(False)
                     plt.tight_layout(); return fig
-                show_fig(slide_issued_quality_reason_current_month_fig(selected_year,selected_month,TOPN_QUALITY_CM))
-                slides_for_pdf.append({"title":"ISSUED - Quality Reasons (CM)","fig":slide_issued_quality_reason_current_month_fig(selected_year,selected_month,TOPN_QUALITY_CM)})
 
                 # ── Quality Root Cause Drill-Down ──
                 st.subheader("Quality — Root Cause by Reason (Current Month)")
@@ -1004,8 +980,6 @@ with tab2:
                 if err_rc_q:
                     st.warning(f"Quality root cause: {err_rc_q}")
                 else:
-                    show_fig(fig_rc_q)
-                    slides_for_pdf.append({"title": "ISSUED - Quality Root Cause by Reason",
                         "fig": slide_rootcause_fig("Quality", selected_year, selected_month, TOPN_RC_REASONS or 4)[0]})
 
                 st.subheader("Service (Current Month)")
@@ -1021,8 +995,6 @@ with tab2:
                     ax.set_ylim(0,max(1,counts.max())*1.15)
                     ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False); ax.grid(False)
                     plt.tight_layout(); return fig
-                show_fig(slide_issued_service_reason_current_month_fig(selected_year,selected_month,TOPN_SERVICE_CM))
-                slides_for_pdf.append({"title":"ISSUED - Service Reasons (CM)","fig":slide_issued_service_reason_current_month_fig(selected_year,selected_month,TOPN_SERVICE_CM)})
 
                 # ── Service Root Cause Drill-Down ──
                 st.subheader("Service — Root Cause by Reason (Current Month)")
@@ -1030,8 +1002,6 @@ with tab2:
                 if err_rc_s:
                     st.warning(f"Service root cause: {err_rc_s}")
                 else:
-                    show_fig(fig_rc_s)
-                    slides_for_pdf.append({"title": "ISSUED - Service Root Cause by Reason",
                         "fig": slide_rootcause_fig("Service", selected_year, selected_month, TOPN_RC_REASONS or 4)[0]})
 
                 st.divider()
@@ -1058,8 +1028,6 @@ with tab2:
                     ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False); ax.grid(False)
                     ax.legend(loc="upper center",bbox_to_anchor=(0.5,-0.08),ncol=2,frameon=False,fontsize=12)
                     fig.subplots_adjust(bottom=0.22); return fig
-                show_fig(slide_ncr_quality_defect_cm_vs_ytd_fig(selected_year,selected_month,TOPN_NCR_DEFECT))
-                slides_for_pdf.append({"title":"NCR - Quality Defects (CM vs YTD)","fig":slide_ncr_quality_defect_cm_vs_ytd_fig(selected_year,selected_month,TOPN_NCR_DEFECT)})
 
                 st.subheader("Valid NCR Count Table")
                 base_tbl=df_ncr_dash[(df_ncr_dash["Year"]==selected_year)&(df_ncr_dash["Month"].between(1,selected_month))&(df_ncr_dash["Is_Valid"]==True)]
@@ -1093,8 +1061,6 @@ with tab2:
                     ax.legend(loc="upper center",bbox_to_anchor=(0.5,-0.08),ncol=2,frameon=False,fontsize=12)
                     ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False); ax.grid(False)
                     fig.subplots_adjust(left=0.28,right=0.98,top=0.90,bottom=0.18); return fig
-                show_fig(slide_ncr_vs_crm_correlation_ytd_fig(selected_year,selected_month,TOPN_CORRELATION))
-                slides_for_pdf.append({"title":"NCR vs CRM - Correlation (YTD)","fig":slide_ncr_vs_crm_correlation_ytd_fig(selected_year,selected_month,TOPN_CORRELATION)})
 
                 st.subheader("Top Customers (FINAL)")
                 def slide_valid_quality_by_customer_top5_cm_vs_ytd_fig(selected_year,selected_month,top_n=5):
@@ -1120,8 +1086,6 @@ with tab2:
                     ax.legend(loc="upper center",bbox_to_anchor=(0.5,-0.08),ncol=2,frameon=False,fontsize=12)
                     fig.subplots_adjust(bottom=0.20); return fig
                 try:
-                    show_fig(slide_valid_quality_by_customer_top5_cm_vs_ytd_fig(selected_year,selected_month,TOPN_CUSTOMER))
-                    slides_for_pdf.append({"title":"FINAL - Top Customers (CM vs YTD)","fig":slide_valid_quality_by_customer_top5_cm_vs_ytd_fig(selected_year,selected_month,TOPN_CUSTOMER)})
                 except Exception as e:
                     st.warning(f"Customer slide skipped: {e}")
 
@@ -1268,12 +1232,8 @@ with tab2:
                         return fig
 
                     st.subheader("Total Customer Complaints Ratio (Quality + Service)")
-                    show_fig(slide_cc_ratio_fig(selected_year, category_filter=None, title_label="Total CC Ratio"))
-                    slides_for_pdf.append({"title": "Total CC Ratio", "fig": slide_cc_ratio_fig(selected_year, category_filter=None, title_label="Total CC Ratio")})
 
                     st.subheader("Quality Customer Complaints Ratio")
-                    show_fig(slide_cc_ratio_fig(selected_year, category_filter="Quality", title_label="Quality CC Ratio"))
-                    slides_for_pdf.append({"title": "Quality CC Ratio", "fig": slide_cc_ratio_fig(selected_year, category_filter="Quality", title_label="Quality CC Ratio")})
 
                 else:
                     st.info("Enter FG Invoiced values above to generate CC Ratio charts.")
@@ -1416,8 +1376,6 @@ with tab2:
                         return fig
 
                     st.subheader("COQ Breakdown — CM vs YTD")
-                    show_fig(slide_coq_breakdown_fig(selected_year, selected_month))
-                    slides_for_pdf.append({"title": "Cost of Quality — Breakdown", "fig": slide_coq_breakdown_fig(selected_year, selected_month)})
 
                 else:
                     st.info("Fill in missing COQ data above to generate COQ charts.")
@@ -1560,8 +1518,6 @@ with tab2:
                         return fig
 
                     st.subheader("NCR Ratio")
-                    show_fig(slide_ncr_ratio_fig(selected_year))
-                    slides_for_pdf.append({"title": "NCR Ratio",
                                            "fig": slide_ncr_ratio_fig(selected_year)})
                 else:
                     st.info("Fill in missing Work Order data above to generate NCR Ratio chart.")
@@ -2041,15 +1997,16 @@ with tab2:
 
 
                 # PDF Export
-                st.divider()
-                st.header("Export")
-                pdf_buf = build_ppt_pdf(pdf_slides, dpi=300)
+                with st.spinner("⚙️ Building PDF..."):
+                    pdf_buf = build_ppt_pdf(pdf_slides, dpi=300)
+                st.success("✅ PDF ready!")
                 st.download_button(
                     label="📥 Download PPT-style PDF",
                     data=pdf_buf,
                     file_name=f"QM_Dashboard_{selected_year}-{selected_month:02d}.pdf",
                     mime="application/pdf",
                 )
+                plt.close("all")
 
             # ── Reason Trend Explorer (outside run block — persists on rerun) ──
             if "qm_df_final" in st.session_state and "qm_selected_year" in st.session_state:
@@ -2125,8 +2082,8 @@ with tab2:
                     _ax_t.legend(loc="upper center", bbox_to_anchor=(0.5, -0.08),
                                  ncol=4, frameon=False, fontsize=11)
                     plt.tight_layout(rect=[0, 0.05, 1, 1])
-                    st.image(fig_to_png_bytes(_fig_t))
                     plt.close(_fig_t)
+                    plt.close("all")
 
         except Exception as e:
             st.error(f"Error: {str(e)}")
