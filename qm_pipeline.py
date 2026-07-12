@@ -163,17 +163,20 @@ def add_date_and_flags_final_issued(df, date_col, df_name="df", classifier=None)
     if rc_col is None:
         rc_col = next((c for c in df.columns if "root" in c.lower()), None)
 
-    categories = []
-    for valid, rsn, idx in zip(df["Is_Valid"].tolist(), reason.tolist(), df.index):
-        # Commercial check runs FIRST — bypasses Is_Valid so these rows
-        # are never miscategorised as Invalid
-        if _is_commercial(rsn, df.at[idx, rc_col] if rc_col else None):
-            categories.append("Commercial")
-        elif not valid:
-            categories.append("Invalid")
-        else:
-            categories.append(classifier(rsn))
-    df["Complaint_Category"] = categories
+    # Vectorised commercial detection — no row-by-row loop
+    reason_in_commercial = reason.isin(_COMMERCIAL_REASONS)
+    if rc_col:
+        rc_clean = df[rc_col].map(lambda x: _clean_text(str(x)).lower() if pd.notna(x) else "")
+        is_commercial = reason_in_commercial & rc_clean.eq(_COMMERCIAL_ROOT_CAUSE_LOWER)
+    else:
+        is_commercial = reason_in_commercial
+
+    # Build category column vectorised: Commercial > Invalid > classifier
+    cat = reason.map(classifier)                     # default: run classifier on every row
+    cat[~df["Is_Valid"]] = "Invalid"                 # override invalid rows
+    cat[is_commercial]   = "Commercial"              # commercial overrides everything
+
+    df["Complaint_Category"] = cat
     return df
 
 def add_date_and_flags_ncr(df, date_col, df_name="NCR", classifier=None):
@@ -190,15 +193,19 @@ def add_date_and_flags_ncr(df, date_col, df_name="NCR", classifier=None):
     if rc_col is None:
         rc_col = next((c for c in df.columns if "root" in c.lower()), None)
 
-    categories = []
-    for valid, rsn, idx in zip(df["Is_Valid"].tolist(), reason.tolist(), df.index):
-        if _is_commercial(rsn, df.at[idx, rc_col] if rc_col else None):
-            categories.append("Commercial")
-        elif not valid:
-            categories.append("Invalid")
-        else:
-            categories.append(classifier(rsn))
-    df["Complaint_Category"] = categories
+    # Vectorised commercial detection
+    reason_in_commercial = reason.isin(_COMMERCIAL_REASONS)
+    if rc_col:
+        rc_clean = df[rc_col].map(lambda x: _clean_text(str(x)).lower() if pd.notna(x) else "")
+        is_commercial = reason_in_commercial & rc_clean.eq(_COMMERCIAL_ROOT_CAUSE_LOWER)
+    else:
+        is_commercial = reason_in_commercial
+
+    cat = reason.map(classifier)
+    cat[~df["Is_Valid"]] = "Invalid"
+    cat[is_commercial]   = "Commercial"
+
+    df["Complaint_Category"] = cat
     return df
 
 def show_unclassified_counts(df):
