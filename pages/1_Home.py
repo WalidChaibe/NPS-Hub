@@ -109,11 +109,6 @@ def render_bell(sb, user_id):
                     if st.button("Mark read", key=f"bell_read_{n['id']}"):
                         _mark_one_read(sb, n["id"]); st.rerun()
 
-st.set_page_config(page_title="QM Pillar", page_icon="✅", layout="wide")
-
-if "user" not in st.session_state:
-    st.switch_page("app.py")
-
 # ── Supabase ──
 supabase = get_supabase()
 
