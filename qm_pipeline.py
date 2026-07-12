@@ -221,24 +221,24 @@ def build_dataset_final_issued(df_loaded, date_col, dataset_name="DATASET",
                                 crm_delete_map=None, classifier=None):
     if crm_delete_map is None: crm_delete_map = _CRM_DELETE_MAP_DEFAULT
     if classifier is None: classifier = _classify_reason_default
-    raw             = df_loaded.copy()
-    raw_flagged     = add_date_and_flags_final_issued(raw.copy(), date_col=date_col,
+    # raw_flagged: flag the original (no crm deletions) — work in place, no extra copy
+    raw_flagged     = add_date_and_flags_final_issued(df_loaded.copy(), date_col=date_col,
                                                        df_name=f"{dataset_name}.raw", classifier=classifier)
-    cleaned         = apply_crm_deletions(df_loaded.copy(), crm_delete_map, crm_col=CRM_COL, df_name=dataset_name)
+    # cleaned: apply CRM deletions, then flag — reuse df_loaded directly
+    cleaned         = apply_crm_deletions(df_loaded, crm_delete_map, crm_col=CRM_COL, df_name=dataset_name)
     cleaned_flagged = add_date_and_flags_final_issued(cleaned, date_col=date_col,
                                                        df_name=f"{dataset_name}.cleaned", classifier=classifier)
     return {
-        "raw": raw, "raw_flagged": raw_flagged, "cleaned_flagged": cleaned_flagged,
+        "raw_flagged": raw_flagged, "cleaned_flagged": cleaned_flagged,
         "unclassified_counts": show_unclassified_counts(cleaned_flagged),
     }
 
 def build_dataset_ncr(df_loaded, date_col, dataset_name="NCR", classifier=None):
     if classifier is None: classifier = _classify_reason_default
-    raw         = df_loaded.copy()
-    raw_flagged = add_date_and_flags_ncr(raw.copy(), date_col=date_col,
+    raw_flagged = add_date_and_flags_ncr(df_loaded, date_col=date_col,
                                           df_name=dataset_name, classifier=classifier)
     return {
-        "raw": raw, "raw_flagged": raw_flagged, "cleaned_flagged": raw_flagged.copy(),
+        "raw_flagged": raw_flagged, "cleaned_flagged": raw_flagged,
         "unclassified_counts": show_unclassified_counts(raw_flagged),
     }
 
