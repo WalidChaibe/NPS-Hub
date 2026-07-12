@@ -209,8 +209,8 @@ with tab2:
 
     mpl.rcParams["font.family"] = "DejaVu Sans"
     mpl.rcParams["font.size"] = 11
-    mpl.rcParams["figure.dpi"] = 160
-    mpl.rcParams["savefig.dpi"] = 320
+    mpl.rcParams["figure.dpi"] = 100
+    mpl.rcParams["savefig.dpi"] = 150
     mpl.rcParams["savefig.bbox"] = "tight"
     COLORS = {"Service": "#C1A02E", "Quality": "#006394", "Invalid": "#D8C37D", "Commercial": "#2E8449"}
 
@@ -661,7 +661,7 @@ with tab2:
                 st.subheader("Overview")
 
                 def slide_1_final_donuts_fig(year, month):
-                    fig,axes=plt.subplots(1,2,figsize=(13.33,7.5),dpi=300)
+                    fig,axes=plt.subplots(1,2,figsize=(13.33,7.5), dpi=150)
                     donut_chart(axes[0],df[(df["Year"]==year)&(df["Month"]==month)]["Complaint_Category"].value_counts())
                     donut_chart(axes[1],df[(df["Year"]==year)&(df["Month"].between(1,month))]["Complaint_Category"].value_counts())
                     m_lbl=pd.to_datetime(f"{year}-{month:02d}-01").strftime("%b-%y")
@@ -688,7 +688,7 @@ with tab2:
                         d=df_lt[(df_lt["Year"]==yr)&(df_lt["Month"].between(1,selected_month))]
                         return float(d["LeadTime_days"].mean()) if len(d) else np.nan
                     cats=MONTH_LABELS[:selected_month]+["AVG-YTD"]; x=np.arange(len(cats)); w=0.28
-                    fig,ax=plt.subplots(figsize=(13.33,7.5),dpi=300)
+                    fig,ax=plt.subplots(figsize=(13.33,7.5), dpi=150)
                     b1=ax.bar(x-w/2,list(mavg(prev_year).values)+[ytda(prev_year)],w,label=str(prev_year),color="#006394")
                     b2=ax.bar(x+w/2,list(mavg(selected_year).values)+[ytda(selected_year)],w,label=str(selected_year),color="#C1A02E")
                     add_simple_value_labels(ax,b1,lambda v:f"{v:.0f}",0.6)
@@ -705,7 +705,7 @@ with tab2:
                     def mc(yr): return base[base["Year"]==yr].groupby("Month").size().reindex(months_range,fill_value=0)
                     def ytdc(yr): return int(base[(base["Year"]==yr)&(base["Month"].between(1,selected_month))].shape[0])
                     cats=MONTH_LABELS[:selected_month]+["YTD"]; x=np.arange(len(cats)); w=0.28
-                    fig,ax=plt.subplots(figsize=(13.33,7.5),dpi=300)
+                    fig,ax=plt.subplots(figsize=(13.33,7.5), dpi=150)
                     b1=ax.bar(x-w/2,list(mc(prev_year).values)+[ytdc(prev_year)],w,label=str(prev_year),color="#006394")
                     b2=ax.bar(x+w/2,list(mc(selected_year).values)+[ytdc(selected_year)],w,label=str(selected_year),color="#C1A02E")
                     add_simple_value_labels(ax,b1,lambda v:f"{int(v)}",1); add_simple_value_labels(ax,b2,lambda v:f"{int(v)}",1)
@@ -732,7 +732,7 @@ with tab2:
                     cmp=pd.to_datetime(f"{prev_year}-{selected_month:02d}-01").strftime("%b-%y")
                     cms=pd.to_datetime(f"{selected_year}-{selected_month:02d}-01").strftime("%b-%y")
                     x=np.arange(len(summ)); w=0.18
-                    fig,ax=plt.subplots(figsize=(13.33,7.5),dpi=300)
+                    fig,ax=plt.subplots(figsize=(13.33,7.5), dpi=150)
                     b1=ax.bar(x-1.5*w,summ["CM_prev"],w,color="#0F68B9",label=f"CM {cmp}")
                     b2=ax.bar(x-0.5*w,summ["CM_sel"],w,color="#D8C37D",label=f"CM {cms}")
                     b3=ax.bar(x+0.5*w,summ["YTD_prev"],w,color="#006394",label=f"YTD {prev_year}")
@@ -749,7 +749,7 @@ with tab2:
                     base["Defect"]=base["Reason"].astype(str).str.strip()
                     counts=base[(base["Year"]==selected_year)&(base["Month"]==selected_month)]["Defect"].value_counts()
                     if top_n: counts=counts.head(int(top_n))
-                    fig,ax=plt.subplots(figsize=(13.33,7.5),dpi=300)
+                    fig,ax=plt.subplots(figsize=(13.33,7.5), dpi=150)
                     bars=ax.bar(np.arange(len(counts)),counts.values,color="#C1A02E",width=0.6)
                     add_simple_value_labels(ax,bars,lambda v:f"{int(v)}",0.6)
                     ax.set_xticks(np.arange(len(counts))); ax.set_xticklabels([fill(str(s),18) for s in counts.index],fontsize=10,rotation=25,ha="right")
@@ -777,7 +777,7 @@ with tab2:
                     summ=summ.sort_values(["YTD_sel","CM_sel"],ascending=False)
                     if top_n: summ=summ.head(int(top_n))
                     x=np.arange(len(summ)); w=0.18
-                    fig,ax=plt.subplots(figsize=(13.33,7.5),dpi=300)
+                    fig,ax=plt.subplots(figsize=(13.33,7.5), dpi=150)
                     b1=ax.bar(x-1.5*w,summ["CM_prev"],w,label=f"CM {prev_year}",color="#0F68B9")
                     b2=ax.bar(x-0.5*w,summ["CM_sel"],w,label=f"CM {selected_year}",color="#D8C37D")
                     b3=ax.bar(x+0.5*w,summ["YTD_prev"],w,label=f"YTD {prev_year}",color="#006394")
@@ -805,7 +805,7 @@ with tab2:
                     def mc(yr): return base[base["Year"]==yr].groupby("Month").size().reindex(months_range,fill_value=0)
                     def ytdc(yr): return int(base[(base["Year"]==yr)&(base["Month"].between(1,selected_month))].shape[0])
                     cats=MONTH_LABELS[:selected_month]+["YTD"]; x=np.arange(len(cats)); w=0.28
-                    fig,ax=plt.subplots(figsize=(13.33,7.5),dpi=300)
+                    fig,ax=plt.subplots(figsize=(13.33,7.5), dpi=150)
                     b1=ax.bar(x-w/2,list(mc(prev_year).values)+[ytdc(prev_year)],w,label=str(prev_year),color="#006394")
                     b2=ax.bar(x+w/2,list(mc(selected_year).values)+[ytdc(selected_year)],w,label=str(selected_year),color="#C1A02E")
                     add_simple_value_labels(ax,b1,lambda v:f"{int(v)}",1); add_simple_value_labels(ax,b2,lambda v:f"{int(v)}",1)
@@ -833,7 +833,7 @@ with tab2:
                     cmp=pd.to_datetime(f"{prev_year}-{selected_month:02d}-01").strftime("%b-%y")
                     cms=pd.to_datetime(f"{selected_year}-{selected_month:02d}-01").strftime("%b-%y")
                     x=np.arange(len(summ)); w=0.18
-                    fig,ax=plt.subplots(figsize=(13.33,7.5),dpi=300)
+                    fig,ax=plt.subplots(figsize=(13.33,7.5), dpi=150)
                     b1=ax.bar(x-1.5*w,summ["CM_prev"],w,color="#0F68B9",label=f"CM {cmp}")
                     b2=ax.bar(x-0.5*w,summ["CM_sel"],w,color="#D8C37D",label=f"CM {cms}")
                     b3=ax.bar(x+0.5*w,summ["YTD_prev"],w,color="#006394",label=f"YTD {prev_year}")
@@ -850,7 +850,7 @@ with tab2:
                     base["Svc_Reason"]=base["Reason"].astype(str).str.strip()
                     counts=base[(base["Year"]==selected_year)&(base["Month"]==selected_month)]["Svc_Reason"].value_counts()
                     if top_n: counts=counts.head(int(top_n))
-                    fig,ax=plt.subplots(figsize=(13.33,7.5),dpi=300)
+                    fig,ax=plt.subplots(figsize=(13.33,7.5), dpi=150)
                     bars=ax.bar(np.arange(len(counts)),counts.values,color="#C1A02E",width=0.6)
                     add_simple_value_labels(ax,bars,lambda v:f"{int(v)}",0.6)
                     ax.set_xticks(np.arange(len(counts))); ax.set_xticklabels([fill(str(s),22) for s in counts.index],fontsize=10,rotation=30,ha="right")
@@ -865,7 +865,7 @@ with tab2:
                 st.header("ISSUED")
                 st.subheader("Overview")
                 def slide_issued_1_donuts_fig(year,month):
-                    fig,axes=plt.subplots(1,2,figsize=(13.33,7.5),dpi=300)
+                    fig,axes=plt.subplots(1,2,figsize=(13.33,7.5), dpi=150)
                     donut_chart(axes[0],df_issued[(df_issued["Year"]==year)&(df_issued["Month"]==month)]["Complaint_Category"].value_counts())
                     donut_chart(axes[1],df_issued[(df_issued["Year"]==year)&(df_issued["Month"].between(1,month))]["Complaint_Category"].value_counts())
                     m_lbl=pd.to_datetime(f"{year}-{month:02d}-01").strftime("%b-%y")
@@ -879,7 +879,7 @@ with tab2:
                     def mc(yr): return base[base["Year"]==yr].groupby("Month").size().reindex(months_range,fill_value=0)
                     def ytdc(yr): return int(base[(base["Year"]==yr)&(base["Month"].between(1,selected_month))].shape[0])
                     cats=MONTH_LABELS[:selected_month]+["YTD"]; x=np.arange(len(cats)); w=0.28
-                    fig,ax=plt.subplots(figsize=(13.33,7.5),dpi=300)
+                    fig,ax=plt.subplots(figsize=(13.33,7.5), dpi=150)
                     b1=ax.bar(x-w/2,list(mc(prev_year).values)+[ytdc(prev_year)],w,label=str(prev_year),color="#006394")
                     b2=ax.bar(x+w/2,list(mc(selected_year).values)+[ytdc(selected_year)],w,label=str(selected_year),color="#C1A02E")
                     add_simple_value_labels(ax,b1,lambda v:f"{int(v)}",1); add_simple_value_labels(ax,b2,lambda v:f"{int(v)}",1)
@@ -898,7 +898,7 @@ with tab2:
                     base["Reason_Q"]=base["Reason"].astype(str).str.strip()
                     counts=base[(base["Year"]==selected_year)&(base["Month"]==selected_month)]["Reason_Q"].value_counts()
                     if top_n: counts=counts.head(int(top_n))
-                    fig,ax=plt.subplots(figsize=(13.33,7.5),dpi=300)
+                    fig,ax=plt.subplots(figsize=(13.33,7.5), dpi=150)
                     bars=ax.bar(np.arange(len(counts)),counts.values,color="#C1A02E",width=0.6)
                     add_simple_value_labels(ax,bars,lambda v:f"{int(v)}",0.6)
                     ax.set_xticks(np.arange(len(counts))); ax.set_xticklabels([fill(str(s),28) for s in counts.index],fontsize=10,rotation=35,ha="right")
@@ -937,7 +937,7 @@ with tab2:
                         n_rc = cm[cm["_Reason"] == r]["_RC"].nunique()
                         row_heights.append(max(1.8, n_rc * 0.45 + 0.8))
                     fig_h = sum(row_heights) + 0.5
-                    fig, axes = plt.subplots(n, 1, figsize=(13.33, fig_h), dpi=300,
+                    fig, axes = plt.subplots(n, 1, figsize=(13.33, fig_h), dpi=150,
                                              gridspec_kw={"height_ratios": row_heights})
                     if n == 1:
                         axes = [axes]
@@ -989,7 +989,7 @@ with tab2:
                     base["Reason_S"]=base["Reason"].astype(str).str.strip()
                     counts=base[(base["Year"]==selected_year)&(base["Month"]==selected_month)]["Reason_S"].value_counts()
                     if top_n: counts=counts.head(int(top_n))
-                    fig,ax=plt.subplots(figsize=(13.33,7.5),dpi=300)
+                    fig,ax=plt.subplots(figsize=(13.33,7.5), dpi=150)
                     bars=ax.bar(np.arange(len(counts)),counts.values,color="#C1A02E",width=0.6)
                     add_simple_value_labels(ax,bars,lambda v:f"{int(v)}",0.6)
                     ax.set_xticks(np.arange(len(counts))); ax.set_xticklabels([fill(str(s),28) for s in counts.index],fontsize=10,rotation=35,ha="right")
@@ -1021,7 +1021,7 @@ with tab2:
                     summ=summ.sort_values(["YTD","CM"],ascending=False)
                     if top_n: summ=summ.head(int(top_n))
                     x=np.arange(len(summ)); w=0.35
-                    fig,ax=plt.subplots(figsize=(13.33,7.5),dpi=300)
+                    fig,ax=plt.subplots(figsize=(13.33,7.5), dpi=150)
                     b1=ax.bar(x-w/2,summ["CM"],w,color="#006394",label="Current Month")
                     b2=ax.bar(x+w/2,summ["YTD"],w,color="#C1A02E",label="YTD")
                     add_simple_value_labels(ax,b1,lambda v:f"{int(v)}",1); add_simple_value_labels(ax,b2,lambda v:f"{int(v)}",1)
@@ -1047,7 +1047,7 @@ with tab2:
                     df_cmp=df_cmp.sort_values(["CRM","NCR","Reason"],ascending=[False,False,True]).head(int(top_n))
                     crm_v=df_cmp["CRM"].to_numpy(dtype=float); ncr_v=df_cmp["NCR"].to_numpy(dtype=float)
                     y=np.arange(len(df_cmp))
-                    fig,ax=plt.subplots(figsize=(13.33,7.5),dpi=300)
+                    fig,ax=plt.subplots(figsize=(13.33,7.5), dpi=150)
                     ax.barh(y,-ncr_v,color="#D8C37D",height=0.48,label="NCR")
                     ax.barh(y,crm_v,color="#C1A02E",height=0.48,label="CRM")
                     ax.axvline(0,color="#666666",linewidth=1)
@@ -1078,7 +1078,7 @@ with tab2:
                     summ=pd.DataFrame({"CM":cm.reindex(all_c,fill_value=0),"YTD":ytd.reindex(all_c,fill_value=0)})
                     summ=summ.sort_values(["YTD","CM"],ascending=False).head(int(top_n))
                     x=np.arange(len(summ)); w=0.35
-                    fig,ax=plt.subplots(figsize=(13.33,7.5),dpi=300)
+                    fig,ax=plt.subplots(figsize=(13.33,7.5), dpi=150)
                     b1=ax.bar(x-w/2,summ["CM"],w,color="#006394",label="Current Month")
                     b2=ax.bar(x+w/2,summ["YTD"],w,color="#C1A02E",label="YTD")
                     add_simple_value_labels(ax,b1,lambda v:f"{int(v)}",1); add_simple_value_labels(ax,b2,lambda v:f"{int(v)}",1)
@@ -1171,7 +1171,7 @@ with tab2:
                         x = np.arange(n)
                         w = 0.35
 
-                        fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=300)
+                        fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=150)
 
                         # Side-by-side bars: CC and FG
                         bars_cc = ax.bar(x - w/2, all_cc, width=w, color=color_cc, label="CC Count", alpha=0.9)
@@ -1353,7 +1353,7 @@ with tab2:
                         x = np.arange(n_groups)
                         w = 0.18
 
-                        fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=300)
+                        fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=150)
 
                         b1 = ax.bar(x - 1.5*w, cm_prev_vals,  w, color=COLOR_CM_PREV,  label=f"CM {cm_prev_lbl}")
                         b2 = ax.bar(x - 0.5*w, cm_sel_vals,   w, color=COLOR_CM_SEL,   label=f"CM {cm_sel_lbl}")
@@ -1463,7 +1463,7 @@ with tab2:
                         x = np.arange(n)
                         w = 0.35
 
-                        fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=300)
+                        fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=150)
 
                         # Side-by-side bars: NCR and WO
                         bars_ncr = ax.bar(x - w/2, all_ncr, w, color="#006394", label="NCR Count", alpha=0.9)
@@ -1546,7 +1546,7 @@ with tab2:
                     summ = summ.sort_values(["YTD_sel","CM_sel"],ascending=False)
                     if top_n: summ = summ.head(int(top_n))
                     x = np.arange(len(summ)); w = 0.18
-                    fig,ax = plt.subplots(figsize=(13.33,7.5),dpi=300)
+                    fig,ax = plt.subplots(figsize=(13.33,7.5), dpi=150)
                     b1=ax.bar(x-1.5*w,summ["CM_prev"],w,label=f"CM {prev_year}",color="#0F68B9")
                     b2=ax.bar(x-0.5*w,summ["CM_sel"],w,label=f"CM {selected_year}",color="#D8C37D")
                     b3=ax.bar(x+0.5*w,summ["YTD_prev"],w,label=f"YTD {prev_year}",color="#006394")
@@ -1579,7 +1579,7 @@ with tab2:
                     if n==0: return None, "No reasons found."
                     row_heights = [max(1.8, cm[cm["_Reason"]==r]["_RC"].nunique()*0.45+0.8) for r in top_reasons]
                     fig_h = sum(row_heights)+0.5
-                    fig,axes = plt.subplots(n,1,figsize=(13.33,fig_h),dpi=300,gridspec_kw={"height_ratios":row_heights})
+                    fig,axes = plt.subplots(n,1,figsize=(13.33,fig_h), dpi=150,gridspec_kw={"height_ratios":row_heights})
                     if n==1: axes=[axes]
                     palette=["#006394","#C1A02E","#0F68B9","#D8C37D","#B7910E","#4A90D9","#E8A838","#2E6DA4","#8EC6E6","#F5D07A","#1A4F72","#E09020","#5BA3C9","#C8A830","#3D7EA6"]
                     for ax,reason in zip(axes,top_reasons):
@@ -1602,7 +1602,7 @@ with tab2:
 
                 # ── Intro slide helper ──
                 def make_intro_slide(title_text, subtitle_text=""):
-                    fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=300)
+                    fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=150)
                     fig.patch.set_facecolor("#006394")
                     ax.set_facecolor("#006394")
                     ax.text(0.5, 0.55, title_text, transform=ax.transAxes,
@@ -1720,7 +1720,7 @@ with tab2:
                         (df_final["Month"].between(1, month))
                     ].copy()
                     if comm.empty:
-                        fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=300)
+                        fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=150)
                         ax.text(0.5, 0.5, "No Commercial CRMs found", ha="center", va="center", fontsize=20)
                         ax.axis("off"); return fig
                     comm["_Reason"] = comm["Reason"].astype(str).str.strip()
@@ -1732,7 +1732,7 @@ with tab2:
                         "YTD": ytd_counts.reindex(all_r, fill_value=0),
                     }).sort_values("YTD", ascending=False)
                     x = np.arange(len(summ)); w = 0.35
-                    fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=300)
+                    fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=150)
                     b1 = ax.bar(x - w/2, summ["CM"],  w, color="#006394", label="Current Month")
                     b2 = ax.bar(x + w/2, summ["YTD"], w, color="#2E8449", label="YTD")
                     for bars_g in [b1, b2]:
@@ -1763,7 +1763,7 @@ with tab2:
                     if dec_col and dec_col in comm.columns:
                         comm = comm[comm[dec_col].astype(str).str.strip().str.lower() == "credit note"]
                     if comm.empty:
-                        fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=300)
+                        fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=150)
                         ax.text(0.5, 0.5, "No Commercial Credit Notes found", ha="center", va="center", fontsize=20)
                         ax.axis("off"); return fig
                     comm["_Reason"] = comm["Reason"].astype(str).str.strip()
@@ -1780,7 +1780,7 @@ with tab2:
                         if v >= 1000:      return f"SAR {int(v/1000)}K"
                         return f"SAR {int(v)}"
                     x = np.arange(len(summ)); w = 0.35
-                    fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=300)
+                    fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=150)
                     b1 = ax.bar(x - w/2, summ["CM"],  w, color="#006394", label="Current Month (Credit Notes)")
                     b2 = ax.bar(x + w/2, summ["YTD"], w, color="#2E8449", label="YTD (Credit Notes)")
                     ymax = summ.to_numpy().max() if summ.to_numpy().max() > 0 else 1
@@ -1806,7 +1806,7 @@ with tab2:
                     if dec_col is None:
                         dec_col = next((c for c in df_final.columns if "dec" in c.lower() and "approv" not in c.lower()), None)
                     if dec_col is None:
-                        fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=300)
+                        fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=150)
                         ax.text(0.5, 0.5, "Decision column not found", ha="center", va="center", fontsize=20)
                         ax.axis("off"); return fig
                     base = df_final[
@@ -1815,7 +1815,7 @@ with tab2:
                         (df_final[dec_col].astype(str).str.strip().str.lower() == "return material from customer")
                     ].copy()
                     if base.empty:
-                        fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=300)
+                        fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=150)
                         ax.text(0.5, 0.5, "No Customer Returns found", ha="center", va="center", fontsize=20)
                         ax.axis("off"); return fig
                     base["_Reason"] = base["Reason"].astype(str).str.strip()
@@ -1835,7 +1835,7 @@ with tab2:
                         if v >= 1000:      return f"SAR {int(v/1000)}K"
                         return f"SAR {int(v)}"
                     x = np.arange(len(summ)); w = 0.35
-                    fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=300)
+                    fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=150)
                     b1 = ax.bar(x - w/2, summ["CM_cost"],  w, color="#006394", label=f"Current Month  [n={int(summ['CM_count'].sum())}]")
                     b2 = ax.bar(x + w/2, summ["YTD_cost"], w, color="#C1A02E", label=f"YTD  [n={int(summ['YTD_count'].sum())}]")
                     ymax = summ[["CM_cost","YTD_cost"]].to_numpy().max() if summ[["CM_cost","YTD_cost"]].to_numpy().max() > 0 else 1
@@ -1921,7 +1921,7 @@ with tab2:
                             ],
                         },
                     ]
-                    fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=300)
+                    fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=150)
                     ax.set_xlim(0, 1); ax.set_ylim(0, 1); ax.axis("off")
                     fig.patch.set_facecolor("white")
                     n = len(categories)
@@ -2049,7 +2049,7 @@ with tab2:
                     _ytd_sel   = int(_vals_sel.iloc[:_month_trend].sum())
 
                     _x = np.arange(12); _w = 0.35
-                    _fig_t, _ax_t = plt.subplots(figsize=(13.33, 7.5), dpi=300)
+                    _fig_t, _ax_t = plt.subplots(figsize=(13.33, 7.5), dpi=150)
 
                     _b1 = _ax_t.bar(_x - _w/2, _vals_prev.values, _w, color="#006394",
                                     label=f"{_prev_year_trend}  (YTD: {_ytd_prev})", alpha=0.85)
