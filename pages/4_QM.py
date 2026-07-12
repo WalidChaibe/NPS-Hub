@@ -315,7 +315,7 @@ with tab2:
         txt_w = c.stringWidth(section_text, "Helvetica-Bold", 40)
         c.drawString((W - txt_w) / 2, H * 0.58 - 70, section_text)
 
-    def build_ppt_pdf(slides, dpi=300):
+    def build_ppt_pdf(slides, dpi=150):
         W, H = 960, 540
         pdf_buf = io.BytesIO()
         c = canvas.Canvas(pdf_buf, pagesize=(W, H))
@@ -327,11 +327,20 @@ with tab2:
                     s.get("date", ""))
             elif s.get("section"):
                 draw_section_slide(c, W, H, s.get("title", ""))
-            else:
+            elif callable(s.get("fig_fn")):
+                _fig = s["fig_fn"]()
+                if _fig is not None:
+                    ppt_slide_title_bar(c, s["title"], W, H)
+                    _buf = fig_to_png_bytes(_fig, dpi=dpi)
+                    c.drawImage(ImageReader(_buf), 40, 40, width=W-80, height=H-92-40, preserveAspectRatio=True, anchor="c")
+                    plt.close(_fig)
+                    del _fig, _buf
+            elif s.get("fig") is not None:
                 ppt_slide_title_bar(c, s["title"], W, H)
-                img = ImageReader(fig_to_png_bytes(s["fig"], dpi=dpi))
-                c.drawImage(img, 40, 40, width=W-80, height=H-92-40, preserveAspectRatio=True, anchor="c")
+                _buf = fig_to_png_bytes(s["fig"], dpi=dpi)
+                c.drawImage(ImageReader(_buf), 40, 40, width=W-80, height=H-92-40, preserveAspectRatio=True, anchor="c")
                 plt.close(s["fig"])
+                del _buf
             c.showPage()
         c.save()
         pdf_buf.seek(0)
@@ -1631,85 +1640,85 @@ with tab2:
                 })
 
                 # 1 - Total Complaints Issued (ISSUED donut)
-                pdf_slides.append({"title": "Total Complaints Issued", "fig": slide_issued_1_donuts_fig(selected_year, selected_month)})
+                pdf_slides.append({"title": "Total Complaints Issued", "fig_fn": lambda: slide_issued_1_donuts_fig(selected_year, selected_month)})
 
                 # 2 - Total Complaints Approved (FINAL donut)
-                pdf_slides.append({"title": "Total Complaints Approved", "fig": slide_1_final_donuts_fig(selected_year, selected_month)})
+                pdf_slides.append({"title": "Total Complaints Approved", "fig_fn": lambda: slide_1_final_donuts_fig(selected_year, selected_month)})
 
                 # 3 - Complaints Lead Time
-                pdf_slides.append({"title": "Complaints Lead Time — First Approval", "fig": slide_2_leadtime_fig(selected_year, selected_month)})
+                pdf_slides.append({"title": "Complaints Lead Time — First Approval", "fig_fn": lambda: slide_2_leadtime_fig(selected_year, selected_month)})
 
                 # 4 - Complaints Ratio (Total)
                 if months_with_fg:
-                    pdf_slides.append({"title": "Complaints Ratio", "fig": slide_cc_ratio_fig(selected_year, category_filter=None)})
+                    pdf_slides.append({"title": "Complaints Ratio", "fig_fn": lambda: slide_cc_ratio_fig(selected_year, category_filter=None)})
                     # 5 - Quality Complaints Ratio
-                    pdf_slides.append({"title": "Quality Complaints Ratio", "fig": slide_cc_ratio_fig(selected_year, category_filter="Quality")})
+                    pdf_slides.append({"title": "Quality Complaints Ratio", "fig_fn": lambda: slide_cc_ratio_fig(selected_year, category_filter="Quality")})
                     # 6 - Service Complaints Ratio
-                    pdf_slides.append({"title": "Service Complaints Ratio", "fig": slide_service_cc_ratio_fig(selected_year)})
+                    pdf_slides.append({"title": "Service Complaints Ratio", "fig_fn": lambda: slide_service_cc_ratio_fig(selected_year)})
 
                 # 7 - Total Complaints Issued YoY
-                pdf_slides.append({"title": "Total Complaints Issued — YoY", "fig": slide_issued_valid_count_fig(selected_year, selected_month)})
+                pdf_slides.append({"title": "Total Complaints Issued — YoY", "fig_fn": lambda: slide_issued_valid_count_fig(selected_year, selected_month)})
 
                 # Intro slide — Month overview
                 pdf_slides.append({"title": f"{month_name} Overview", "section": True})
 
                 # 8 - Breakdown Quality Complaints Issued CM
-                pdf_slides.append({"title": f"Breakdown of Quality Complaints Issued — {month_name}", "fig": slide_issued_quality_reason_current_month_fig(selected_year, selected_month, TOPN_QUALITY_CM)})
+                pdf_slides.append({"title": f"Breakdown of Quality Complaints Issued — {month_name}", "fig_fn": lambda: slide_issued_quality_reason_current_month_fig(selected_year, selected_month, TOPN_QUALITY_CM)})
 
                 # 9 - Root Cause Quality Complaints Issued CM
                 _fig_rcq, _err_rcq = slide_rootcause_fig("Quality", selected_year, selected_month, TOPN_RC_REASONS or 4)
                 if _fig_rcq:
-                    pdf_slides.append({"title": f"Root Cause of Quality Complaints Issued — {month_name}", "fig": _fig_rcq})
+                    pdf_slides.append({"title": f"Root Cause of Quality Complaints Issued — {month_name}", "fig_fn": lambda: _fig_rcq})
 
                 # 10 - Breakdown Service Complaints Issued CM
-                pdf_slides.append({"title": f"Breakdown of Service Complaints Issued — {month_name}", "fig": slide_issued_service_reason_current_month_fig(selected_year, selected_month, TOPN_SERVICE_CM)})
+                pdf_slides.append({"title": f"Breakdown of Service Complaints Issued — {month_name}", "fig_fn": lambda: slide_issued_service_reason_current_month_fig(selected_year, selected_month, TOPN_SERVICE_CM)})
 
                 # 11 - Root Cause Service Complaints Issued CM
                 _fig_rcs, _err_rcs = slide_rootcause_fig("Service", selected_year, selected_month, TOPN_RC_REASONS or 4)
                 if _fig_rcs:
-                    pdf_slides.append({"title": f"Root Cause of Service Complaints Issued — {month_name}", "fig": _fig_rcs})
+                    pdf_slides.append({"title": f"Root Cause of Service Complaints Issued — {month_name}", "fig_fn": lambda: _fig_rcs})
 
                 # Intro slide — Quality Complaints Overview
                 pdf_slides.append({"title": "Quality Complaints Overview", "section": True})
 
                 # 12 - Valid Quality Complaints Count
-                pdf_slides.append({"title": "Valid Quality Complaints Count — To Date", "fig": slide_3_valid_quality_count_fig(selected_year, selected_month)})
+                pdf_slides.append({"title": "Valid Quality Complaints Count — To Date", "fig_fn": lambda: slide_3_valid_quality_count_fig(selected_year, selected_month)})
 
                 # 13 - Quality Defects CM vs YTD
-                pdf_slides.append({"title": "Valid Quality Complaints by Defect — CM vs To Date", "fig": slide_4_quality_defect_cm_vs_ytd_fig(selected_year, selected_month, TOPN_QUALITY_DEFECT)})
+                pdf_slides.append({"title": "Valid Quality Complaints by Defect — CM vs To Date", "fig_fn": lambda: slide_4_quality_defect_cm_vs_ytd_fig(selected_year, selected_month, TOPN_QUALITY_DEFECT)})
 
                 # 14 - Quality Defects CM
-                pdf_slides.append({"title": f"Valid Quality Complaints by Reason — {month_name}", "fig": slide_5_quality_defect_current_month_fig(selected_year, selected_month, TOPN_QUALITY_CM)})
+                pdf_slides.append({"title": f"Valid Quality Complaints by Reason — {month_name}", "fig_fn": lambda: slide_5_quality_defect_current_month_fig(selected_year, selected_month, TOPN_QUALITY_CM)})
 
                 # 15 - Quality CN Cost
                 try:
-                    pdf_slides.append({"title": "Quality Complaints Value (CN at Cost) by Defect — To Date", "fig": slide_6_quality_cost_cm_vs_ytd_fig(selected_year, selected_month, TOPN_COST_DEFECT)})
+                    pdf_slides.append({"title": "Quality Complaints Value (CN at Cost) by Defect — To Date", "fig_fn": lambda: slide_6_quality_cost_cm_vs_ytd_fig(selected_year, selected_month, TOPN_COST_DEFECT)})
                 except Exception: pass
 
                 # 18 - Internal Defect Ratio Trend (= NCR Ratio)
                 if wo_ready:
-                    pdf_slides.append({"title": "Internal Defect Ratio Trend", "fig": slide_ncr_ratio_fig(selected_year)})
+                    pdf_slides.append({"title": "Internal Defect Ratio Trend", "fig_fn": lambda: slide_ncr_ratio_fig(selected_year)})
 
                 # 19 - NCR Root Cause
                 _fig_ncr_rc, _err_ncr_rc = slide_ncr_rootcause_fig(selected_year, selected_month, TOPN_RC_REASONS or 4)
                 if _fig_ncr_rc:
-                    pdf_slides.append({"title": "NCR Breakdown by Root Cause", "fig": _fig_ncr_rc})
+                    pdf_slides.append({"title": "NCR Breakdown by Root Cause", "fig_fn": lambda: _fig_ncr_rc})
 
                 # 20 - NCR and CRM Correlation
-                pdf_slides.append({"title": "NCR and CRM Correlation — YTD", "fig": slide_ncr_vs_crm_correlation_ytd_fig(selected_year, selected_month, TOPN_CORRELATION)})
+                pdf_slides.append({"title": "NCR and CRM Correlation — YTD", "fig_fn": lambda: slide_ncr_vs_crm_correlation_ytd_fig(selected_year, selected_month, TOPN_CORRELATION)})
 
                 # Intro slide — Service Complaints Overview
                 pdf_slides.append({"title": "Service Complaints Overview", "section": True})
 
                 # 21 - Valid Service Count
-                pdf_slides.append({"title": "Valid Service Complaints Count", "fig": slide_s1_valid_service_count_fig(selected_year, selected_month)})
+                pdf_slides.append({"title": "Valid Service Complaints Count", "fig_fn": lambda: slide_s1_valid_service_count_fig(selected_year, selected_month)})
 
                 # 22 - Service Reasons CM vs YTD
-                pdf_slides.append({"title": "Valid Service Complaints — CM vs YTD", "fig": slide_s2_service_reason_cm_vs_ytd_fig(selected_year, selected_month, TOPN_SERVICE_REASON)})
+                pdf_slides.append({"title": "Valid Service Complaints — CM vs YTD", "fig_fn": lambda: slide_s2_service_reason_cm_vs_ytd_fig(selected_year, selected_month, TOPN_SERVICE_REASON)})
 
                 # 23 - Service CN Cost
                 try:
-                    pdf_slides.append({"title": "Service Complaints Value (CN at Cost) by Defect — To Date", "fig": slide_service_cn_cost_fig(selected_year, selected_month, TOPN_COST_DEFECT)})
+                    pdf_slides.append({"title": "Service Complaints Value (CN at Cost) by Defect — To Date", "fig_fn": lambda: slide_service_cn_cost_fig(selected_year, selected_month, TOPN_COST_DEFECT)})
                 except Exception: pass
 
 # ── Commercial Reasons slides ──────────────────────────────────
@@ -1976,26 +1985,26 @@ with tab2:
                 pdf_slides.append({"title": "Commercial Reasons", "section": True})
                 pdf_slides.append({
                     "title": "Commercial CRMs — Count by Reason (CM vs YTD)",
-                    "fig": slide_commercial_count_fig(selected_year, selected_month),
+                    "fig_fn": lambda: slide_commercial_count_fig(selected_year, selected_month),
                 })
                 pdf_slides.append({
                     "title": "Commercial CRMs — Cost Amount by Reason (CM vs YTD)",
-                    "fig": slide_commercial_cost_fig(selected_year, selected_month),
+                    "fig_fn": lambda: slide_commercial_cost_fig(selected_year, selected_month),
                 })
                 pdf_slides.append({
                     "title": "Customer Returns — Estimated Cost by Reason",
-                    "fig": slide_customer_return_cost_fig(selected_year, selected_month, TOPN_SERVICE_CM),
+                    "fig_fn": lambda: slide_customer_return_cost_fig(selected_year, selected_month, TOPN_SERVICE_CM),
                 })
                 pdf_slides.append({
                     "title": "CRM Classification Guide",
-                    "fig": slide_classification_guide_fig(),
+                    "fig_fn": lambda: slide_classification_guide_fig(),
                 })
 
                 # Intro slide — Cost of Quality
                 pdf_slides.append({"title": "Cost of Quality", "section": True})
                 # 24 - COQ CM (single month bar — reuse breakdown fig)
                 if coq_ready:
-                    pdf_slides.append({"title": f"Cost of Quality — {month_name}", "fig": slide_coq_breakdown_fig(selected_year, selected_month)})
+                    pdf_slides.append({"title": f"Cost of Quality — {month_name}", "fig_fn": lambda: slide_coq_breakdown_fig(selected_year, selected_month)})
 
 
                 # PDF Export
