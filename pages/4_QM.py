@@ -1758,29 +1758,59 @@ with tab2:
                     plt.tight_layout(rect=[0, 0.05, 1, 1]); return fig
 
                 def slide_customer_return_cost_fig(year, month, top_n=10):
-                    COST_PER_CLAIM = 3918.0
-                    dec_col = next((c for c in df_final.columns if "decision" in c.lower()), None)
+                    AREA_COST = {
+                        "eastern": 500, "dammam": 500,
+                        "central": 1200, "bahrain": 1200,
+                        "western": 2900, "jordan": 2900, "yemen": 2900, "oman": 2900,
+                        "qatar": 2800, "kuwait": 2800, "other": 2800,
+                        "united arabe emirates": 2350, "united arab emirates": 2350, "uae": 2350,
+                    }
+                    DEFAULT_COST = 2800
+
+                    dec_col  = next((c for c in df_final.columns if "decision"   in c.lower()), None)
+                    area_col = next((c for c in df_final.columns if "area" in c.lower() and "group" in c.lower()), None)
+                    if area_col is None:
+                        area_col = next((c for c in df_final.columns if "area" in c.lower()), None)
+
                     if dec_col is None:
                         fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=150)
                         ax.text(0.5, 0.5, "Decision column not found", ha="center", va="center", fontsize=20)
                         ax.axis("off"); return fig
+
                     base = df_final[
                         (df_final["Year"] == year) &
                         (df_final["Month"].between(1, month)) &
                         (df_final[dec_col].astype(str).str.strip().str.lower() == "return material from customer")
                     ].copy()
+
                     if base.empty:
                         fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=150)
                         ax.text(0.5, 0.5, "No Customer Returns found", ha="center", va="center", fontsize=20)
                         ax.axis("off"); return fig
+
                     base["_Reason"] = base["Reason"].astype(str).str.strip()
-                    cm_counts  = base[base["Month"] == month]["_Reason"].value_counts()
-                    ytd_counts = base["_Reason"].value_counts()
-                    all_r      = pd.Index(ytd_counts.index).union(cm_counts.index)
-                    summ = pd.DataFrame({"CM_count": cm_counts.reindex(all_r, fill_value=0), "YTD_count": ytd_counts.reindex(all_r, fill_value=0)}).sort_values("YTD_count", ascending=False)
+
+                    # Calculate cost per row based on Area Group
+                    if area_col:
+                        base["_AreaCost"] = base[area_col].astype(str).str.strip().str.lower().map(
+                            lambda a: next((v for k, v in AREA_COST.items() if k in a), DEFAULT_COST)
+                        )
+                    else:
+                        base["_AreaCost"] = DEFAULT_COST
+
+                    cm_cost  = base[base["Month"] == month].groupby("_Reason")["_AreaCost"].sum()
+                    ytd_cost = base.groupby("_Reason")["_AreaCost"].sum()
+                    cm_count  = base[base["Month"] == month]["_Reason"].value_counts()
+                    ytd_count = base["_Reason"].value_counts()
+
+                    all_r = pd.Index(ytd_cost.index).union(cm_cost.index)
+                    summ = pd.DataFrame({
+                        "CM_cost":   cm_cost.reindex(all_r,  fill_value=0),
+                        "YTD_cost":  ytd_cost.reindex(all_r, fill_value=0),
+                        "CM_count":  cm_count.reindex(all_r, fill_value=0),
+                        "YTD_count": ytd_count.reindex(all_r, fill_value=0),
+                    }).sort_values("YTD_cost", ascending=False)
                     if top_n: summ = summ.head(int(top_n))
-                    summ["CM_cost"]  = summ["CM_count"]  * COST_PER_CLAIM
-                    summ["YTD_cost"] = summ["YTD_count"] * COST_PER_CLAIM
                     def fmt_sar(v):
                         if v >= 1_000_000: return f"SAR {v/1_000_000:.1f}M"
                         if v >= 1000:      return f"SAR {int(v/1000)}K"
@@ -1795,7 +1825,7 @@ with tab2:
                             h = bar.get_height()
                             if h > 0: ax.text(bar.get_x()+bar.get_width()/2, h+ymax*0.015, fmt_sar(h), ha="center", va="bottom", fontsize=9, rotation=90, color="#333333")
                     ax.set_xticks(x); ax.set_xticklabels([fill(r, 20) for r in summ.index.tolist()], fontsize=10, rotation=25, ha="right")
-                    ax.set_ylabel("Estimated Cost (SAR)  [@ SAR 3,918 / claim]"); ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False); ax.grid(False)
+                    ax.set_ylabel("Estimated Cost (SAR)  [by Area Group]"); ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False); ax.grid(False)
                     ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.18), ncol=2, frameon=False)
                     fig.subplots_adjust(bottom=0.25); return fig
 
