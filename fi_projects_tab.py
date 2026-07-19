@@ -1716,937 +1716,679 @@ from reportlab.pdfgen import canvas as rl_canvas
 from reportlab.lib.utils import ImageReader
 from reportlab.lib.colors import HexColor
 
-# ── Brand colours (match QM presentation) ────────────────────────────────────
-_B  = "#0C5595"   # primary blue
-_B2 = "#17375E"   # dark blue
-_G  = "#1E8449"   # green (on-track)
-_A  = "#D68910"   # amber
-_R  = "#DE201B"   # red
-_LB = "#EAF3FB"   # light blue fill
-_GR = "#F4F6F8"   # light grey
-_TX = "#1E293B"   # body text
-_ST = "#64748B"   # subtext
-
-# A4 portrait in points
-A4W, A4H = 595, 842
-PAD = 32          # left/right margin
-
-
 # ─────────────────────────────────────────────────────────────────────────────
-# LOW-LEVEL HELPERS
+# BOARD PDF — QM-style landscape slides (960×540, matplotlib + ReportLab)
+# Same engine as QM Quality Indicators report
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _hex(c): return HexColor(c)
+# Slide canvas size (matches QM exactly)
+_SW, _SH = 960, 540
 
-def _page_header(c, title, project_name, page_num=None):
-    """Blue top bar with project name + page title."""
-    # Background bar
-    c.setFillColor(_hex(_B2)); c.rect(0, A4H-56, A4W, 56, fill=1, stroke=0)
-    # Red accent line
-    c.setFillColor(_hex(_R)); c.rect(0, A4H-60, A4W, 4, fill=1, stroke=0)
-    # Project name (left)
-    c.setFillColor(_hex("#ffffff")); c.setFont("Helvetica-Bold", 14)
-    c.drawString(PAD, A4H-36, project_name[:55])
-    # Page title (right)
-    c.setFont("Helvetica", 10)
-    c.drawRightString(A4W-PAD, A4H-36, title)
-    # Sub-line
-    c.setFont("Helvetica", 8); c.setFillColor(_hex("#93C3E6"))
-    c.drawString(PAD, A4H-52, f"FI Pillar · Focused Improvement Board  ·  Generated {date.today().isoformat()}")
-    if page_num:
-        c.drawRightString(A4W-PAD, A4H-52, f"Page {page_num}")
+# Brand colours
+_BLUE      = "#006394"
+_BLUE_DARK = "#17375E"
+_GOLD      = "#C1A02E"
+_RED       = "#DE201B"
+_GREEN     = "#1E8449"
+_AMBER     = "#D68910"
+_LIGHT_BG  = "#F4F6F8"
+_BODY_TEXT = "#1E293B"
+_SUB_TEXT  = "#64748B"
 
-def _page_footer(c, text="NPS Hub · FI Pillar Board"):
-    c.setFillColor(_hex("#E2E8F0")); c.rect(0, 24, A4W, 1, fill=1, stroke=0)
-    c.setFont("Helvetica", 7.5); c.setFillColor(_hex(_ST))
-    c.drawString(PAD, 10, text)
-    c.drawRightString(A4W-PAD, 10, date.today().strftime("%B %Y"))
 
-def _section_label(c, x, y, text, color=None):
-    """Small uppercase section label."""
-    color = color or _B
-    c.setFont("Helvetica-Bold", 7.5); c.setFillColor(_hex(color))
-    c.drawString(x, y, text.upper())
-
-def _wrap_text(c, text, x, y, max_width, font="Helvetica", size=9,
-               color=_TX, line_h=13, max_lines=99):
-    """Draw wrapped text, returns final y."""
-    c.setFont(font, size); c.setFillColor(_hex(color))
-    lines = []
-    for para in str(text).split("\n"):
-        lines += textwrap.wrap(para, width=int(max_width / (size * 0.52))) or [""]
-    for i, line in enumerate(lines[:max_lines]):
-        c.drawString(x, y, line)
-        y -= line_h
-    return y
-
-def _fig_to_img(fig, dpi=120):
-    """Convert matplotlib figure to ReportLab ImageReader."""
+def _fi_fig_to_png(fig, dpi=150):
+    """Render a matplotlib figure to PNG bytes (BytesIO)."""
     buf = io.BytesIO()
     fig.savefig(buf, format="png", dpi=dpi, bbox_inches="tight",
                 facecolor=fig.get_facecolor())
+    plt.close(fig)
     buf.seek(0)
-    return ImageReader(buf)
+    return buf
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# PAGE 1 — COVER
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _page_cover(c, project, checklist, cw, total_score):
-    from fi_projects_tab import TOTAL_POINTS, TARGET_RAMP, REQUIREMENTS, _score
-    target_now = TARGET_RAMP.get(cw, 100)
-    on_track   = total_score >= target_now
-    pct        = total_score / TOTAL_POINTS * 100
-
-    # Full-width dark blue header block
-    c.setFillColor(_hex(_B2)); c.rect(0, A4H-200, A4W, 200, fill=1, stroke=0)
-    c.setFillColor(_hex(_R));  c.rect(0, A4H-204, A4W, 4, fill=1, stroke=0)
-
-    # Project name
-    pname = project.get("project_name", "FI Project")
-    c.setFillColor(_hex("#ffffff")); c.setFont("Helvetica-Bold", 26)
-    # Wrap if long
-    if len(pname) > 38:
-        c.setFont("Helvetica-Bold", 20)
-    c.drawString(PAD, A4H-60, pname)
-
-    # Area / dates
-    c.setFont("Helvetica", 10); c.setFillColor(_hex("#93C3E6"))
-    area  = project.get("target_area", "")
-    ld    = str(project.get("launch_date",""))[:10]
-    ed    = str(project.get("expected_completion_date",""))[:10]
-    c.drawString(PAD, A4H-80, f"{area}   ·   Launch: {ld}   ·   Target: {ed}")
-
-    # Problem statement
-    c.setFont("Helvetica-Bold", 9); c.setFillColor(_hex("#93C3E6"))
-    c.drawString(PAD, A4H-100, "PROBLEM STATEMENT")
-    c.setFont("Helvetica", 9); c.setFillColor(_hex("#ffffff"))
-    ps = project.get("problem_statement", "—")
-    y = A4H - 115
-    for line in textwrap.wrap(ps, width=80)[:4]:
-        c.drawString(PAD, y, line); y -= 13
-
-    # Score badge
-    sc_color = _G if on_track else _A
-    c.setFillColor(_hex(sc_color)); c.roundRect(A4W-130, A4H-175, 100, 70, 8, fill=1, stroke=0)
-    c.setFillColor(_hex("#ffffff")); c.setFont("Helvetica-Bold", 30)
-    c.drawCentredString(A4W-80, A4H-145, str(total_score))
-    c.setFont("Helvetica", 9)
-    c.drawCentredString(A4W-80, A4H-162, f"/ {TOTAL_POINTS} pts")
-    c.drawCentredString(A4W-80, A4H-176, "✓ On Track" if on_track else "⚠ Below Target")
-
-    # Week badge
-    c.setFillColor(_hex(_B)); c.roundRect(A4W-240, A4H-175, 95, 70, 8, fill=1, stroke=0)
-    c.setFillColor(_hex("#ffffff")); c.setFont("Helvetica-Bold", 30)
-    c.drawCentredString(A4W-192, A4H-145, f"W{cw}")
-    c.setFont("Helvetica", 9)
-    c.drawCentredString(A4W-192, A4H-162, "of 12")
-    c.drawCentredString(A4W-192, A4H-176, "Current Week")
-
-    # Progress bar
-    bar_y = A4H - 220; bar_x = PAD; bar_w = A4W - PAD*2; bar_h = 14
-    c.setFillColor(_hex("#E2E8F0")); c.roundRect(bar_x, bar_y, bar_w, bar_h, 4, fill=1, stroke=0)
-    fill_w = bar_w * min(pct, 100) / 100
-    c.setFillColor(_hex(sc_color)); c.roundRect(bar_x, bar_y, fill_w, bar_h, 4, fill=1, stroke=0)
-    c.setFont("Helvetica-Bold", 8); c.setFillColor(_hex(_TX))
-    c.drawRightString(A4W-PAD, bar_y-11, f"Score: {total_score} / {target_now} (W{cw} target) — {pct:.0f}%")
-
-    # Company KPI
-    kpi_link = project.get("company_kpi_link","")
-    if kpi_link:
-        y2 = bar_y - 30
-        _section_label(c, PAD, y2, "Company KPI Link")
-        c.setFont("Helvetica", 9); c.setFillColor(_hex(_TX))
-        c.drawString(PAD, y2-13, kpi_link[:90])
-
-    _page_footer(c)
+def _fi_slide_header(c, title):
+    """Draw the branded title bar — exact match to QM ppt_slide_title_bar."""
+    # Red accent left block
+    c.setFillColor(HexColor(_RED))
+    c.rect(40, _SH - 68, 110, 4, fill=1, stroke=0)
+    # Blue rule
+    c.setFillColor(HexColor(_BLUE))
+    c.rect(155, _SH - 68, _SW - 195, 4, fill=1, stroke=0)
+    # Title text
+    c.setFillColor(HexColor(_BLUE_DARK))
+    c.setFont("Helvetica-Bold", 22)
+    c.drawString(40, _SH - 58, title)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# PAGE 2 — TEAM MEMBERS + WHO DOES WHAT
-# ─────────────────────────────────────────────────────────────────────────────
+def _fi_cover_slide(c, title, subtitle, date_str, logo_reader=None):
+    """Cover slide — white background, logo top-left, big title, subtitle, date."""
+    c.setFillColor(HexColor("#ffffff"))
+    c.rect(0, 0, _SW, _SH, fill=1, stroke=0)
 
-def _page_team(c, team, wdw, project_name):
-    _page_header(c, "Team Members & Who Does What", project_name, 2)
-    y = A4H - 80
-
-    # ── Team Members grid ──
-    _section_label(c, PAD, y, "Team Members"); y -= 16
-    card_w = (A4W - PAD*2 - 8) / 3
-    cols   = 3
-    for i, m in enumerate(team):
-        col = i % cols
-        row = i // cols
-        cx  = PAD + col * (card_w + 4)
-        cy  = y - row * 58
-        # card bg
-        c.setFillColor(_hex(_LB)); c.roundRect(cx, cy-46, card_w, 50, 5, fill=1, stroke=0)
-        c.setStrokeColor(_hex(_B)); c.setLineWidth(0.5)
-        c.roundRect(cx, cy-46, card_w, 50, 5, fill=0, stroke=1)
-        # role colour strip
-        role_colors = {
-            "Team Leader": _B2, "Assistant Team Leader": _B,
-            "Analyst": "#2471A3", "Operator": "#1E8449",
-            "Maintenance": "#D68910", "Quality": "#8E44AD",
-            "Day Shift Section Head": "#2E86C1",
-            "Night Shift Section Head": "#1A5276",
-            "Secretary": "#566573", "Other": "#839192",
-        }
-        rc = role_colors.get(m.get("role","Other"), _B)
-        c.setFillColor(_hex(rc)); c.roundRect(cx, cy, card_w, 6, 3, fill=1, stroke=0)
-        # name
-        c.setFont("Helvetica-Bold", 9); c.setFillColor(_hex(_TX))
-        c.drawString(cx+6, cy-14, m.get("member_name","")[:22])
-        # role + dept
-        c.setFont("Helvetica", 7.5); c.setFillColor(_hex(_ST))
-        c.drawString(cx+6, cy-26, m.get("role","")[:26])
-        c.drawString(cx+6, cy-38, m.get("department","")[:26])
-
-    rows_used = math.ceil(len(team) / cols)
-    y -= rows_used * 58 + 20
-
-    # ── Who Does What table ──
-    if y > 200:
-        _section_label(c, PAD, y, "Who Does What"); y -= 14
-        # Table header
-        col_who  = PAD;           col_w_who  = 120
-        col_what = PAD+122;       col_w_what = 250
-        col_when = PAD+374;       col_w_when = A4W-PAD-374-PAD
-
-        c.setFillColor(_hex(_B)); c.rect(PAD, y-14, A4W-PAD*2, 16, fill=1, stroke=0)
-        c.setFillColor(_hex("#ffffff")); c.setFont("Helvetica-Bold", 8)
-        c.drawString(col_who+3, y-10, "WHO")
-        c.drawString(col_what+3, y-10, "WHAT (RESPONSIBILITY)")
-        c.drawString(col_when+3, y-10, "WHEN")
-        y -= 16
-
-        alt = False
-        for w in wdw:
-            resps = json.loads(w.get("responsibilities","[]")) if isinstance(w.get("responsibilities"),str) else (w.get("responsibilities") or [])
-            if not resps:
-                # fallback to old responsibility field
-                resps = [{"what": w.get("responsibility",""), "when": "", "area": w.get("area","")}]
-            for ri, r in enumerate(resps):
-                row_h = 14
-                what_text = r.get("what","")
-                # estimate row height for wrapping
-                est_lines = max(1, math.ceil(len(what_text) / 48))
-                row_h = max(14, est_lines * 11 + 4)
-
-                if y - row_h < 50: break  # page guard
-
-                if alt: c.setFillColor(_hex(_GR)); c.rect(PAD, y-row_h, A4W-PAD*2, row_h, fill=1, stroke=0)
-                alt = not alt
-
-                # WHO (only show name on first responsibility)
-                c.setFont("Helvetica-Bold" if ri==0 else "Helvetica", 8)
-                c.setFillColor(_hex(_TX))
-                if ri == 0:
-                    c.drawString(col_who+3, y-10, w.get("member_name","")[:18])
-                # WHAT
-                c.setFont("Helvetica", 8)
-                _wrap_text(c, what_text, col_what+3, y-10, col_w_what-6, size=8, line_h=11, max_lines=4)
-                # WHEN
-                c.setFont("Helvetica", 8); c.setFillColor(_hex(_ST))
-                c.drawString(col_when+3, y-10, r.get("when","")[:20])
-                # row bottom line
-                c.setStrokeColor(_hex("#E2E8F0")); c.setLineWidth(0.4)
-                c.line(PAD, y-row_h, A4W-PAD, y-row_h)
-                y -= row_h
-
-    _page_footer(c)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# PAGE 3 — DEPLOYMENT (WHY THIS PROJECT)
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _page_deployment(c, project, hist_chart_data, project_name):
-    _page_header(c, "Deployment — Why This Project", project_name, 3)
-    y = A4H - 80
-
-    # Problem Statement box
-    _section_label(c, PAD, y, "Problem Statement"); y -= 14
-    ps = project.get("problem_statement","—")
-    c.setFillColor(_hex(_LB)); c.roundRect(PAD, y-70, A4W-PAD*2, 74, 6, fill=1, stroke=0)
-    c.setStrokeColor(_hex(_B)); c.setLineWidth(0.8)
-    c.roundRect(PAD, y-70, A4W-PAD*2, 74, 6, fill=0, stroke=1)
-    c.setFont("Helvetica", 9.5); c.setFillColor(_hex(_TX))
-    _wrap_text(c, ps, PAD+10, y-14, A4W-PAD*2-20, size=9.5, line_h=14, max_lines=5)
-    y -= 84
-
-    # Company KPI link
-    kpi_link = project.get("company_kpi_link","")
-    if kpi_link:
-        _section_label(c, PAD, y, "Company KPI This Project Supports"); y -= 14
-        c.setFont("Helvetica-Bold", 10); c.setFillColor(_hex(_B))
-        c.drawString(PAD, y, kpi_link[:90]); y -= 20
-
-    # Launch / target dates
-    _section_label(c, PAD, y, "Timeline"); y -= 14
-    ld = str(project.get("launch_date",""))[:10]
-    ed = str(project.get("expected_completion_date",""))[:10]
-    c.setFont("Helvetica", 9); c.setFillColor(_hex(_TX))
-    c.drawString(PAD, y, f"Launch Date:  {ld}     ·     Expected Completion:  {ed}"); y -= 24
-
-    # Historical data chart (if available)
-    if hist_chart_data:
-        _section_label(c, PAD, y, "Historical Data — Before Project"); y -= 8
+    # Logo area top-left
+    if logo_reader:
         try:
-            d       = hist_chart_data
-            rows    = d.get("rows", [])
-            cols    = d.get("columns", [])
-            baseline= d.get("baseline")
-            target  = d.get("target")
-            if rows and cols:
-                fig, ax = plt.subplots(figsize=(7, 3.2))
-                fig.patch.set_facecolor("white"); ax.set_facecolor("#FAFAFA")
-                x_vals = list(range(len(rows)))
-                for ci, col in enumerate(cols[1:], 1):
-                    y_vals = []
-                    for row in rows:
-                        try: y_vals.append(float(row[ci]))
-                        except: y_vals.append(0)
-                    ax.plot(x_vals, y_vals, "o-", lw=2, ms=5, label=col)
-                    for xi, yv in zip(x_vals, y_vals):
-                        ax.annotate(f"{yv:.1f}", (xi, yv), textcoords="offset points",
-                                    xytext=(0,6), fontsize=7, ha="center")
-                if baseline is not None:
-                    ax.axhline(baseline, color="#BDC3C7", lw=1.2, ls=":", label=f"Baseline {baseline}")
-                if target is not None:
-                    ax.axhline(target, color=_G, lw=1.2, ls="--", label=f"Target {target}")
-                x_labels = [str(row[0])[:8] for row in rows]
-                ax.set_xticks(x_vals); ax.set_xticklabels(x_labels, fontsize=7, rotation=30, ha="right")
-                ax.legend(fontsize=7, frameon=False)
-                ax.grid(axis="y", color="#eee", lw=0.5)
-                for s in ["top","right"]: ax.spines[s].set_visible(False)
-                fig.tight_layout(pad=0.4)
-                img = _fig_to_img(fig)
-                plt.close(fig)
-                img_h = 200; img_w = A4W - PAD*2
-                c.drawImage(img, PAD, y-img_h, width=img_w, height=img_h, preserveAspectRatio=True)
-                y -= img_h + 10
+            c.drawImage(logo_reader, 40, _SH - 90, width=160, height=60,
+                        preserveAspectRatio=True, mask="auto")
         except Exception:
-            c.setFont("Helvetica-Oblique", 8); c.setFillColor(_hex(_ST))
-            c.drawString(PAD, y-14, "Chart unavailable — check data entry in app.")
-    else:
-        c.setFillColor(_hex(_GR)); c.roundRect(PAD, y-50, A4W-PAD*2, 54, 6, fill=1, stroke=0)
-        c.setFont("Helvetica-Oblique", 9); c.setFillColor(_hex(_ST))
-        c.drawCentredString(A4W/2, y-28, "No historical data chart uploaded yet.")
-        c.drawCentredString(A4W/2, y-42, "Add data in the app under KPI & Results → Historical Data.")
+            pass
 
-    _page_footer(c)
+    # Blue + red divider lines (like QM cover)
+    c.setFillColor(HexColor(_RED));  c.rect(40, _SH - 100, 110, 4, fill=1, stroke=0)
+    c.setFillColor(HexColor(_BLUE)); c.rect(155, _SH - 100, _SW - 195, 4, fill=1, stroke=0)
+
+    # Main title
+    c.setFillColor(HexColor(_BLUE_DARK))
+    c.setFont("Helvetica-Bold", 42)
+    c.drawCentredString(_SW / 2, _SH / 2 + 20, title)
+
+    # Red underline
+    c.setFillColor(HexColor(_RED))
+    c.rect(_SW / 2 - 180, _SH / 2 + 10, 360, 3, fill=1, stroke=0)
+
+    # Subtitle
+    c.setFillColor(HexColor(_BLUE))
+    c.setFont("Helvetica-Oblique", 20)
+    c.drawCentredString(_SW / 2, _SH / 2 - 20, subtitle)
+
+    # Date bottom-right
+    c.setFillColor(HexColor(_SUB_TEXT))
+    c.setFont("Helvetica-Oblique", 13)
+    c.drawRightString(_SW - 40, 40, date_str)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# PAGE 4 — KPI DASHBOARD
-# ─────────────────────────────────────────────────────────────────────────────
+def _fi_section_slide(c, title):
+    """Full dark-blue section divider — exact match to QM draw_section_slide."""
+    c.setFillColor(HexColor(_BLUE_DARK))
+    c.rect(0, 0, _SW, _SH, fill=1, stroke=0)
+    c.setFillColor(HexColor(_RED))
+    c.rect(0, _SH / 2 - 2, _SW, 4, fill=1, stroke=0)
+    c.setFillColor(HexColor("#ffffff"))
+    c.setFont("Helvetica-Bold", 36)
+    c.drawCentredString(_SW / 2, _SH / 2 + 20, title)
 
-def _page_kpi(c, kpi, wu_rows, project_name):
-    _page_header(c, "KPI Dashboard", project_name, 4)
-    y = A4H - 80
 
-    if not kpi:
-        c.setFont("Helvetica-Oblique", 10); c.setFillColor(_hex(_ST))
-        c.drawCentredString(A4W/2, A4H/2, "KPI not set up yet — complete KPI setup in the app.")
-        _page_footer(c); return
+def _fi_chart_slide(c, title, png_bytes):
+    """Draw a chart slide: header + PNG image body."""
+    _fi_slide_header(c, title)
+    img = ImageReader(png_bytes)
+    c.drawImage(img, 40, 40, width=_SW - 80, height=_SH - 92 - 40,
+                preserveAspectRatio=True, anchor="c")
 
-    kpi_name = kpi.get("kpi_name","—")
-    unit     = kpi.get("unit","")
-    base     = float(kpi.get("baseline_value",0) or 0)
-    tgt      = float(kpi.get("target_value",0) or 0)
-    tgt_date = str(kpi.get("target_date",""))[:10]
-    hist_ctx = kpi.get("historical_context","")
 
-    # KPI title
-    c.setFillColor(_hex(_B)); c.roundRect(PAD, y-36, A4W-PAD*2, 40, 6, fill=1, stroke=0)
-    c.setFillColor(_hex("#ffffff")); c.setFont("Helvetica-Bold", 14)
-    c.drawCentredString(A4W/2, y-20, kpi_name)
-    c.setFont("Helvetica", 9)
-    c.drawCentredString(A4W/2, y-34, f"Unit: {unit}   ·   Target Date: {tgt_date}")
-    y -= 50
+def _stamp(slides, title, png):
+    """Append a chart slide dict; skip if png is None."""
+    if png:
+        slides.append({"type": "chart", "title": title, "png": png})
 
-    # Baseline / Current / Target cards
+
+def _sec(slides, title):
+    slides.append({"type": "section", "title": title})
+
+
+# ── Individual slide figure builders ─────────────────────────────────────────
+
+def _fig_score_ramp(checklist, cw):
+    """Score ramp vs target chart."""
+    from fi_projects_tab import REQUIREMENTS, ACTIVE_WEEKS, TARGET_RAMP, REQ_BY_WEEK
+    wk_score = {}
+    cum = 0
+    for w in range(1, 13):
+        for r in REQ_BY_WEEK.get(w, []):
+            if checklist.get(r["id"], {}).get("done"):
+                cum += r["pts"]
+        if w in ACTIVE_WEEKS:
+            wk_score[w] = cum
+
+    fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=150)
+    fig.patch.set_facecolor("#ffffff"); ax.set_facecolor("#FAFAFA")
+    tw = list(range(1, 13))
+    ax.fill_between(tw, [TARGET_RAMP[w] for w in tw], alpha=0.05, color="#566573")
+    ax.plot(tw, [TARGET_RAMP[w] for w in tw], "s--", color="#BDC3C7",
+            lw=1.6, ms=5, label="Target Ramp")
+    if wk_score:
+        ws = sorted(wk_score); wv = [wk_score[w] for w in ws]
+        ax.fill_between(ws, wv, alpha=0.10, color=_BLUE)
+        ax.plot(ws, wv, "o-", color=_BLUE, lw=2.5, ms=8, label="Actual Score", zorder=5)
+        for w, v in zip(ws, wv):
+            ax.annotate(str(v), (w, v), textcoords="offset points",
+                        xytext=(0, 9), fontsize=9, ha="center",
+                        color=_BLUE, fontweight="bold")
+    ax.axvline(cw, color=_RED, lw=1.8, ls=":", alpha=0.8, label=f"W{cw} Now")
+    ax.set_xlim(0.5, 12.5); ax.set_ylim(0, 110)
+    ax.set_xticks(range(1, 13))
+    ax.set_xticklabels([f"W{i}" for i in range(1, 13)], fontsize=10)
+    ax.set_ylabel("Score / 100 pts", fontsize=10, color=_SUB_TEXT)
+    ax.legend(fontsize=10, frameon=False)
+    ax.grid(axis="y", color="#eee", lw=0.6)
+    for s in ["top", "right"]: ax.spines[s].set_visible(False)
+    fig.tight_layout(pad=0.8)
+    return fig
+
+
+def _fig_kpi_trend(kpi, wu_rows):
+    """KPI weekly trend line."""
     readings = sorted([w for w in wu_rows if w.get("kpi_value") is not None],
                       key=lambda x: x["week_number"])
-    current  = float(readings[-1]["kpi_value"]) if readings else base
-    cur_week = readings[-1]["week_number"] if readings else "—"
+    if not readings:
+        return None
+    base = float(kpi.get("baseline_value", 0) or 0)
+    tgt  = float(kpi.get("target_value", 0) or 0)
+    unit = kpi.get("unit", "")
+    wks  = [w["week_number"] for w in readings]
+    vals = [float(w["kpi_value"]) for w in readings]
 
-    # Determine progress
-    gap  = abs(tgt - base) if tgt != base else 1
-    prog = abs(current - base) / gap if gap else 0
-    prog_color = _G if prog >= 0.8 else (_A if prog >= 0.4 else _R)
-
-    card_w = (A4W - PAD*2 - 16) / 3
-    cards  = [
-        ("BASELINE", f"{base:.1f} {unit}", _ST, "#ffffff"),
-        (f"CURRENT (W{cur_week})", f"{current:.1f} {unit}", prog_color, "#ffffff"),
-        ("TARGET", f"{tgt:.1f} {unit}", _G, "#ffffff"),
-    ]
-    for i, (lbl, val, bg, fg) in enumerate(cards):
-        cx = PAD + i*(card_w+8)
-        c.setFillColor(_hex(bg)); c.roundRect(cx, y-54, card_w, 58, 6, fill=1, stroke=0)
-        c.setFillColor(_hex(fg)); c.setFont("Helvetica-Bold", 7)
-        c.drawCentredString(cx+card_w/2, y-13, lbl)
-        c.setFont("Helvetica-Bold", 16)
-        c.drawCentredString(cx+card_w/2, y-35, val[:14])
-        prog_pct = f"{prog*100:.0f}% achieved"
-        if lbl.startswith("CURRENT"):
-            c.setFont("Helvetica", 8)
-            c.drawCentredString(cx+card_w/2, y-50, prog_pct)
-    y -= 66
-
-    # Historical context
-    if hist_ctx:
-        _section_label(c, PAD, y, "Historical Context"); y -= 12
-        c.setFont("Helvetica-Oblique", 8.5); c.setFillColor(_hex(_ST))
-        _wrap_text(c, hist_ctx, PAD, y, A4W-PAD*2, size=8.5, line_h=12, max_lines=3)
-        y -= 46
-
-    # Trend chart
-    if readings:
-        _section_label(c, PAD, y, "Weekly KPI Trend"); y -= 8
-        fig, ax = plt.subplots(figsize=(7, 3.0))
-        fig.patch.set_facecolor("white"); ax.set_facecolor("#FAFAFA")
-        wks  = [w["week_number"] for w in readings]
-        vals = [float(w["kpi_value"]) for w in readings]
-        ax.axhline(base, color="#BDC3C7", lw=1.5, ls=":", label=f"Baseline {base:.1f}")
-        ax.axhline(tgt,  color=_G,        lw=1.5, ls="--", label=f"Target {tgt:.1f}")
-        ax.fill_between(wks, base, vals, alpha=0.10, color=_B)
-        ax.plot(wks, vals, "o-", color=_B, lw=2.5, ms=7, label="Actual", zorder=5)
-        for w, v in zip(wks, vals):
-            ax.annotate(f"{v:.1f}", (w, v), textcoords="offset points",
-                        xytext=(0, 8), fontsize=8, ha="center", color=_B, fontweight="bold")
-        ax.set_xlim(0.5, 12.5); ax.set_xticks(range(1,13))
-        ax.set_xticklabels([f"W{i}" for i in range(1,13)], fontsize=8)
-        ax.legend(fontsize=8, frameon=False, loc="upper left")
-        ax.grid(axis="y", color="#eee", lw=0.5)
-        for s in ["top","right"]: ax.spines[s].set_visible(False)
-        ax.set_ylabel(unit, fontsize=8)
-        fig.tight_layout(pad=0.4)
-        img  = _fig_to_img(fig); plt.close(fig)
-        img_h = 180
-        c.drawImage(img, PAD, y-img_h, width=A4W-PAD*2, height=img_h, preserveAspectRatio=True)
-        y -= img_h + 10
-
-    # Sub-components
-    subs = json.loads(kpi.get("sub_components","[]")) if isinstance(kpi.get("sub_components"),str) else (kpi.get("sub_components") or [])
-    if subs and y > 80:
-        _section_label(c, PAD, y, "KPI Components"); y -= 14
-        n = len(subs)
-        cw2 = (A4W - PAD*2 - (n-1)*6) / n if n else 1
-        for i, s in enumerate(subs):
-            sname = s.get("name","") if isinstance(s,dict) else str(s)
-            sx = PAD + i*(cw2+6)
-            c.setFillColor(_hex(_LB)); c.roundRect(sx, y-24, cw2, 28, 4, fill=1, stroke=0)
-            c.setStrokeColor(_hex(_B)); c.setLineWidth(0.5)
-            c.roundRect(sx, y-24, cw2, 28, 4, fill=0, stroke=1)
-            c.setFont("Helvetica-Bold", 8); c.setFillColor(_hex(_B))
-            c.drawCentredString(sx+cw2/2, y-14, sname[:18])
-
-    _page_footer(c)
+    fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=150)
+    fig.patch.set_facecolor("#ffffff"); ax.set_facecolor("#FAFAFA")
+    ax.axhline(base, color="#BDC3C7", lw=1.8, ls=":", label=f"Baseline {base:.1f}")
+    ax.axhline(tgt,  color=_GREEN,    lw=1.8, ls="--", label=f"Target {tgt:.1f}")
+    ax.fill_between(wks, base, vals, alpha=0.10, color=_BLUE)
+    ax.plot(wks, vals, "o-", color=_BLUE, lw=2.5, ms=8, label="Actual", zorder=5)
+    for w, v in zip(wks, vals):
+        ax.annotate(f"{v:.1f}", (w, v), textcoords="offset points",
+                    xytext=(0, 9), fontsize=9, ha="center",
+                    color=_BLUE, fontweight="bold")
+    ax.set_xlim(0.5, 12.5); ax.set_xticks(range(1, 13))
+    ax.set_xticklabels([f"W{i}" for i in range(1, 13)], fontsize=10)
+    ax.set_ylabel(unit, fontsize=10, color=_SUB_TEXT)
+    ax.legend(fontsize=10, frameon=False, loc="upper left")
+    ax.grid(axis="y", color="#eee", lw=0.6)
+    for s in ["top", "right"]: ax.spines[s].set_visible(False)
+    fig.tight_layout(pad=0.8)
+    return fig
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# PAGE 5 — COST BENEFIT
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _page_cost_benefit(c, cb_chart_data, project_name):
-    _page_header(c, "Cost Benefit Analysis", project_name, 5)
-    y = A4H - 80
-
-    # Section intro
-    c.setFillColor(_hex(_LB)); c.roundRect(PAD, y-38, A4W-PAD*2, 42, 6, fill=1, stroke=0)
-    c.setFont("Helvetica-Bold", 10); c.setFillColor(_hex(_B))
-    c.drawString(PAD+10, y-16, "Investment vs Return Analysis")
-    c.setFont("Helvetica", 8.5); c.setFillColor(_hex(_TX))
-    c.drawString(PAD+10, y-30, "What does it cost to implement the solution, and what do we gain?")
-    y -= 52
-
-    if cb_chart_data:
-        # Two-column layout: Cost | Benefit from chart data
-        d       = cb_chart_data
-        rows    = d.get("rows", [])
-        cols    = d.get("columns", [])
-        baseline= d.get("baseline")
-        target  = d.get("target")
-
-        half_w = (A4W - PAD*2 - 12) / 2
-
-        # Cost column (left)
-        c.setFillColor(_hex("#FDEDEC"))
-        c.roundRect(PAD, y-180, half_w, 184, 6, fill=1, stroke=0)
-        c.setStrokeColor(_hex(_R)); c.setLineWidth(0.8)
-        c.roundRect(PAD, y-180, half_w, 184, 6, fill=0, stroke=1)
-        c.setFillColor(_hex(_R)); c.setFont("Helvetica-Bold", 10)
-        c.drawString(PAD+10, y-16, "💰 Cost of Solution")
-        if baseline is not None:
-            c.setFont("Helvetica-Bold", 22); c.setFillColor(_hex(_R))
-            c.drawString(PAD+10, y-50, f"{baseline:,.0f}")
-            c.setFont("Helvetica", 8); c.setFillColor(_hex(_ST))
-            c.drawString(PAD+10, y-64, "Investment / Cost (SAR)")
-        c.setFont("Helvetica", 8.5); c.setFillColor(_hex(_TX))
-        cy_left = y - 84
-        for row in rows[:6]:
-            if row and len(row) >= 2:
-                c.drawString(PAD+10, cy_left, f"• {str(row[0])[:26]}")
-                try:
-                    c.drawRightString(PAD+half_w-10, cy_left, f"{float(row[1]):,.0f}")
-                except: pass
-                cy_left -= 13
-
-        # Benefit column (right)
-        rx = PAD + half_w + 12
-        c.setFillColor(_hex("#EAFAF1"))
-        c.roundRect(rx, y-180, half_w, 184, 6, fill=1, stroke=0)
-        c.setStrokeColor(_hex(_G)); c.setLineWidth(0.8)
-        c.roundRect(rx, y-180, half_w, 184, 6, fill=0, stroke=1)
-        c.setFillColor(_hex(_G)); c.setFont("Helvetica-Bold", 10)
-        c.drawString(rx+10, y-16, "📈 Benefit / ROI")
-        if target is not None:
-            c.setFont("Helvetica-Bold", 22); c.setFillColor(_hex(_G))
-            c.drawString(rx+10, y-50, f"{target:,.0f}")
-            c.setFont("Helvetica", 8); c.setFillColor(_hex(_ST))
-            c.drawString(rx+10, y-64, "Expected Savings / Return (SAR)")
-        # ROI
-        if baseline and target and baseline > 0:
-            roi = (target - baseline) / baseline * 100
-            c.setFont("Helvetica-Bold", 14); c.setFillColor(_hex(_G))
-            c.drawString(rx+10, y-84, f"ROI: {roi:+.1f}%")
-        y -= 194
-
-        # Chart
-        if rows and cols and y > 100:
-            _section_label(c, PAD, y, "Cost / Benefit Chart"); y -= 8
-            try:
-                fig, ax = plt.subplots(figsize=(7, 2.8))
-                fig.patch.set_facecolor("white"); ax.set_facecolor("#FAFAFA")
-                x_vals = list(range(len(rows)))
-                for ci, col in enumerate(cols[1:], 1):
-                    yv = []
-                    for row in rows:
-                        try: yv.append(float(row[ci]))
-                        except: yv.append(0)
-                    ax.plot(x_vals, yv, "o-", lw=2, ms=5, label=col)
-                if baseline is not None:
-                    ax.axhline(baseline, color="#BDC3C7", lw=1.2, ls=":", label=f"Cost {baseline:,.0f}")
-                if target is not None:
-                    ax.axhline(target, color=_G, lw=1.2, ls="--", label=f"Target {target:,.0f}")
-                ax.set_xticks(x_vals)
-                ax.set_xticklabels([str(r[0])[:8] for r in rows], fontsize=7, rotation=30, ha="right")
-                ax.legend(fontsize=7, frameon=False)
-                ax.grid(axis="y", color="#eee", lw=0.5)
-                for s in ["top","right"]: ax.spines[s].set_visible(False)
-                fig.tight_layout(pad=0.4)
-                img = _fig_to_img(fig); plt.close(fig)
-                img_h = 160
-                c.drawImage(img, PAD, y-img_h, width=A4W-PAD*2, height=img_h, preserveAspectRatio=True)
-            except Exception:
-                pass
-    else:
-        c.setFillColor(_hex(_GR)); c.roundRect(PAD, y-80, A4W-PAD*2, 84, 6, fill=1, stroke=0)
-        c.setFont("Helvetica-Oblique", 9); c.setFillColor(_hex(_ST))
-        c.drawCentredString(A4W/2, y-36, "No Cost/Benefit data entered yet.")
-        c.drawCentredString(A4W/2, y-52, "Add cost/benefit data in the app under KPI & Results → Cost/Benefit Chart.")
-
-    _page_footer(c)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# PAGE 6 — MASTER PLAN (GANTT)
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _page_master_plan(c, steps, wu_rows, cw, project_name):
-    _page_header(c, "Master Plan", project_name, 6)
-    y = A4H - 80
-
+def _fig_gantt(steps, wu_rows, cw):
+    """Gantt chart for master plan."""
     if not steps:
-        c.setFont("Helvetica-Oblique", 10); c.setFillColor(_hex(_ST))
-        c.drawCentredString(A4W/2, A4H/2, "No master plan steps added yet.")
-        _page_footer(c); return
-
-    # Build progress map
+        return None
     sp_map = {}
     for wu in wu_rows:
-        for sp in (json.loads(wu["step_progress"]) if isinstance(wu.get("step_progress"),str) else (wu.get("step_progress") or [])):
+        raw = wu.get("step_progress", [])
+        sp_list = json.loads(raw) if isinstance(raw, str) else (raw or [])
+        for sp in sp_list:
             if isinstance(sp, dict):
-                sid = sp.get("step_id","")
+                sid = sp.get("step_id", "")
                 sp_map[sid] = max(sp_map.get(sid, 0), sp.get("pct_complete", 0))
 
-    # Draw Gantt as matplotlib figure
     n = len(steps)
-    fig_h = max(3.5, n * 0.48 + 1.2)
-    fig, ax = plt.subplots(figsize=(7.2, fig_h))
-    fig.patch.set_facecolor("white"); ax.set_facecolor("#FAFAFA")
+    fig_h = max(5.0, n * 0.55 + 1.5)
+    fig, ax = plt.subplots(figsize=(13.33, fig_h), dpi=150)
+    fig.patch.set_facecolor("#ffffff"); ax.set_facecolor("#FAFAFA")
 
     for i, step in enumerate(steps):
         ps  = max(1, step.get("planned_start_week", 1))
         pe  = min(12, step.get("planned_end_week", ps))
         dur = pe - ps + 1
-        # Planned bar (light)
-        ax.barh(i, dur, left=ps-1, height=0.5, color="#D6E8F7", zorder=2)
-        ax.barh(i, dur, left=ps-1, height=0.5, color="none",
-                edgecolor="#0C5595", linewidth=0.8, zorder=3)
-        # Progress fill
-        pct = sp_map.get(str(step.get("id","")), 0)
+        ax.barh(i, dur, left=ps - 1, height=0.55, color="#D6E8F7", zorder=2)
+        ax.barh(i, dur, left=ps - 1, height=0.55, color="none",
+                edgecolor=_BLUE, linewidth=0.9, zorder=3)
+        pct = sp_map.get(str(step.get("id", "")), 0)
         if pct > 0:
-            ax.barh(i, dur*pct/100, left=ps-1, height=0.5,
-                    color=_G if pct==100 else _B, alpha=0.85, zorder=4)
+            ax.barh(i, dur * pct / 100, left=ps - 1, height=0.55,
+                    color=_GREEN if pct == 100 else _BLUE, alpha=0.85, zorder=4)
             if pct >= 15:
-                ax.text(ps-1+dur*pct/200, i, f"{pct}%",
-                        ha="center", va="center", fontsize=7,
+                ax.text(ps - 1 + dur * pct / 200, i, f"{pct}%",
+                        ha="center", va="center", fontsize=8,
                         color="white", fontweight="bold", zorder=5)
-        # Owner label
         if step.get("owner"):
-            ax.text(pe+0.1, i, step["owner"][:12],
-                    ha="left", va="center", fontsize=6.5, color="#566573")
+            ax.text(pe + 0.1, i, step["owner"][:14],
+                    ha="left", va="center", fontsize=8, color=_SUB_TEXT)
 
-    # Grid + current week
     for w in range(13):
-        ax.axvline(w, color="#eee", linewidth=0.5, zorder=1)
-    ax.axvline(cw-1, color=_R, linewidth=1.5, linestyle="--", zorder=6, alpha=0.85)
-    ax.text(cw-1, -0.7, f"W{cw}", color=_R, fontsize=7, ha="center", fontweight="bold")
+        ax.axvline(w, color="#eee", linewidth=0.6, zorder=1)
+    ax.axvline(cw - 1, color=_RED, linewidth=2, linestyle="--", zorder=6, alpha=0.9)
+    ax.text(cw - 1, -0.8, f"W{cw}", color=_RED, fontsize=9, ha="center", fontweight="bold")
 
     ax.set_yticks(range(n))
-    ax.set_yticklabels([s.get("step_name","")[:28] for s in steps], fontsize=8)
+    ax.set_yticklabels([s.get("step_name", "")[:32] for s in steps], fontsize=9)
     ax.set_xticks(range(13))
-    ax.set_xticklabels([""]+[f"W{i}" for i in range(1,13)], fontsize=7.5)
-    ax.set_xlim(-0.1, 12.5); ax.set_ylim(-0.8, n-0.2)
+    ax.set_xticklabels([""] + [f"W{i}" for i in range(1, 13)], fontsize=9)
+    ax.set_xlim(-0.1, 12.5); ax.set_ylim(-0.8, n - 0.2)
     ax.invert_yaxis()
-    for sp in ["top","right","left","bottom"]: ax.spines[sp].set_visible(False)
+    for sp in ["top", "right", "left", "bottom"]: ax.spines[sp].set_visible(False)
     ax.tick_params(left=False, bottom=False)
-    fig.tight_layout(pad=0.5)
+    fig.tight_layout(pad=0.8)
+    return fig
 
-    img   = _fig_to_img(fig); plt.close(fig)
-    img_h = min(A4H - 160, max(120, n*28 + 50))
-    c.drawImage(img, PAD, y-img_h, width=A4W-PAD*2, height=img_h, preserveAspectRatio=True)
-    y -= img_h + 12
 
-    # Step details table
-    if y > 120:
-        _section_label(c, PAD, y, "Step Details"); y -= 14
-        c.setFillColor(_hex(_B)); c.rect(PAD, y-14, A4W-PAD*2, 16, fill=1, stroke=0)
-        c.setFillColor(_hex("#ffffff")); c.setFont("Helvetica-Bold", 7.5)
-        c.drawString(PAD+4, y-10, "STEP")
-        c.drawString(PAD+200, y-10, "OWNER")
-        c.drawString(PAD+290, y-10, "WEEKS")
-        c.drawString(PAD+340, y-10, "PROGRESS")
-        y -= 16
-        alt = False
-        for step in steps:
-            if y < 50: break
-            sid  = str(step.get("id",""))
-            pct  = sp_map.get(sid, 0)
-            p_col = _G if pct==100 else (_A if pct>=50 else (_R if pct>0 else _ST))
-            if alt: c.setFillColor(_hex(_GR)); c.rect(PAD, y-12, A4W-PAD*2, 14, fill=1, stroke=0)
+def _fig_team(team, wdw):
+    """Team member cards + Who Does What table."""
+    fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=150)
+    fig.patch.set_facecolor("#ffffff"); ax.set_facecolor("#ffffff")
+    ax.set_xlim(0, 1); ax.set_ylim(0, 1); ax.axis("off")
+
+    # Role colours
+    role_colors = {
+        "Team Leader": _BLUE_DARK, "Assistant Team Leader": _BLUE,
+        "Analyst": "#2471A3", "Operator": _GREEN,
+        "Maintenance": _AMBER, "Quality": "#8E44AD",
+        "Day Shift Section Head": "#2E86C1",
+        "Night Shift Section Head": "#1A5276",
+        "Secretary": "#566573", "Other": "#839192",
+    }
+
+    # Team member cards (top row)
+    n = min(len(team), 8)
+    if n > 0:
+        card_w = min(0.22, 0.95 / n)
+        for i, m in enumerate(team[:n]):
+            cx = 0.025 + i * (card_w + 0.01)
+            cy = 0.68
+            rc = role_colors.get(m.get("role", "Other"), _BLUE)
+            ax.add_patch(plt.Rectangle((cx, cy), card_w, 0.26,
+                         facecolor="#EAF3FB", edgecolor=rc, linewidth=1.5,
+                         transform=ax.transAxes))
+            ax.add_patch(plt.Rectangle((cx, cy + 0.22), card_w, 0.04,
+                         facecolor=rc, transform=ax.transAxes))
+            ax.text(cx + card_w / 2, cy + 0.17,
+                    m.get("member_name", "")[:16],
+                    ha="center", va="center", fontsize=8,
+                    fontweight="bold", color=_BODY_TEXT,
+                    transform=ax.transAxes)
+            ax.text(cx + card_w / 2, cy + 0.10,
+                    m.get("role", "")[:20],
+                    ha="center", va="center", fontsize=7,
+                    color=_SUB_TEXT, transform=ax.transAxes)
+            ax.text(cx + card_w / 2, cy + 0.04,
+                    m.get("department", "")[:20],
+                    ha="center", va="center", fontsize=6.5,
+                    color=_SUB_TEXT, transform=ax.transAxes)
+
+    # Who Does What table header
+    ax.text(0.025, 0.63, "WHO DOES WHAT", fontsize=9, fontweight="bold",
+            color=_BLUE, transform=ax.transAxes)
+    ax.add_patch(plt.Rectangle((0.025, 0.54), 0.95, 0.07,
+                 facecolor=_BLUE, transform=ax.transAxes))
+    for xp, lbl in [(0.03, "WHO"), (0.22, "WHAT (RESPONSIBILITY)"), (0.78, "WHEN")]:
+        ax.text(xp, 0.575, lbl, fontsize=8, fontweight="bold",
+                color="white", transform=ax.transAxes)
+
+    # WDW rows
+    y_row = 0.53
+    alt = False
+    for w in wdw[:12]:
+        resps = w.get("responsibilities", [])
+        if isinstance(resps, str):
+            try: resps = json.loads(resps)
+            except: resps = [{"what": w.get("responsibility", ""), "when": ""}]
+        if not resps:
+            resps = [{"what": w.get("responsibility", ""), "when": ""}]
+        for ri, r in enumerate(resps[:3]):
+            row_h = 0.055
+            if y_row - row_h < 0.02: break
+            if alt:
+                ax.add_patch(plt.Rectangle((0.025, y_row - row_h), 0.95, row_h,
+                             facecolor="#F4F6F8", transform=ax.transAxes))
+            if ri == 0:
+                ax.text(0.03, y_row - row_h / 2, w.get("member_name", "")[:18],
+                        fontsize=8, fontweight="bold", color=_BODY_TEXT,
+                        va="center", transform=ax.transAxes)
+            what = r.get("what", "")[:55]
+            ax.text(0.22, y_row - row_h / 2, what, fontsize=7.5,
+                    color=_BODY_TEXT, va="center", transform=ax.transAxes)
+            ax.text(0.78, y_row - row_h / 2, r.get("when", "")[:20],
+                    fontsize=7.5, color=_SUB_TEXT, va="center",
+                    transform=ax.transAxes)
+            ax.axhline(y_row - row_h, color="#E2E8F0", linewidth=0.5,
+                       transform=ax.transAxes, xmin=0.025, xmax=0.975)
+            y_row -= row_h
             alt = not alt
-            c.setFont("Helvetica", 8); c.setFillColor(_hex(_TX))
-            c.drawString(PAD+4, y-9, step.get("step_name","")[:32])
-            c.drawString(PAD+200, y-9, (step.get("owner","—") or "—")[:16])
-            c.drawString(PAD+290, y-9, f"W{step.get('planned_start_week',1)}→W{step.get('planned_end_week',1)}")
-            c.setFillColor(_hex(p_col)); c.setFont("Helvetica-Bold", 8)
-            c.drawString(PAD+340, y-9, f"{pct}%  {'✓' if pct==100 else ''}")
-            c.setStrokeColor(_hex("#E2E8F0")); c.setLineWidth(0.3)
-            c.line(PAD, y-12, A4W-PAD, y-12)
-            y -= 14
 
-    _page_footer(c)
+    fig.tight_layout(pad=0.3)
+    return fig
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# PAGE 7 — AUDIT CHECKLIST
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _page_audit_checklist(c, checklist, cw, project_name):
+def _fig_checklist(checklist, cw):
+    """Audit checklist table."""
     from fi_projects_tab import REQUIREMENTS, TOTAL_POINTS, TARGET_RAMP, _score
-    _page_header(c, "Audit Checklist", project_name, 7)
-    y = A4H - 80
 
-    total   = _score(checklist)
-    target  = TARGET_RAMP.get(cw, 100)
-    pct     = total / TOTAL_POINTS * 100
-    sc_col  = _G if total >= target else _A
+    total  = _score(checklist)
+    target = TARGET_RAMP.get(cw, 100)
+    pct    = total / TOTAL_POINTS * 100
 
-    # Score summary
-    c.setFillColor(_hex(sc_col)); c.roundRect(PAD, y-42, A4W-PAD*2, 46, 6, fill=1, stroke=0)
-    c.setFillColor(_hex("#ffffff")); c.setFont("Helvetica-Bold", 18)
-    c.drawString(PAD+12, y-22, f"Score: {total} / {TOTAL_POINTS} pts  ({pct:.0f}%)")
-    c.setFont("Helvetica", 9)
-    c.drawString(PAD+12, y-36, f"W{cw} target: {target} pts  ·  {'✓ On Track' if total >= target else '⚠ Below Target'}")
-    y -= 56
+    fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=150)
+    fig.patch.set_facecolor("#ffffff"); ax.set_facecolor("#ffffff")
+    ax.set_xlim(0, 1); ax.set_ylim(0, 1); ax.axis("off")
+
+    # Score summary bar
+    sc_color = _GREEN if total >= target else _AMBER
+    ax.add_patch(plt.Rectangle((0.02, 0.88), 0.96, 0.10,
+                 facecolor=sc_color, transform=ax.transAxes))
+    ax.text(0.5, 0.935, f"Score: {total} / {TOTAL_POINTS} pts  ({pct:.0f}%)   ·   W{cw} Target: {target} pts",
+            ha="center", va="center", fontsize=13, fontweight="bold",
+            color="white", transform=ax.transAxes)
 
     # Table header
-    c.setFillColor(_hex(_B)); c.rect(PAD, y-14, A4W-PAD*2, 16, fill=1, stroke=0)
-    c.setFillColor(_hex("#ffffff")); c.setFont("Helvetica-Bold", 7.5)
-    c.drawString(PAD+4, y-10, "#")
-    c.drawString(PAD+22, y-10, "REQUIREMENT")
-    c.drawString(PAD+330, y-10, "WK")
-    c.drawString(PAD+350, y-10, "PTS")
-    c.drawString(PAD+375, y-10, "STATUS")
-    c.drawString(A4W-PAD-32, y-10, "DONE")
-    y -= 16
+    ax.add_patch(plt.Rectangle((0.02, 0.82), 0.96, 0.055,
+                 facecolor=_BLUE, transform=ax.transAxes))
+    for xp, lbl in [(0.025, "#"), (0.07, "REQUIREMENT"), (0.72, "WK"),
+                    (0.77, "PTS"), (0.83, "STATUS"), (0.94, "✓")]:
+        ax.text(xp, 0.847, lbl, fontsize=7.5, fontweight="bold",
+                color="white", transform=ax.transAxes)
 
+    row_h = 0.024
+    y = 0.82
     alt = False
     for r in REQUIREMENTS:
-        if y < 50:
-            # New page for overflow (simplified — just guard)
-            break
-        done = bool(checklist.get(r["id"],{}).get("done"))
-        row_h = 14
-        if alt: c.setFillColor(_hex(_GR)); c.rect(PAD, y-row_h, A4W-PAD*2, row_h, fill=1, stroke=0)
+        y -= row_h
+        if y < 0.02: break
+        done = bool(checklist.get(r["id"], {}).get("done"))
+        if alt:
+            ax.add_patch(plt.Rectangle((0.02, y), 0.96, row_h,
+                         facecolor="#F4F6F8", transform=ax.transAxes))
         alt = not alt
 
-        # Done indicator
-        done_col = _G if done else (_R if r["week"] <= cw else _ST)
-        c.setFillColor(_hex(done_col)); c.circle(A4W-PAD-16, y-7, 4, fill=1, stroke=0)
+        done_col = _GREEN if done else (_RED if r["week"] <= cw else _SUB_TEXT)
+        ax.text(0.025, y + row_h * 0.4, str(r["id"]),
+                fontsize=7, color=_BODY_TEXT, transform=ax.transAxes)
+        ax.text(0.07, y + row_h * 0.4, r["text"][:60],
+                fontsize=7, color=_BODY_TEXT, transform=ax.transAxes)
+        ax.text(0.72, y + row_h * 0.4, f"W{r['week']}",
+                fontsize=7, color=_SUB_TEXT, transform=ax.transAxes)
+        ax.text(0.77, y + row_h * 0.4, str(r["pts"]),
+                fontsize=7, fontweight="bold", color=_BLUE,
+                transform=ax.transAxes)
+        status = "✓ Done" if done else ("Late" if r["week"] < cw else "Pending")
+        ax.text(0.83, y + row_h * 0.4, status,
+                fontsize=7, fontweight="bold", color=done_col,
+                transform=ax.transAxes)
+        ax.add_patch(plt.Circle((0.955, y + row_h * 0.5), 0.008,
+                     facecolor=done_col, transform=ax.transAxes))
+        ax.axhline(y, color="#E2E8F0", linewidth=0.4,
+                   transform=ax.transAxes, xmin=0.02, xmax=0.98)
 
-        c.setFont("Helvetica", 7.5); c.setFillColor(_hex(_TX))
-        c.drawString(PAD+4, y-10, str(r["id"]))
-        c.drawString(PAD+22, y-10, r["text"][:55])
-        c.drawString(PAD+330, y-10, f"W{r['week']}")
-        c.setFont("Helvetica-Bold", 7.5)
-        c.drawString(PAD+350, y-10, str(r["pts"]))
-        c.setFillColor(_hex(done_col)); c.setFont("Helvetica-Bold", 7.5)
-        c.drawString(PAD+375, y-10, "✓ Done" if done else ("Late" if r["week"]<cw else "Pending"))
-
-        c.setStrokeColor(_hex("#E2E8F0")); c.setLineWidth(0.3)
-        c.line(PAD, y-row_h, A4W-PAD, y-row_h)
-        y -= row_h
-
-    _page_footer(c)
+    fig.tight_layout(pad=0.3)
+    return fig
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# PAGE 8 — ACTION PLAN
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _page_actions(c, actions, project_name):
-    _page_header(c, "Action Plan", project_name, 8)
-    y = A4H - 80
-
+def _fig_actions(actions):
+    """Action plan table."""
     if not actions:
-        c.setFont("Helvetica-Oblique", 10); c.setFillColor(_hex(_ST))
-        c.drawCentredString(A4W/2, A4H/2, "No actions logged yet.")
-        _page_footer(c); return
+        return None
+    fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=150)
+    fig.patch.set_facecolor("#ffffff"); ax.set_facecolor("#ffffff")
+    ax.set_xlim(0, 1); ax.set_ylim(0, 1); ax.axis("off")
 
-    # Summary counts
-    open_a   = [a for a in actions if a.get("status") not in ("Completed",)]
+    open_a   = [a for a in actions if a.get("status") != "Completed"]
     closed_a = [a for a in actions if a.get("status") == "Completed"]
     overdue  = [a for a in open_a if a.get("target_date") and
                 date.fromisoformat(str(a["target_date"])[:10]) < date.today()]
 
-    sc1, sc2, sc3 = 3, 3, 3
-    cw3 = (A4W - PAD*2 - 16) / 3
+    # Summary cards
     for i, (lbl, val, col) in enumerate([
-        ("Total Actions", str(len(actions)), _B),
-        ("Completed", str(len(closed_a)), _G),
-        ("Overdue", str(len(overdue)), _R if overdue else _ST),
+        ("Total", str(len(actions)), _BLUE),
+        ("Completed", str(len(closed_a)), _GREEN),
+        ("Overdue", str(len(overdue)), _RED if overdue else _SUB_TEXT),
     ]):
-        cx = PAD + i*(cw3+8)
-        c.setFillColor(_hex(col)); c.roundRect(cx, y-44, cw3, 48, 6, fill=1, stroke=0)
-        c.setFillColor(_hex("#ffffff")); c.setFont("Helvetica-Bold", 22)
-        c.drawCentredString(cx+cw3/2, y-24, val)
-        c.setFont("Helvetica", 8)
-        c.drawCentredString(cx+cw3/2, y-38, lbl)
-    y -= 58
+        cx = 0.05 + i * 0.32
+        ax.add_patch(plt.Rectangle((cx, 0.84), 0.28, 0.13,
+                     facecolor=col, transform=ax.transAxes))
+        ax.text(cx + 0.14, 0.92, val, ha="center", va="center",
+                fontsize=26, fontweight="bold", color="white",
+                transform=ax.transAxes)
+        ax.text(cx + 0.14, 0.855, lbl, ha="center", va="center",
+                fontsize=9, color="white", transform=ax.transAxes)
 
-    # Table
-    c.setFillColor(_hex(_B)); c.rect(PAD, y-14, A4W-PAD*2, 16, fill=1, stroke=0)
-    c.setFillColor(_hex("#ffffff")); c.setFont("Helvetica-Bold", 7.5)
-    c.drawString(PAD+4, y-10, "ACTION")
-    c.drawString(PAD+230, y-10, "OWNER")
-    c.drawString(PAD+310, y-10, "DUE DATE")
-    c.drawString(PAD+390, y-10, "STATUS")
-    y -= 16
+    # Table header
+    ax.add_patch(plt.Rectangle((0.02, 0.78), 0.96, 0.05,
+                 facecolor=_BLUE, transform=ax.transAxes))
+    for xp, lbl in [(0.025, "ACTION"), (0.52, "OWNER"),
+                    (0.68, "DUE DATE"), (0.83, "STATUS")]:
+        ax.text(xp, 0.803, lbl, fontsize=8, fontweight="bold",
+                color="white", transform=ax.transAxes)
 
-    status_colors = {"Completed": _G, "In Progress": _B, "Overdue": _R, "Open": _ST}
+    status_colors = {
+        "Completed": _GREEN, "In Progress": _BLUE,
+        "Overdue": _RED, "Open": _SUB_TEXT,
+    }
+    row_h = 0.032
+    y = 0.78
     alt = False
-    for a in sorted(actions, key=lambda x: (x.get("status","")=="Completed", x.get("target_date",""))):
-        if y < 50: break
-        status = a.get("status","Open")
-        due    = str(a.get("target_date","—"))[:10]
-        is_od  = due != "—" and date.fromisoformat(due) < date.today() and status != "Completed"
-        if is_od: status = "Overdue"
-        sc     = status_colors.get(status, _ST)
+    sorted_actions = sorted(actions, key=lambda x: (
+        x.get("status", "") == "Completed",
+        str(x.get("target_date", ""))
+    ))
+    for a in sorted_actions:
+        y -= row_h
+        if y < 0.02: break
+        status = a.get("status", "Open")
+        due    = str(a.get("target_date", "—"))[:10]
+        if due != "—" and due:
+            try:
+                if date.fromisoformat(due) < date.today() and status != "Completed":
+                    status = "Overdue"
+            except Exception:
+                pass
+        sc = status_colors.get(status, _SUB_TEXT)
 
-        if alt: c.setFillColor(_hex(_GR)); c.rect(PAD, y-14, A4W-PAD*2, 14, fill=1, stroke=0)
+        if alt:
+            ax.add_patch(plt.Rectangle((0.02, y), 0.96, row_h,
+                         facecolor="#F4F6F8", transform=ax.transAxes))
         alt = not alt
 
-        c.setFont("Helvetica", 8); c.setFillColor(_hex(_TX))
-        c.drawString(PAD+4, y-10, a.get("description","")[:38])
-        c.drawString(PAD+230, y-10, (a.get("owner","—") or "—")[:16])
-        c.drawString(PAD+310, y-10, due)
-        c.setFont("Helvetica-Bold", 8); c.setFillColor(_hex(sc))
-        c.drawString(PAD+390, y-10, status)
-        c.setStrokeColor(_hex("#E2E8F0")); c.setLineWidth(0.3)
-        c.line(PAD, y-14, A4W-PAD, y-14)
-        y -= 14
+        ax.text(0.025, y + row_h * 0.35, a.get("description", "")[:50],
+                fontsize=8, color=_BODY_TEXT, transform=ax.transAxes)
+        ax.text(0.52, y + row_h * 0.35, (a.get("owner", "—") or "—")[:18],
+                fontsize=8, color=_BODY_TEXT, transform=ax.transAxes)
+        ax.text(0.68, y + row_h * 0.35, due,
+                fontsize=8, color=_BODY_TEXT, transform=ax.transAxes)
+        ax.text(0.83, y + row_h * 0.35, status,
+                fontsize=8, fontweight="bold", color=sc,
+                transform=ax.transAxes)
+        ax.axhline(y, color="#E2E8F0", linewidth=0.4,
+                   transform=ax.transAxes, xmin=0.02, xmax=0.98)
 
-    _page_footer(c)
+    fig.tight_layout(pad=0.3)
+    return fig
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# PAGES 9+ — MEETING MINUTES (one page per meeting)
-# ─────────────────────────────────────────────────────────────────────────────
+def _fig_meeting(mtg):
+    """Single meeting minutes slide."""
+    fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=150)
+    fig.patch.set_facecolor("#ffffff"); ax.set_facecolor("#ffffff")
+    ax.set_xlim(0, 1); ax.set_ylim(0, 1); ax.axis("off")
 
-def _page_meeting(c, mtg, project_name, page_num):
-    _page_header(c, f"Meeting Minutes — Week {mtg.get('week_number','?')}", project_name, page_num)
-    y = A4H - 80
+    # Meta bar
+    ax.add_patch(plt.Rectangle((0.02, 0.88), 0.96, 0.09,
+                 facecolor="#EAF3FB", transform=ax.transAxes))
+    att_pct = int(mtg.get("attendance_pct") or 0)
+    att_col = _GREEN if att_pct >= 80 else _RED
+    ax.text(0.03, 0.935, f"Date: {str(mtg.get('meeting_date', ''))[:10]}",
+            fontsize=9, fontweight="bold", color=_BLUE,
+            transform=ax.transAxes)
+    ax.text(0.22, 0.935, f"Attendees: {mtg.get('attendees', '—')[:45]}",
+            fontsize=9, color=_BODY_TEXT, transform=ax.transAxes)
+    ax.text(0.03, 0.893, f"Attendance: {att_pct}%",
+            fontsize=9, fontweight="bold", color=att_col,
+            transform=ax.transAxes)
 
-    # Meta row
-    c.setFillColor(_hex(_LB)); c.roundRect(PAD, y-32, A4W-PAD*2, 36, 6, fill=1, stroke=0)
-    c.setFont("Helvetica-Bold", 9); c.setFillColor(_hex(_B))
-    att_pct = mtg.get("attendance_pct","?")
-    att_col = _G if int(att_pct or 0) >= 80 else _R
-    c.drawString(PAD+10, y-12, f"Date: {str(mtg.get('meeting_date',''))[:10]}")
-    c.drawString(PAD+160, y-12, f"Attendees: {mtg.get('attendees','—')[:40]}")
-    c.setFillColor(_hex(att_col))
-    c.drawString(PAD+10, y-26, f"Attendance: {att_pct}%")
-    y -= 44
+    y = 0.87
+    import textwrap as _tw
+
+    def _section(title):
+        nonlocal y
+        y -= 0.04
+        ax.text(0.02, y, title, fontsize=9, fontweight="bold",
+                color=_BLUE, transform=ax.transAxes)
+        y -= 0.015
+
+    def _bullet(text, indent=0.04):
+        nonlocal y
+        for line in _tw.wrap(str(text), width=110)[:3]:
+            if y < 0.03: return
+            ax.text(indent, y, f"• {line}", fontsize=8,
+                    color=_BODY_TEXT, transform=ax.transAxes)
+            y -= 0.03
 
     # Agenda
-    agenda = json.loads(mtg["agenda"]) if isinstance(mtg.get("agenda"),str) else (mtg.get("agenda") or [])
+    agenda = mtg.get("agenda", [])
+    if isinstance(agenda, str):
+        try: agenda = json.loads(agenda)
+        except: agenda = []
     if agenda:
-        _section_label(c, PAD, y, "Agenda"); y -= 13
-        for item in agenda[:8]:
-            if y < 60: break
-            c.setFont("Helvetica", 8.5); c.setFillColor(_hex(_TX))
-            c.drawString(PAD+6, y, f"• {str(item)[:90]}"); y -= 12
-        y -= 6
+        _section("Agenda")
+        for item in agenda[:5]: _bullet(item)
 
     # Notes
-    notes = str(mtg.get("notes","—"))
-    if notes and notes != "—":
-        _section_label(c, PAD, y, "Discussion Notes"); y -= 13
-        y = _wrap_text(c, notes, PAD+6, y, A4W-PAD*2-12,
-                       font="Helvetica", size=8.5, line_h=13, max_lines=8)
-        y -= 8
+    notes = str(mtg.get("notes", "") or "")
+    if notes:
+        _section("Discussion Notes")
+        for line in _tw.wrap(notes, width=110)[:4]:
+            if y < 0.03: break
+            ax.text(0.04, y, line, fontsize=8, color=_BODY_TEXT,
+                    transform=ax.transAxes)
+            y -= 0.03
 
     # Actions
-    acts = json.loads(mtg["actions_raised"]) if isinstance(mtg.get("actions_raised"),str) else (mtg.get("actions_raised") or [])
+    acts = mtg.get("actions_raised", [])
+    if isinstance(acts, str):
+        try: acts = json.loads(acts)
+        except: acts = []
     if acts:
-        _section_label(c, PAD, y, "Action Items"); y -= 14
-        c.setFillColor(_hex(_B)); c.rect(PAD, y-13, A4W-PAD*2, 15, fill=1, stroke=0)
-        c.setFillColor(_hex("#ffffff")); c.setFont("Helvetica-Bold", 7.5)
-        c.drawString(PAD+4, y-10, "ACTION"); c.drawString(PAD+260, y-10, "OWNER")
-        c.drawString(PAD+340, y-10, "DUE"); c.drawString(PAD+410, y-10, "STATUS")
-        y -= 15
-        for act in acts:
-            if y < 60: break
+        _section("Action Items")
+        for act in acts[:6]:
+            if y < 0.03: break
             if isinstance(act, dict):
                 closed = act.get("closed", False)
-                s_col  = _G if closed else _R
-                c.setFont("Helvetica", 8); c.setFillColor(_hex(_TX))
-                c.drawString(PAD+4, y-9, act.get("text","")[:40])
-                c.drawString(PAD+260, y-9, (act.get("owner","—") or "—")[:16])
-                c.drawString(PAD+340, y-9, str(act.get("due","—"))[:10])
-                c.setFillColor(_hex(s_col)); c.setFont("Helvetica-Bold", 8)
-                c.drawString(PAD+410, y-9, "✓ Closed" if closed else "Open")
+                icon = "✓" if closed else "●"
+                col = _GREEN if closed else _RED
+                ax.text(0.03, y, f"{icon} {act.get('text', '')[:50]}",
+                        fontsize=8, color=col, transform=ax.transAxes)
+                ax.text(0.65, y, f"👤 {act.get('owner', '—')[:16]}",
+                        fontsize=8, color=_SUB_TEXT, transform=ax.transAxes)
+                ax.text(0.82, y, str(act.get("due", ""))[:10],
+                        fontsize=8, color=_SUB_TEXT, transform=ax.transAxes)
             else:
-                c.setFont("Helvetica", 8); c.setFillColor(_hex(_TX))
-                c.drawString(PAD+4, y-9, f"• {str(act)[:80]}")
-            c.setStrokeColor(_hex("#E2E8F0")); c.setLineWidth(0.3)
-            c.line(PAD, y-13, A4W-PAD, y-13)
-            y -= 13
-        y -= 6
+                ax.text(0.03, y, f"• {str(act)[:80]}", fontsize=8,
+                        color=_BODY_TEXT, transform=ax.transAxes)
+            y -= 0.035
 
     # Next steps
-    nexts = json.loads(mtg["next_steps"]) if isinstance(mtg.get("next_steps"),str) else (mtg.get("next_steps") or [])
-    if nexts and y > 80:
-        _section_label(c, PAD, y, "Next Steps"); y -= 13
-        for ns in nexts[:6]:
-            if y < 60: break
-            c.setFont("Helvetica", 8.5); c.setFillColor(_hex(_TX))
-            c.drawString(PAD+6, y, f"→  {str(ns)[:90]}"); y -= 13
+    nexts = mtg.get("next_steps", [])
+    if isinstance(nexts, str):
+        try: nexts = json.loads(nexts)
+        except: nexts = []
+    if nexts and y > 0.06:
+        _section("Next Steps")
+        for ns in nexts[:4]: _bullet(f"→  {ns}")
 
-    _page_footer(c)
+    fig.tight_layout(pad=0.3)
+    return fig
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# MAIN BOARD PDF BUILDER
-# ─────────────────────────────────────────────────────────────────────────────
+# ── MAIN BOARD PDF BUILDER ────────────────────────────────────────────────────
 
 def _generate_board_pdf(supabase, pid, project, checklist, cw):
     """
-    Pull all data for a project and generate the A4 board PDF.
+    Pull all project data and generate a QM-style landscape slide PDF.
     Returns a BytesIO buffer.
     """
     from fi_projects_tab import _pj, _score, TOTAL_POINTS
 
-    # ── Load all data ──────────────────────────────────────────────────────────
+    # Load all data
     try:
-        team     = supabase.table("fi_project_team").select("*").eq("project_id",pid).execute().data or []
-        wdw      = supabase.table("fi_who_does_what").select("*").eq("project_id",pid).execute().data or []
-        kpi_rows = supabase.table("fi_project_kpi").select("*").eq("project_id",pid).execute().data or []
-        wu_rows  = supabase.table("fi_weekly_updates").select("*").eq("project_id",pid).order("week_number").execute().data or []
-        steps    = supabase.table("fi_project_steps").select("*").eq("project_id",pid).order("sort_order").execute().data or []
-        actions  = supabase.table("fi_actions").select("*").eq("project_id",pid).execute().data or []
-        meetings = supabase.table("fi_meetings").select("*").eq("project_id",pid).order("week_number").execute().data or []
-        analyses = supabase.table("fi_project_analysis").select("*").eq("project_id",pid).execute().data or []
+        team     = supabase.table("fi_project_team").select("*").eq("project_id", pid).execute().data or []
+        wdw      = supabase.table("fi_who_does_what").select("*").eq("project_id", pid).execute().data or []
+        kpi_rows = supabase.table("fi_project_kpi").select("*").eq("project_id", pid).execute().data or []
+        wu_rows  = supabase.table("fi_weekly_updates").select("*").eq("project_id", pid).order("week_number").execute().data or []
+        steps    = supabase.table("fi_project_steps").select("*").eq("project_id", pid).order("sort_order").execute().data or []
+        actions  = supabase.table("fi_actions").select("*").eq("project_id", pid).execute().data or []
+        meetings = supabase.table("fi_meetings").select("*").eq("project_id", pid).order("week_number").execute().data or []
     except Exception as e:
         raise RuntimeError(f"Could not load project data: {e}")
 
-    kpi = kpi_rows[0] if kpi_rows else {}
+    kpi          = kpi_rows[0] if kpi_rows else {}
+    total_score  = _score(checklist)
+    project_name = project.get("project_name", "FI Project")
+    month_name   = date.today().strftime("%B %Y")
 
-    # Find historical and cost/benefit chart data
-    def _get_chart(purpose):
-        for a in analyses:
-            if a.get("analysis_type") != "data_chart": continue
-            d = json.loads(a["data"]) if isinstance(a.get("data"),str) else (a.get("data") or {})
-            if d.get("purpose") == purpose:
-                return d
-        return None
-
-    hist_chart = _get_chart("historical")
-    cb_chart   = _get_chart("cost_benefit")
-    total_score = _score(checklist)
-    project_name = project.get("project_name","FI Project")
-
-    # ── Build PDF ──────────────────────────────────────────────────────────────
+    # Build PDF canvas
     buf = io.BytesIO()
-    c   = rl_canvas.Canvas(buf, pagesize=(A4W, A4H))
+    c   = rl_canvas.Canvas(buf, pagesize=(_SW, _SH))
 
-    # Page 1 — Cover
-    _page_cover(c, project, checklist, cw, total_score)
+    # ── Slide 1: Cover ────────────────────────────────────────────────────────
+    from fi_projects_tab import TARGET_RAMP
+    target_now = TARGET_RAMP.get(cw, 100)
+    on_track   = total_score >= target_now
+    subtitle   = f"{project.get('target_area', 'Focused Improvement')} · W{cw} · Score {total_score}/{TOTAL_POINTS}"
+    today_str  = date.today().strftime("%d – %B - %Y")
+    _fi_cover_slide(c, project_name, subtitle, today_str)
     c.showPage()
 
-    # Page 2 — Team + Who Does What
-    _page_team(c, team, wdw, project_name)
+    # ── Slide 2: Score Ramp ───────────────────────────────────────────────────
+    fig = _fig_score_ramp(checklist, cw)
+    png = _fi_fig_to_png(fig)
+    _fi_chart_slide(c, "Score Progress vs Target Ramp", png)
     c.showPage()
 
-    # Page 3 — Deployment
-    _page_deployment(c, project, hist_chart, project_name)
+    # ── Section: Project Overview ─────────────────────────────────────────────
+    _fi_section_slide(c, "Project Overview")
     c.showPage()
 
-    # Page 4 — KPI
-    _page_kpi(c, kpi, wu_rows, project_name)
+    # ── Slide 3: Team ─────────────────────────────────────────────────────────
+    fig = _fig_team(team, wdw)
+    png = _fi_fig_to_png(fig)
+    _fi_chart_slide(c, "Team Members & Who Does What", png)
     c.showPage()
 
-    # Page 5 — Cost Benefit
-    _page_cost_benefit(c, cb_chart, project_name)
+    # ── Section: KPI & Results ────────────────────────────────────────────────
+    _fi_section_slide(c, "KPI & Results")
     c.showPage()
 
-    # Page 6 — Master Plan
-    _page_master_plan(c, steps, wu_rows, cw, project_name)
+    # ── Slide 4: KPI Trend ───────────────────────────────────────────────────
+    if kpi:
+        fig = _fig_kpi_trend(kpi, wu_rows)
+        if fig:
+            png = _fi_fig_to_png(fig)
+            kpi_name = kpi.get("kpi_name", "KPI")
+            _fi_chart_slide(c, f"KPI Trend — {kpi_name}", png)
+            c.showPage()
+
+    # ── Section: Master Plan ──────────────────────────────────────────────────
+    _fi_section_slide(c, "Master Plan")
     c.showPage()
 
-    # Page 7 — Audit Checklist
-    _page_audit_checklist(c, checklist, cw, project_name)
-    c.showPage()
-
-    # Page 8 — Action Plan
-    _page_actions(c, actions, project_name)
-    c.showPage()
-
-    # Pages 9+ — Meeting Minutes (one per meeting, chronological)
-    for mi, mtg in enumerate(meetings, start=9):
-        _page_meeting(c, mtg, project_name, mi)
+    # ── Slide 5: Gantt ────────────────────────────────────────────────────────
+    fig = _fig_gantt(steps, wu_rows, cw)
+    if fig:
+        png = _fi_fig_to_png(fig)
+        _fi_chart_slide(c, "Master Plan — Gantt Chart", png)
         c.showPage()
+
+    # ── Section: Audit & Actions ──────────────────────────────────────────────
+    _fi_section_slide(c, "Audit & Actions")
+    c.showPage()
+
+    # ── Slide 6: Audit Checklist ──────────────────────────────────────────────
+    fig = _fig_checklist(checklist, cw)
+    png = _fi_fig_to_png(fig)
+    _fi_chart_slide(c, f"Audit Checklist — W{cw}", png)
+    c.showPage()
+
+    # ── Slide 7: Action Plan ──────────────────────────────────────────────────
+    if actions:
+        fig = _fig_actions(actions)
+        if fig:
+            png = _fi_fig_to_png(fig)
+            _fi_chart_slide(c, "Action Plan", png)
+            c.showPage()
+
+    # ── Section: Meeting Minutes ──────────────────────────────────────────────
+    if meetings:
+        _fi_section_slide(c, "Meeting Minutes")
+        c.showPage()
+        for mtg in meetings:
+            fig = _fig_meeting(mtg)
+            if fig:
+                png = _fi_fig_to_png(fig)
+                _fi_chart_slide(c, f"Meeting Minutes — Week {mtg.get('week_number', '?')}", png)
+                c.showPage()
 
     c.save()
     buf.seek(0)
     return buf
+
 # Map form keys to their render functions
 FORM_RENDERERS = {
     "team":        _form_team,
