@@ -2019,88 +2019,129 @@ def _fig_wdw(wdw):
     return fig
 
 
-def _fig_checklist(checklist, cw):
+def _draw_checklist_slide(c, checklist, cw):
+    """Draw audit checklist directly onto ReportLab canvas — crisp native text."""
     from fi_projects_tab import REQUIREMENTS, TOTAL_POINTS, TARGET_RAMP, _score
-    total  = _score(checklist)
-    target = TARGET_RAMP.get(cw, 100)
-    pct    = total / TOTAL_POINTS * 100
-    fig, ax = plt.subplots(figsize=(13.33, 10.0), dpi=200)
-    fig.patch.set_facecolor("#ffffff"); ax.set_facecolor("#ffffff")
-    ax.set_xlim(0, 1); ax.set_ylim(0, 1); ax.axis("off")
-    sc_color = _GREEN if total >= target else _AMBER
-    ax.add_patch(plt.Rectangle((0.02, 0.88), 0.96, 0.10,
-                 facecolor=sc_color, transform=ax.transAxes))
-    ax.text(0.5, 0.935,
-            f"Score: {total} / {TOTAL_POINTS} pts  ({pct:.0f}%)   ·   W{cw} Target: {target} pts",
-            ha="center", va="center", fontsize=13, fontweight="bold",
-            color="white", transform=ax.transAxes)
-    ax.add_patch(plt.Rectangle((0.02, 0.82), 0.96, 0.055,
-                 facecolor=_BLUE, transform=ax.transAxes))
-    for xp, lbl in [(0.025, "#"), (0.07, "REQUIREMENT"), (0.72, "WK"),
-                    (0.77, "PTS"), (0.83, "STATUS"), (0.94, "✓")]:
-        ax.text(xp, 0.847, lbl, fontsize=7.5, fontweight="bold",
-                color="white", transform=ax.transAxes)
-    row_h = 0.026; y = 0.82; alt = False
+    total   = _score(checklist)
+    target  = TARGET_RAMP.get(cw, 100)
+    pct     = total / TOTAL_POINTS * 100
+    sc_col  = _GREEN if total >= target else _AMBER
+
+    # Title bar (reuse slide header)
+    _fi_slide_header(c, f"Audit Checklist — W{cw}")
+
+    # Score banner
+    BODY_TOP = _SH - 80
+    c.setFillColor(HexColor(sc_col))
+    c.rect(30, BODY_TOP - 28, _SW - 60, 30, fill=1, stroke=0)
+    c.setFillColor(HexColor("#ffffff"))
+    c.setFont("Helvetica-Bold", 13)
+    c.drawCentredString(_SW / 2, BODY_TOP - 16,
+        f"Score: {total} / {TOTAL_POINTS} pts  ({pct:.0f}%)   ·   W{cw} Target: {target} pts")
+
+    # Column positions
+    X_NUM  = 36;  X_REQ = 72;  X_WK = 730; X_PTS = 778; X_ST = 818; X_DOT = 930
+    TABLE_TOP = BODY_TOP - 38
+
+    # Table header
+    c.setFillColor(HexColor(_BLUE))
+    c.rect(30, TABLE_TOP - 18, _SW - 60, 20, fill=1, stroke=0)
+    c.setFillColor(HexColor("#ffffff"))
+    c.setFont("Helvetica-Bold", 8)
+    for x, lbl in [(X_NUM,"#"),(X_REQ,"REQUIREMENT"),(X_WK,"WK"),
+                   (X_PTS,"PTS"),(X_ST,"STATUS"),(X_DOT-8,"✓")]:
+        c.drawString(x, TABLE_TOP - 12, lbl)
+
+    # Rows — fit all 36 requirements
+    n_reqs  = len(REQUIREMENTS)
+    avail_h = TABLE_TOP - 18 - 36          # space from table top to bottom margin
+    row_h   = max(10, min(14, avail_h / n_reqs))
+    fs      = max(7, min(9, row_h - 3))    # font size scales with row height
+
+    y = TABLE_TOP - 18
+    alt = False
     for r in REQUIREMENTS:
         y -= row_h
-        if y < 0.02: break
-        done = bool(checklist.get(r["id"], {}).get("done"))
-        if alt:
-            ax.add_patch(plt.Rectangle((0.02, y), 0.96, row_h,
-                         facecolor="#F4F6F8", transform=ax.transAxes))
-        alt = not alt
+        if y < 34: break
+        done     = bool(checklist.get(r["id"], {}).get("done"))
         done_col = _GREEN if done else (_RED if r["week"] <= cw else _SUB_TEXT)
-        ax.text(0.025, y + row_h*0.4, str(r["id"]), fontsize=7, color=_BODY_TEXT, transform=ax.transAxes)
-        ax.text(0.07,  y + row_h*0.4, r["text"][:60], fontsize=7, color=_BODY_TEXT, transform=ax.transAxes)
-        ax.text(0.72,  y + row_h*0.4, f"W{r['week']}", fontsize=7, color=_SUB_TEXT, transform=ax.transAxes)
-        ax.text(0.77,  y + row_h*0.4, str(r["pts"]), fontsize=7, fontweight="bold", color=_BLUE, transform=ax.transAxes)
-        status = "✓ Done" if done else ("Late" if r["week"] < cw else "Pending")
-        ax.text(0.83, y + row_h*0.4, status, fontsize=7, fontweight="bold",
-                color=done_col, transform=ax.transAxes)
-        ax.add_patch(plt.Circle((0.955, y + row_h*0.5), 0.008,
-                     facecolor=done_col, transform=ax.transAxes))
-        # Use ax.plot instead of axhline — avoids transform restriction
-        ax.plot([0.02, 0.98], [y, y], color="#E2E8F0", linewidth=0.4,
-                transform=ax.transAxes)
-    fig.tight_layout(pad=0.3)
-    return fig
+        status   = "Done" if done else ("Late" if r["week"] < cw else "Pending")
+
+        # Alternating row background
+        if alt:
+            c.setFillColor(HexColor("#F4F6F8"))
+            c.rect(30, y, _SW - 60, row_h, fill=1, stroke=0)
+        alt = not alt
+
+        # Text
+        c.setFillColor(HexColor(_BODY_TEXT)); c.setFont("Helvetica", fs)
+        c.drawString(X_NUM, y + row_h * 0.28, str(r["id"]))
+        c.drawString(X_REQ, y + row_h * 0.28, r["text"][:72])
+        c.setFillColor(HexColor(_SUB_TEXT))
+        c.drawString(X_WK,  y + row_h * 0.28, f"W{r['week']}")
+        c.setFillColor(HexColor(_BLUE)); c.setFont("Helvetica-Bold", fs)
+        c.drawString(X_PTS, y + row_h * 0.28, str(r["pts"]))
+        c.setFillColor(HexColor(done_col))
+        c.drawString(X_ST,  y + row_h * 0.28, ("✓ " if done else "") + status)
+
+        # Status dot
+        c.setFillColor(HexColor(done_col))
+        c.circle(X_DOT, y + row_h * 0.5, row_h * 0.32, fill=1, stroke=0)
+
+        # Row separator
+        c.setStrokeColor(HexColor("#E2E8F0")); c.setLineWidth(0.3)
+        c.line(30, y, _SW - 30, y)
 
 
-def _fig_actions(actions):
+def _draw_actions_slide(c, actions):
+    """Draw action plan directly onto ReportLab canvas — crisp native text."""
     if not actions:
-        return None
-    fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=150)
-    fig.patch.set_facecolor("#ffffff"); ax.set_facecolor("#ffffff")
-    ax.set_xlim(0, 1); ax.set_ylim(0, 1); ax.axis("off")
+        return
+    _fi_slide_header(c, "Action Plan")
+
     open_a   = [a for a in actions if a.get("status") != "Completed"]
     closed_a = [a for a in actions if a.get("status") == "Completed"]
     overdue  = [a for a in open_a if a.get("target_date") and
                 date.fromisoformat(str(a["target_date"])[:10]) < date.today()]
+
+    # Summary cards
+    CARD_Y = _SH - 112; CARD_H = 38
+    card_w = (_SW - 80) // 3
     for i, (lbl, val, col) in enumerate([
-        ("Total", str(len(actions)), _BLUE),
-        ("Completed", str(len(closed_a)), _GREEN),
-        ("Overdue", str(len(overdue)), _RED if overdue else _SUB_TEXT),
+        ("Total Actions", str(len(actions)), _BLUE),
+        ("Completed",     str(len(closed_a)), _GREEN),
+        ("Overdue",       str(len(overdue)), _RED if overdue else _SUB_TEXT),
     ]):
-        cx = 0.05 + i * 0.32
-        ax.add_patch(plt.Rectangle((cx, 0.84), 0.28, 0.13,
-                     facecolor=col, transform=ax.transAxes))
-        ax.text(cx + 0.14, 0.92, val, ha="center", va="center",
-                fontsize=26, fontweight="bold", color="white", transform=ax.transAxes)
-        ax.text(cx + 0.14, 0.855, lbl, ha="center", va="center",
-                fontsize=9, color="white", transform=ax.transAxes)
-    ax.add_patch(plt.Rectangle((0.02, 0.78), 0.96, 0.05,
-                 facecolor=_BLUE, transform=ax.transAxes))
-    for xp, lbl in [(0.025, "ACTION"), (0.52, "OWNER"),
-                    (0.68, "DUE DATE"), (0.83, "STATUS")]:
-        ax.text(xp, 0.803, lbl, fontsize=8, fontweight="bold",
-                color="white", transform=ax.transAxes)
-    status_colors = {"Completed": _GREEN, "In Progress": _BLUE, "Overdue": _RED, "Open": _SUB_TEXT}
-    row_h = 0.032; y = 0.78; alt = False
+        cx = 36 + i * (card_w + 6)
+        c.setFillColor(HexColor(col))
+        c.roundRect(cx, CARD_Y, card_w, CARD_H, 4, fill=1, stroke=0)
+        c.setFillColor(HexColor("#ffffff"))
+        c.setFont("Helvetica-Bold", 20)
+        c.drawCentredString(cx + card_w / 2, CARD_Y + CARD_H * 0.55, val)
+        c.setFont("Helvetica", 9)
+        c.drawCentredString(cx + card_w / 2, CARD_Y + CARD_H * 0.18, lbl)
+
+    # Table header
+    TABLE_TOP = CARD_Y - 8
+    c.setFillColor(HexColor(_BLUE))
+    c.rect(30, TABLE_TOP - 18, _SW - 60, 20, fill=1, stroke=0)
+    c.setFillColor(HexColor("#ffffff")); c.setFont("Helvetica-Bold", 8.5)
+    X_ACT=36; X_OWN=560; X_DUE=700; X_ST=800
+    for x, lbl in [(X_ACT,"ACTION"),(X_OWN,"OWNER"),(X_DUE,"DUE DATE"),(X_ST,"STATUS")]:
+        c.drawString(x, TABLE_TOP - 12, lbl)
+
+    n_act  = len(actions)
+    avail  = TABLE_TOP - 18 - 36
+    row_h  = max(11, min(16, avail / max(n_act, 1)))
+    fs     = max(7.5, min(9.5, row_h - 3))
+    status_colors = {"Completed":_GREEN,"In Progress":_BLUE,"Overdue":_RED,"Open":_SUB_TEXT}
+
+    y = TABLE_TOP - 18; alt = False
     for a in sorted(actions, key=lambda x: (x.get("status","")=="Completed", str(x.get("target_date","")))):
         y -= row_h
-        if y < 0.02: break
-        status = a.get("status", "Open")
-        due    = str(a.get("target_date", "—"))[:10]
+        if y < 34: break
+        status = a.get("status","Open")
+        due    = str(a.get("target_date","—"))[:10]
         try:
             if due != "—" and date.fromisoformat(due) < date.today() and status != "Completed":
                 status = "Overdue"
@@ -2108,17 +2149,17 @@ def _fig_actions(actions):
             pass
         sc = status_colors.get(status, _SUB_TEXT)
         if alt:
-            ax.add_patch(plt.Rectangle((0.02, y), 0.96, row_h,
-                         facecolor="#F4F6F8", transform=ax.transAxes))
+            c.setFillColor(HexColor("#F4F6F8"))
+            c.rect(30, y, _SW - 60, row_h, fill=1, stroke=0)
         alt = not alt
-        ax.text(0.025, y + row_h*0.35, a.get("description","")[:50], fontsize=8, color=_BODY_TEXT, transform=ax.transAxes)
-        ax.text(0.52,  y + row_h*0.35, (a.get("owner","—") or "—")[:18], fontsize=8, color=_BODY_TEXT, transform=ax.transAxes)
-        ax.text(0.68,  y + row_h*0.35, due, fontsize=8, color=_BODY_TEXT, transform=ax.transAxes)
-        ax.text(0.83,  y + row_h*0.35, status, fontsize=8, fontweight="bold", color=sc, transform=ax.transAxes)
-        ax.plot([0.02, 0.98], [y, y], color="#E2E8F0", linewidth=0.4,
-                transform=ax.transAxes)
-    fig.tight_layout(pad=0.3)
-    return fig
+        c.setFillColor(HexColor(_BODY_TEXT)); c.setFont("Helvetica", fs)
+        c.drawString(X_ACT, y + row_h * 0.28, a.get("description","")[:58])
+        c.drawString(X_OWN, y + row_h * 0.28, (a.get("owner","—") or "—")[:18])
+        c.drawString(X_DUE, y + row_h * 0.28, due)
+        c.setFillColor(HexColor(sc)); c.setFont("Helvetica-Bold", fs)
+        c.drawString(X_ST,  y + row_h * 0.28, status)
+        c.setStrokeColor(HexColor("#E2E8F0")); c.setLineWidth(0.3)
+        c.line(30, y, _SW - 30, y)
 
 
 def _fig_meeting(mtg):
@@ -2275,14 +2316,13 @@ def _generate_board_pdf(supabase, pid, project, checklist, cw):
     _fi_section_slide(c, "Audit & Actions")
     c.showPage()
 
-    # Slide 6 — Checklist
-    _fi_chart_slide(c, f"Audit Checklist — W{cw}", _fi_fig_to_png(_fig_checklist(checklist, cw), dpi=250))
+    # Slide 6 — Checklist (drawn natively in ReportLab — crisp text)
+    _draw_checklist_slide(c, checklist, cw)
     c.showPage()
 
-    # Slide 7 — Action Plan
-    fig = _fig_actions(actions)
-    if fig:
-        _fi_chart_slide(c, "Action Plan", _fi_fig_to_png(fig))
+    # Slide 7 — Action Plan (drawn natively in ReportLab — crisp text)
+    if actions:
+        _draw_actions_slide(c, actions)
         c.showPage()
 
     # Section + Meeting slides
