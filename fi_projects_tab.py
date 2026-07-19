@@ -2318,12 +2318,18 @@ def _generate_board_pdf(supabase, pid, project, checklist, cw):
     _fi_section_slide(c, "Project Overview")
     c.showPage()
 
-    # Slide 3 — Team & WDW
+    # Slide 3 — Team Members
     _draw_team_slide(c, team)
     c.showPage()
-    if wdw:
-        _draw_wdw_slide(c, wdw)
-        c.showPage()
+
+    # Slide 4 — Who Does What (always render, re-fetch if empty)
+    if not wdw:
+        try:
+            wdw = supabase.table("fi_who_does_what").select("*").eq("project_id", pid).execute().data or []
+        except Exception:
+            wdw = []
+    _draw_wdw_slide(c, wdw)
+    c.showPage()
 
     # Section: KPI & Results
     _fi_section_slide(c, "KPI & Results")
