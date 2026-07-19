@@ -1718,13 +1718,10 @@ from reportlab.lib.colors import HexColor
 
 # ─────────────────────────────────────────────────────────────────────────────
 # BOARD PDF — QM-style landscape slides (960×540, matplotlib + ReportLab)
-# Same engine as QM Quality Indicators report
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Slide canvas size (matches QM exactly)
 _SW, _SH = 960, 540
 
-# Brand colours
 _BLUE      = "#006394"
 _BLUE_DARK = "#17375E"
 _GOLD      = "#C1A02E"
@@ -1737,7 +1734,6 @@ _SUB_TEXT  = "#64748B"
 
 
 def _fi_fig_to_png(fig, dpi=150):
-    """Render a matplotlib figure to PNG bytes (BytesIO)."""
     buf = io.BytesIO()
     fig.savefig(buf, format="png", dpi=dpi, bbox_inches="tight",
                 facecolor=fig.get_facecolor())
@@ -1747,58 +1743,34 @@ def _fi_fig_to_png(fig, dpi=150):
 
 
 def _fi_slide_header(c, title):
-    """Draw the branded title bar — exact match to QM ppt_slide_title_bar."""
-    # Red accent left block
     c.setFillColor(HexColor(_RED))
     c.rect(40, _SH - 68, 110, 4, fill=1, stroke=0)
-    # Blue rule
     c.setFillColor(HexColor(_BLUE))
     c.rect(155, _SH - 68, _SW - 195, 4, fill=1, stroke=0)
-    # Title text
     c.setFillColor(HexColor(_BLUE_DARK))
     c.setFont("Helvetica-Bold", 22)
     c.drawString(40, _SH - 58, title)
 
 
-def _fi_cover_slide(c, title, subtitle, date_str, logo_reader=None):
-    """Cover slide — white background, logo top-left, big title, subtitle, date."""
+def _fi_cover_slide(c, title, subtitle, date_str):
     c.setFillColor(HexColor("#ffffff"))
     c.rect(0, 0, _SW, _SH, fill=1, stroke=0)
-
-    # Logo area top-left
-    if logo_reader:
-        try:
-            c.drawImage(logo_reader, 40, _SH - 90, width=160, height=60,
-                        preserveAspectRatio=True, mask="auto")
-        except Exception:
-            pass
-
-    # Blue + red divider lines (like QM cover)
     c.setFillColor(HexColor(_RED));  c.rect(40, _SH - 100, 110, 4, fill=1, stroke=0)
     c.setFillColor(HexColor(_BLUE)); c.rect(155, _SH - 100, _SW - 195, 4, fill=1, stroke=0)
-
-    # Main title
     c.setFillColor(HexColor(_BLUE_DARK))
-    c.setFont("Helvetica-Bold", 42)
+    c.setFont("Helvetica-Bold", 36 if len(title) <= 38 else 26)
     c.drawCentredString(_SW / 2, _SH / 2 + 20, title)
-
-    # Red underline
     c.setFillColor(HexColor(_RED))
     c.rect(_SW / 2 - 180, _SH / 2 + 10, 360, 3, fill=1, stroke=0)
-
-    # Subtitle
     c.setFillColor(HexColor(_BLUE))
-    c.setFont("Helvetica-Oblique", 20)
+    c.setFont("Helvetica-Oblique", 18)
     c.drawCentredString(_SW / 2, _SH / 2 - 20, subtitle)
-
-    # Date bottom-right
     c.setFillColor(HexColor(_SUB_TEXT))
     c.setFont("Helvetica-Oblique", 13)
     c.drawRightString(_SW - 40, 40, date_str)
 
 
 def _fi_section_slide(c, title):
-    """Full dark-blue section divider — exact match to QM draw_section_slide."""
     c.setFillColor(HexColor(_BLUE_DARK))
     c.rect(0, 0, _SW, _SH, fill=1, stroke=0)
     c.setFillColor(HexColor(_RED))
@@ -1809,28 +1781,16 @@ def _fi_section_slide(c, title):
 
 
 def _fi_chart_slide(c, title, png_bytes):
-    """Draw a chart slide: header + PNG image body."""
     _fi_slide_header(c, title)
     img = ImageReader(png_bytes)
     c.drawImage(img, 40, 40, width=_SW - 80, height=_SH - 92 - 40,
                 preserveAspectRatio=True, anchor="c")
 
 
-def _stamp(slides, title, png):
-    """Append a chart slide dict; skip if png is None."""
-    if png:
-        slides.append({"type": "chart", "title": title, "png": png})
-
-
-def _sec(slides, title):
-    slides.append({"type": "section", "title": title})
-
-
-# ── Individual slide figure builders ─────────────────────────────────────────
+# ── Figure builders ───────────────────────────────────────────────────────────
 
 def _fig_score_ramp(checklist, cw):
-    """Score ramp vs target chart."""
-    from fi_projects_tab import REQUIREMENTS, ACTIVE_WEEKS, TARGET_RAMP, REQ_BY_WEEK
+    from fi_projects_tab import ACTIVE_WEEKS, TARGET_RAMP, REQ_BY_WEEK
     wk_score = {}
     cum = 0
     for w in range(1, 13):
@@ -1858,7 +1818,7 @@ def _fig_score_ramp(checklist, cw):
     ax.set_xlim(0.5, 12.5); ax.set_ylim(0, 110)
     ax.set_xticks(range(1, 13))
     ax.set_xticklabels([f"W{i}" for i in range(1, 13)], fontsize=10)
-    ax.set_ylabel("Score / 100 pts", fontsize=10, color=_SUB_TEXT)
+    ax.set_ylabel("Score / 100 pts", fontsize=10)
     ax.legend(fontsize=10, frameon=False)
     ax.grid(axis="y", color="#eee", lw=0.6)
     for s in ["top", "right"]: ax.spines[s].set_visible(False)
@@ -1867,7 +1827,6 @@ def _fig_score_ramp(checklist, cw):
 
 
 def _fig_kpi_trend(kpi, wu_rows):
-    """KPI weekly trend line."""
     readings = sorted([w for w in wu_rows if w.get("kpi_value") is not None],
                       key=lambda x: x["week_number"])
     if not readings:
@@ -1877,7 +1836,6 @@ def _fig_kpi_trend(kpi, wu_rows):
     unit = kpi.get("unit", "")
     wks  = [w["week_number"] for w in readings]
     vals = [float(w["kpi_value"]) for w in readings]
-
     fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=150)
     fig.patch.set_facecolor("#ffffff"); ax.set_facecolor("#FAFAFA")
     ax.axhline(base, color="#BDC3C7", lw=1.8, ls=":", label=f"Baseline {base:.1f}")
@@ -1890,7 +1848,7 @@ def _fig_kpi_trend(kpi, wu_rows):
                     color=_BLUE, fontweight="bold")
     ax.set_xlim(0.5, 12.5); ax.set_xticks(range(1, 13))
     ax.set_xticklabels([f"W{i}" for i in range(1, 13)], fontsize=10)
-    ax.set_ylabel(unit, fontsize=10, color=_SUB_TEXT)
+    ax.set_ylabel(unit, fontsize=10)
     ax.legend(fontsize=10, frameon=False, loc="upper left")
     ax.grid(axis="y", color="#eee", lw=0.6)
     for s in ["top", "right"]: ax.spines[s].set_visible(False)
@@ -1899,7 +1857,6 @@ def _fig_kpi_trend(kpi, wu_rows):
 
 
 def _fig_gantt(steps, wu_rows, cw):
-    """Gantt chart for master plan."""
     if not steps:
         return None
     sp_map = {}
@@ -1910,12 +1867,10 @@ def _fig_gantt(steps, wu_rows, cw):
             if isinstance(sp, dict):
                 sid = sp.get("step_id", "")
                 sp_map[sid] = max(sp_map.get(sid, 0), sp.get("pct_complete", 0))
-
     n = len(steps)
     fig_h = max(5.0, n * 0.55 + 1.5)
     fig, ax = plt.subplots(figsize=(13.33, fig_h), dpi=150)
     fig.patch.set_facecolor("#ffffff"); ax.set_facecolor("#FAFAFA")
-
     for i, step in enumerate(steps):
         ps  = max(1, step.get("planned_start_week", 1))
         pe  = min(12, step.get("planned_end_week", ps))
@@ -1934,12 +1889,10 @@ def _fig_gantt(steps, wu_rows, cw):
         if step.get("owner"):
             ax.text(pe + 0.1, i, step["owner"][:14],
                     ha="left", va="center", fontsize=8, color=_SUB_TEXT)
-
     for w in range(13):
         ax.axvline(w, color="#eee", linewidth=0.6, zorder=1)
     ax.axvline(cw - 1, color=_RED, linewidth=2, linestyle="--", zorder=6, alpha=0.9)
     ax.text(cw - 1, -0.8, f"W{cw}", color=_RED, fontsize=9, ha="center", fontweight="bold")
-
     ax.set_yticks(range(n))
     ax.set_yticklabels([s.get("step_name", "")[:32] for s in steps], fontsize=9)
     ax.set_xticks(range(13))
@@ -1953,49 +1906,37 @@ def _fig_gantt(steps, wu_rows, cw):
 
 
 def _fig_team(team, wdw):
-    """Team member cards + Who Does What table."""
+    import textwrap as _tw
     fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=150)
     fig.patch.set_facecolor("#ffffff"); ax.set_facecolor("#ffffff")
     ax.set_xlim(0, 1); ax.set_ylim(0, 1); ax.axis("off")
-
-    # Role colours
     role_colors = {
         "Team Leader": _BLUE_DARK, "Assistant Team Leader": _BLUE,
         "Analyst": "#2471A3", "Operator": _GREEN,
         "Maintenance": _AMBER, "Quality": "#8E44AD",
-        "Day Shift Section Head": "#2E86C1",
-        "Night Shift Section Head": "#1A5276",
+        "Day Shift Section Head": "#2E86C1", "Night Shift Section Head": "#1A5276",
         "Secretary": "#566573", "Other": "#839192",
     }
-
-    # Team member cards (top row)
     n = min(len(team), 8)
     if n > 0:
         card_w = min(0.22, 0.95 / n)
         for i, m in enumerate(team[:n]):
-            cx = 0.025 + i * (card_w + 0.01)
-            cy = 0.68
+            cx = 0.025 + i * (card_w + 0.01); cy = 0.68
             rc = role_colors.get(m.get("role", "Other"), _BLUE)
             ax.add_patch(plt.Rectangle((cx, cy), card_w, 0.26,
                          facecolor="#EAF3FB", edgecolor=rc, linewidth=1.5,
                          transform=ax.transAxes))
             ax.add_patch(plt.Rectangle((cx, cy + 0.22), card_w, 0.04,
                          facecolor=rc, transform=ax.transAxes))
-            ax.text(cx + card_w / 2, cy + 0.17,
-                    m.get("member_name", "")[:16],
-                    ha="center", va="center", fontsize=8,
-                    fontweight="bold", color=_BODY_TEXT,
+            ax.text(cx + card_w/2, cy + 0.17, m.get("member_name","")[:16],
+                    ha="center", va="center", fontsize=8, fontweight="bold",
+                    color=_BODY_TEXT, transform=ax.transAxes)
+            ax.text(cx + card_w/2, cy + 0.10, m.get("role","")[:20],
+                    ha="center", va="center", fontsize=7, color=_SUB_TEXT,
                     transform=ax.transAxes)
-            ax.text(cx + card_w / 2, cy + 0.10,
-                    m.get("role", "")[:20],
-                    ha="center", va="center", fontsize=7,
-                    color=_SUB_TEXT, transform=ax.transAxes)
-            ax.text(cx + card_w / 2, cy + 0.04,
-                    m.get("department", "")[:20],
-                    ha="center", va="center", fontsize=6.5,
-                    color=_SUB_TEXT, transform=ax.transAxes)
-
-    # Who Does What table header
+            ax.text(cx + card_w/2, cy + 0.04, m.get("department","")[:20],
+                    ha="center", va="center", fontsize=6.5, color=_SUB_TEXT,
+                    transform=ax.transAxes)
     ax.text(0.025, 0.63, "WHO DOES WHAT", fontsize=9, fontweight="bold",
             color=_BLUE, transform=ax.transAxes)
     ax.add_patch(plt.Rectangle((0.025, 0.54), 0.95, 0.07,
@@ -2003,10 +1944,7 @@ def _fig_team(team, wdw):
     for xp, lbl in [(0.03, "WHO"), (0.22, "WHAT (RESPONSIBILITY)"), (0.78, "WHEN")]:
         ax.text(xp, 0.575, lbl, fontsize=8, fontweight="bold",
                 color="white", transform=ax.transAxes)
-
-    # WDW rows
-    y_row = 0.53
-    alt = False
+    y_row = 0.53; alt = False
     for w in wdw[:12]:
         resps = w.get("responsibilities", [])
         if isinstance(resps, str):
@@ -2021,55 +1959,45 @@ def _fig_team(team, wdw):
                 ax.add_patch(plt.Rectangle((0.025, y_row - row_h), 0.95, row_h,
                              facecolor="#F4F6F8", transform=ax.transAxes))
             if ri == 0:
-                ax.text(0.03, y_row - row_h / 2, w.get("member_name", "")[:18],
+                ax.text(0.03, y_row - row_h/2, w.get("member_name","")[:18],
                         fontsize=8, fontweight="bold", color=_BODY_TEXT,
                         va="center", transform=ax.transAxes)
-            what = r.get("what", "")[:55]
-            ax.text(0.22, y_row - row_h / 2, what, fontsize=7.5,
-                    color=_BODY_TEXT, va="center", transform=ax.transAxes)
-            ax.text(0.78, y_row - row_h / 2, r.get("when", "")[:20],
+            ax.text(0.22, y_row - row_h/2, r.get("what","")[:55],
+                    fontsize=7.5, color=_BODY_TEXT, va="center",
+                    transform=ax.transAxes)
+            ax.text(0.78, y_row - row_h/2, r.get("when","")[:20],
                     fontsize=7.5, color=_SUB_TEXT, va="center",
                     transform=ax.transAxes)
-            ax.axhline(y_row - row_h, color="#E2E8F0", linewidth=0.5,
-                       transform=ax.transAxes, xmin=0.025, xmax=0.975)
-            y_row -= row_h
-            alt = not alt
-
+            # Use ax.plot instead of axhline to avoid transform restriction
+            ax.plot([0.025, 0.975], [y_row - row_h, y_row - row_h],
+                    color="#E2E8F0", linewidth=0.5, transform=ax.transAxes)
+            y_row -= row_h; alt = not alt
     fig.tight_layout(pad=0.3)
     return fig
 
 
 def _fig_checklist(checklist, cw):
-    """Audit checklist table."""
     from fi_projects_tab import REQUIREMENTS, TOTAL_POINTS, TARGET_RAMP, _score
-
     total  = _score(checklist)
     target = TARGET_RAMP.get(cw, 100)
     pct    = total / TOTAL_POINTS * 100
-
     fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=150)
     fig.patch.set_facecolor("#ffffff"); ax.set_facecolor("#ffffff")
     ax.set_xlim(0, 1); ax.set_ylim(0, 1); ax.axis("off")
-
-    # Score summary bar
     sc_color = _GREEN if total >= target else _AMBER
     ax.add_patch(plt.Rectangle((0.02, 0.88), 0.96, 0.10,
                  facecolor=sc_color, transform=ax.transAxes))
-    ax.text(0.5, 0.935, f"Score: {total} / {TOTAL_POINTS} pts  ({pct:.0f}%)   ·   W{cw} Target: {target} pts",
+    ax.text(0.5, 0.935,
+            f"Score: {total} / {TOTAL_POINTS} pts  ({pct:.0f}%)   ·   W{cw} Target: {target} pts",
             ha="center", va="center", fontsize=13, fontweight="bold",
             color="white", transform=ax.transAxes)
-
-    # Table header
     ax.add_patch(plt.Rectangle((0.02, 0.82), 0.96, 0.055,
                  facecolor=_BLUE, transform=ax.transAxes))
     for xp, lbl in [(0.025, "#"), (0.07, "REQUIREMENT"), (0.72, "WK"),
                     (0.77, "PTS"), (0.83, "STATUS"), (0.94, "✓")]:
         ax.text(xp, 0.847, lbl, fontsize=7.5, fontweight="bold",
                 color="white", transform=ax.transAxes)
-
-    row_h = 0.024
-    y = 0.82
-    alt = False
+    row_h = 0.024; y = 0.82; alt = False
     for r in REQUIREMENTS:
         y -= row_h
         if y < 0.02: break
@@ -2078,44 +2006,33 @@ def _fig_checklist(checklist, cw):
             ax.add_patch(plt.Rectangle((0.02, y), 0.96, row_h,
                          facecolor="#F4F6F8", transform=ax.transAxes))
         alt = not alt
-
         done_col = _GREEN if done else (_RED if r["week"] <= cw else _SUB_TEXT)
-        ax.text(0.025, y + row_h * 0.4, str(r["id"]),
-                fontsize=7, color=_BODY_TEXT, transform=ax.transAxes)
-        ax.text(0.07, y + row_h * 0.4, r["text"][:60],
-                fontsize=7, color=_BODY_TEXT, transform=ax.transAxes)
-        ax.text(0.72, y + row_h * 0.4, f"W{r['week']}",
-                fontsize=7, color=_SUB_TEXT, transform=ax.transAxes)
-        ax.text(0.77, y + row_h * 0.4, str(r["pts"]),
-                fontsize=7, fontweight="bold", color=_BLUE,
-                transform=ax.transAxes)
+        ax.text(0.025, y + row_h*0.4, str(r["id"]), fontsize=7, color=_BODY_TEXT, transform=ax.transAxes)
+        ax.text(0.07,  y + row_h*0.4, r["text"][:60], fontsize=7, color=_BODY_TEXT, transform=ax.transAxes)
+        ax.text(0.72,  y + row_h*0.4, f"W{r['week']}", fontsize=7, color=_SUB_TEXT, transform=ax.transAxes)
+        ax.text(0.77,  y + row_h*0.4, str(r["pts"]), fontsize=7, fontweight="bold", color=_BLUE, transform=ax.transAxes)
         status = "✓ Done" if done else ("Late" if r["week"] < cw else "Pending")
-        ax.text(0.83, y + row_h * 0.4, status,
-                fontsize=7, fontweight="bold", color=done_col,
-                transform=ax.transAxes)
-        ax.add_patch(plt.Circle((0.955, y + row_h * 0.5), 0.008,
+        ax.text(0.83, y + row_h*0.4, status, fontsize=7, fontweight="bold",
+                color=done_col, transform=ax.transAxes)
+        ax.add_patch(plt.Circle((0.955, y + row_h*0.5), 0.008,
                      facecolor=done_col, transform=ax.transAxes))
-        ax.axhline(y, color="#E2E8F0", linewidth=0.4,
-                   transform=ax.transAxes, xmin=0.02, xmax=0.98)
-
+        # Use ax.plot instead of axhline — avoids transform restriction
+        ax.plot([0.02, 0.98], [y, y], color="#E2E8F0", linewidth=0.4,
+                transform=ax.transAxes)
     fig.tight_layout(pad=0.3)
     return fig
 
 
 def _fig_actions(actions):
-    """Action plan table."""
     if not actions:
         return None
     fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=150)
     fig.patch.set_facecolor("#ffffff"); ax.set_facecolor("#ffffff")
     ax.set_xlim(0, 1); ax.set_ylim(0, 1); ax.axis("off")
-
     open_a   = [a for a in actions if a.get("status") != "Completed"]
     closed_a = [a for a in actions if a.get("status") == "Completed"]
     overdue  = [a for a in open_a if a.get("target_date") and
                 date.fromisoformat(str(a["target_date"])[:10]) < date.today()]
-
-    # Summary cards
     for i, (lbl, val, col) in enumerate([
         ("Total", str(len(actions)), _BLUE),
         ("Completed", str(len(closed_a)), _GREEN),
@@ -2125,86 +2042,58 @@ def _fig_actions(actions):
         ax.add_patch(plt.Rectangle((cx, 0.84), 0.28, 0.13,
                      facecolor=col, transform=ax.transAxes))
         ax.text(cx + 0.14, 0.92, val, ha="center", va="center",
-                fontsize=26, fontweight="bold", color="white",
-                transform=ax.transAxes)
+                fontsize=26, fontweight="bold", color="white", transform=ax.transAxes)
         ax.text(cx + 0.14, 0.855, lbl, ha="center", va="center",
                 fontsize=9, color="white", transform=ax.transAxes)
-
-    # Table header
     ax.add_patch(plt.Rectangle((0.02, 0.78), 0.96, 0.05,
                  facecolor=_BLUE, transform=ax.transAxes))
     for xp, lbl in [(0.025, "ACTION"), (0.52, "OWNER"),
                     (0.68, "DUE DATE"), (0.83, "STATUS")]:
         ax.text(xp, 0.803, lbl, fontsize=8, fontweight="bold",
                 color="white", transform=ax.transAxes)
-
-    status_colors = {
-        "Completed": _GREEN, "In Progress": _BLUE,
-        "Overdue": _RED, "Open": _SUB_TEXT,
-    }
-    row_h = 0.032
-    y = 0.78
-    alt = False
-    sorted_actions = sorted(actions, key=lambda x: (
-        x.get("status", "") == "Completed",
-        str(x.get("target_date", ""))
-    ))
-    for a in sorted_actions:
+    status_colors = {"Completed": _GREEN, "In Progress": _BLUE, "Overdue": _RED, "Open": _SUB_TEXT}
+    row_h = 0.032; y = 0.78; alt = False
+    for a in sorted(actions, key=lambda x: (x.get("status","")=="Completed", str(x.get("target_date","")))):
         y -= row_h
         if y < 0.02: break
         status = a.get("status", "Open")
         due    = str(a.get("target_date", "—"))[:10]
-        if due != "—" and due:
-            try:
-                if date.fromisoformat(due) < date.today() and status != "Completed":
-                    status = "Overdue"
-            except Exception:
-                pass
+        try:
+            if due != "—" and date.fromisoformat(due) < date.today() and status != "Completed":
+                status = "Overdue"
+        except Exception:
+            pass
         sc = status_colors.get(status, _SUB_TEXT)
-
         if alt:
             ax.add_patch(plt.Rectangle((0.02, y), 0.96, row_h,
                          facecolor="#F4F6F8", transform=ax.transAxes))
         alt = not alt
-
-        ax.text(0.025, y + row_h * 0.35, a.get("description", "")[:50],
-                fontsize=8, color=_BODY_TEXT, transform=ax.transAxes)
-        ax.text(0.52, y + row_h * 0.35, (a.get("owner", "—") or "—")[:18],
-                fontsize=8, color=_BODY_TEXT, transform=ax.transAxes)
-        ax.text(0.68, y + row_h * 0.35, due,
-                fontsize=8, color=_BODY_TEXT, transform=ax.transAxes)
-        ax.text(0.83, y + row_h * 0.35, status,
-                fontsize=8, fontweight="bold", color=sc,
+        ax.text(0.025, y + row_h*0.35, a.get("description","")[:50], fontsize=8, color=_BODY_TEXT, transform=ax.transAxes)
+        ax.text(0.52,  y + row_h*0.35, (a.get("owner","—") or "—")[:18], fontsize=8, color=_BODY_TEXT, transform=ax.transAxes)
+        ax.text(0.68,  y + row_h*0.35, due, fontsize=8, color=_BODY_TEXT, transform=ax.transAxes)
+        ax.text(0.83,  y + row_h*0.35, status, fontsize=8, fontweight="bold", color=sc, transform=ax.transAxes)
+        ax.plot([0.02, 0.98], [y, y], color="#E2E8F0", linewidth=0.4,
                 transform=ax.transAxes)
-        ax.axhline(y, color="#E2E8F0", linewidth=0.4,
-                   transform=ax.transAxes, xmin=0.02, xmax=0.98)
-
     fig.tight_layout(pad=0.3)
     return fig
 
 
 def _fig_meeting(mtg):
-    """Single meeting minutes slide."""
+    import textwrap as _tw
     fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=150)
     fig.patch.set_facecolor("#ffffff"); ax.set_facecolor("#ffffff")
     ax.set_xlim(0, 1); ax.set_ylim(0, 1); ax.axis("off")
-
-    # Meta bar
     ax.add_patch(plt.Rectangle((0.02, 0.88), 0.96, 0.09,
                  facecolor="#EAF3FB", transform=ax.transAxes))
     att_pct = int(mtg.get("attendance_pct") or 0)
     att_col = _GREEN if att_pct >= 80 else _RED
-    ax.text(0.03, 0.935, f"Date: {str(mtg.get('meeting_date', ''))[:10]}",
-            fontsize=9, fontweight="bold", color=_BLUE,
-            transform=ax.transAxes)
-    ax.text(0.22, 0.935, f"Attendees: {mtg.get('attendees', '—')[:45]}",
+    ax.text(0.03, 0.935, f"Date: {str(mtg.get('meeting_date',''))[:10]}",
+            fontsize=9, fontweight="bold", color=_BLUE, transform=ax.transAxes)
+    ax.text(0.22, 0.935, f"Attendees: {mtg.get('attendees','—')[:45]}",
             fontsize=9, color=_BODY_TEXT, transform=ax.transAxes)
     ax.text(0.03, 0.893, f"Attendance: {att_pct}%",
-            fontsize=9, fontweight="bold", color=att_col,
-            transform=ax.transAxes)
-
+            fontsize=9, fontweight="bold", color=att_col, transform=ax.transAxes)
     y = 0.87
-    import textwrap as _tw
 
     def _section(title):
         nonlocal y
@@ -2213,80 +2102,69 @@ def _fig_meeting(mtg):
                 color=_BLUE, transform=ax.transAxes)
         y -= 0.015
 
-    def _bullet(text, indent=0.04):
+    def _bullet(text):
         nonlocal y
-        for line in _tw.wrap(str(text), width=110)[:3]:
+        for line in _tw.wrap(str(text), width=110)[:2]:
             if y < 0.03: return
-            ax.text(indent, y, f"• {line}", fontsize=8,
+            ax.text(0.04, y, f"• {line}", fontsize=8,
                     color=_BODY_TEXT, transform=ax.transAxes)
             y -= 0.03
 
-    # Agenda
     agenda = mtg.get("agenda", [])
     if isinstance(agenda, str):
         try: agenda = json.loads(agenda)
         except: agenda = []
     if agenda:
         _section("Agenda")
-        for item in agenda[:5]: _bullet(item)
+        for item in agenda[:4]: _bullet(item)
 
-    # Notes
     notes = str(mtg.get("notes", "") or "")
     if notes:
         _section("Discussion Notes")
-        for line in _tw.wrap(notes, width=110)[:4]:
+        for line in _tw.wrap(notes, width=110)[:3]:
             if y < 0.03: break
-            ax.text(0.04, y, line, fontsize=8, color=_BODY_TEXT,
-                    transform=ax.transAxes)
+            ax.text(0.04, y, line, fontsize=8, color=_BODY_TEXT, transform=ax.transAxes)
             y -= 0.03
 
-    # Actions
     acts = mtg.get("actions_raised", [])
     if isinstance(acts, str):
         try: acts = json.loads(acts)
         except: acts = []
     if acts:
         _section("Action Items")
-        for act in acts[:6]:
+        for act in acts[:5]:
             if y < 0.03: break
             if isinstance(act, dict):
                 closed = act.get("closed", False)
-                icon = "✓" if closed else "●"
                 col = _GREEN if closed else _RED
-                ax.text(0.03, y, f"{icon} {act.get('text', '')[:50]}",
+                ax.text(0.03, y, f"{'✓' if closed else '●'} {act.get('text','')[:50]}",
                         fontsize=8, color=col, transform=ax.transAxes)
-                ax.text(0.65, y, f"👤 {act.get('owner', '—')[:16]}",
+                ax.text(0.65, y, f"👤 {act.get('owner','—')[:16]}",
                         fontsize=8, color=_SUB_TEXT, transform=ax.transAxes)
-                ax.text(0.82, y, str(act.get("due", ""))[:10],
+                ax.text(0.82, y, str(act.get("due",""))[:10],
                         fontsize=8, color=_SUB_TEXT, transform=ax.transAxes)
             else:
                 ax.text(0.03, y, f"• {str(act)[:80]}", fontsize=8,
                         color=_BODY_TEXT, transform=ax.transAxes)
             y -= 0.035
 
-    # Next steps
     nexts = mtg.get("next_steps", [])
     if isinstance(nexts, str):
         try: nexts = json.loads(nexts)
         except: nexts = []
     if nexts and y > 0.06:
         _section("Next Steps")
-        for ns in nexts[:4]: _bullet(f"→  {ns}")
+        for ns in nexts[:3]: _bullet(f"→  {ns}")
 
     fig.tight_layout(pad=0.3)
     return fig
 
 
-# ── MAIN BOARD PDF BUILDER ────────────────────────────────────────────────────
+# ── Main board PDF builder ────────────────────────────────────────────────────
 
 def _generate_board_pdf(supabase, pid, project, checklist, cw):
-    """
-    Pull all project data and generate a QM-style landscape slide PDF.
-    Returns a BytesIO buffer.
-    """
-    from fi_projects_tab import _pj, _score, TOTAL_POINTS
+    from fi_projects_tab import _pj, _score, TOTAL_POINTS, TARGET_RAMP
 
-    # Load all data
     try:
         team     = supabase.table("fi_project_team").select("*").eq("project_id", pid).execute().data or []
         wdw      = supabase.table("fi_who_does_what").select("*").eq("project_id", pid).execute().data or []
@@ -2301,88 +2179,75 @@ def _generate_board_pdf(supabase, pid, project, checklist, cw):
     kpi          = kpi_rows[0] if kpi_rows else {}
     total_score  = _score(checklist)
     project_name = project.get("project_name", "FI Project")
-    month_name   = date.today().strftime("%B %Y")
+    target_now   = TARGET_RAMP.get(cw, 100)
+    on_track     = total_score >= target_now
 
-    # Build PDF canvas
     buf = io.BytesIO()
     c   = rl_canvas.Canvas(buf, pagesize=(_SW, _SH))
 
-    # ── Slide 1: Cover ────────────────────────────────────────────────────────
-    from fi_projects_tab import TARGET_RAMP
-    target_now = TARGET_RAMP.get(cw, 100)
-    on_track   = total_score >= target_now
-    subtitle   = f"{project.get('target_area', 'Focused Improvement')} · W{cw} · Score {total_score}/{TOTAL_POINTS}"
-    today_str  = date.today().strftime("%d – %B - %Y")
+    # Slide 1 — Cover
+    subtitle  = f"{project.get('target_area','Focused Improvement')} · W{cw} · Score {total_score}/{TOTAL_POINTS}"
+    today_str = date.today().strftime("%d – %B - %Y")
     _fi_cover_slide(c, project_name, subtitle, today_str)
     c.showPage()
 
-    # ── Slide 2: Score Ramp ───────────────────────────────────────────────────
-    fig = _fig_score_ramp(checklist, cw)
-    png = _fi_fig_to_png(fig)
+    # Slide 2 — Score Ramp
+    png = _fi_fig_to_png(_fig_score_ramp(checklist, cw))
     _fi_chart_slide(c, "Score Progress vs Target Ramp", png)
     c.showPage()
 
-    # ── Section: Project Overview ─────────────────────────────────────────────
+    # Section: Project Overview
     _fi_section_slide(c, "Project Overview")
     c.showPage()
 
-    # ── Slide 3: Team ─────────────────────────────────────────────────────────
-    fig = _fig_team(team, wdw)
-    png = _fi_fig_to_png(fig)
+    # Slide 3 — Team & WDW
+    png = _fi_fig_to_png(_fig_team(team, wdw))
     _fi_chart_slide(c, "Team Members & Who Does What", png)
     c.showPage()
 
-    # ── Section: KPI & Results ────────────────────────────────────────────────
+    # Section: KPI & Results
     _fi_section_slide(c, "KPI & Results")
     c.showPage()
 
-    # ── Slide 4: KPI Trend ───────────────────────────────────────────────────
+    # Slide 4 — KPI Trend
     if kpi:
         fig = _fig_kpi_trend(kpi, wu_rows)
         if fig:
-            png = _fi_fig_to_png(fig)
-            kpi_name = kpi.get("kpi_name", "KPI")
-            _fi_chart_slide(c, f"KPI Trend — {kpi_name}", png)
+            _fi_chart_slide(c, f"KPI Trend — {kpi.get('kpi_name','KPI')}", _fi_fig_to_png(fig))
             c.showPage()
 
-    # ── Section: Master Plan ──────────────────────────────────────────────────
+    # Section: Master Plan
     _fi_section_slide(c, "Master Plan")
     c.showPage()
 
-    # ── Slide 5: Gantt ────────────────────────────────────────────────────────
+    # Slide 5 — Gantt
     fig = _fig_gantt(steps, wu_rows, cw)
     if fig:
-        png = _fi_fig_to_png(fig)
-        _fi_chart_slide(c, "Master Plan — Gantt Chart", png)
+        _fi_chart_slide(c, "Master Plan — Gantt Chart", _fi_fig_to_png(fig))
         c.showPage()
 
-    # ── Section: Audit & Actions ──────────────────────────────────────────────
+    # Section: Audit & Actions
     _fi_section_slide(c, "Audit & Actions")
     c.showPage()
 
-    # ── Slide 6: Audit Checklist ──────────────────────────────────────────────
-    fig = _fig_checklist(checklist, cw)
-    png = _fi_fig_to_png(fig)
-    _fi_chart_slide(c, f"Audit Checklist — W{cw}", png)
+    # Slide 6 — Checklist
+    _fi_chart_slide(c, f"Audit Checklist — W{cw}", _fi_fig_to_png(_fig_checklist(checklist, cw)))
     c.showPage()
 
-    # ── Slide 7: Action Plan ──────────────────────────────────────────────────
-    if actions:
-        fig = _fig_actions(actions)
-        if fig:
-            png = _fi_fig_to_png(fig)
-            _fi_chart_slide(c, "Action Plan", png)
-            c.showPage()
+    # Slide 7 — Action Plan
+    fig = _fig_actions(actions)
+    if fig:
+        _fi_chart_slide(c, "Action Plan", _fi_fig_to_png(fig))
+        c.showPage()
 
-    # ── Section: Meeting Minutes ──────────────────────────────────────────────
+    # Section + Meeting slides
     if meetings:
         _fi_section_slide(c, "Meeting Minutes")
         c.showPage()
         for mtg in meetings:
             fig = _fig_meeting(mtg)
             if fig:
-                png = _fi_fig_to_png(fig)
-                _fi_chart_slide(c, f"Meeting Minutes — Week {mtg.get('week_number', '?')}", png)
+                _fi_chart_slide(c, f"Meeting Minutes — Week {mtg.get('week_number','?')}", _fi_fig_to_png(fig))
                 c.showPage()
 
     c.save()
