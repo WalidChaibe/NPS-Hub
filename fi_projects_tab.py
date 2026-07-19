@@ -1771,13 +1771,23 @@ def _fi_cover_slide(c, title, subtitle, date_str):
 
 
 def _fi_section_slide(c, title):
+    # White base first (clears any previous content bleeds)
+    c.setFillColor(HexColor("#ffffff"))
+    c.rect(0, 0, _SW, _SH, fill=1, stroke=0)
+    # Dark blue full background
     c.setFillColor(HexColor(_BLUE_DARK))
     c.rect(0, 0, _SW, _SH, fill=1, stroke=0)
+    # Red horizontal rule through center
     c.setFillColor(HexColor(_RED))
-    c.rect(0, _SH / 2 - 2, _SW, 4, fill=1, stroke=0)
+    c.rect(0, 268, _SW, 4, fill=1, stroke=0)
+    # Section title above red line
     c.setFillColor(HexColor("#ffffff"))
-    c.setFont("Helvetica-Bold", 36)
-    c.drawCentredString(_SW / 2, _SH / 2 + 20, title)
+    c.setFont("Helvetica-Bold", 40)
+    c.drawCentredString(_SW / 2, 300, title)
+    # Gold subtitle below red line
+    c.setFillColor(HexColor(_GOLD))
+    c.setFont("Helvetica", 16)
+    c.drawCentredString(_SW / 2, 235, "FI Pillar  ·  Focused Improvement Board")
 
 
 def _fi_chart_slide(c, title, png_bytes):
@@ -1906,8 +1916,8 @@ def _fig_gantt(steps, wu_rows, cw):
 
 
 def _fig_team(team, wdw):
-    import textwrap as _tw
-    fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=150)
+    """Team member cards — separate from WDW for sharpness."""
+    fig, ax = plt.subplots(figsize=(13.33, 4.0), dpi=200)
     fig.patch.set_facecolor("#ffffff"); ax.set_facecolor("#ffffff")
     ax.set_xlim(0, 1); ax.set_ylim(0, 1); ax.axis("off")
     role_colors = {
@@ -1917,62 +1927,95 @@ def _fig_team(team, wdw):
         "Day Shift Section Head": "#2E86C1", "Night Shift Section Head": "#1A5276",
         "Secretary": "#566573", "Other": "#839192",
     }
-    n = min(len(team), 8)
+    n = min(len(team), 10)
     if n > 0:
-        card_w = min(0.22, 0.95 / n)
+        pad = 0.01
+        card_w = (1.0 - 0.04 - pad * (n - 1)) / n
         for i, m in enumerate(team[:n]):
-            cx = 0.025 + i * (card_w + 0.01); cy = 0.68
+            cx = 0.02 + i * (card_w + pad)
             rc = role_colors.get(m.get("role", "Other"), _BLUE)
-            ax.add_patch(plt.Rectangle((cx, cy), card_w, 0.26,
-                         facecolor="#EAF3FB", edgecolor=rc, linewidth=1.5,
+            # Card body
+            ax.add_patch(plt.Rectangle((cx, 0.10), card_w, 0.82,
+                         facecolor="#EAF3FB", edgecolor=rc, linewidth=1.2,
                          transform=ax.transAxes))
-            ax.add_patch(plt.Rectangle((cx, cy + 0.22), card_w, 0.04,
+            # Role colour strip top
+            ax.add_patch(plt.Rectangle((cx, 0.85), card_w, 0.07,
                          facecolor=rc, transform=ax.transAxes))
-            ax.text(cx + card_w/2, cy + 0.17, m.get("member_name","")[:16],
-                    ha="center", va="center", fontsize=8, fontweight="bold",
-                    color=_BODY_TEXT, transform=ax.transAxes)
-            ax.text(cx + card_w/2, cy + 0.10, m.get("role","")[:20],
-                    ha="center", va="center", fontsize=7, color=_SUB_TEXT,
-                    transform=ax.transAxes)
-            ax.text(cx + card_w/2, cy + 0.04, m.get("department","")[:20],
-                    ha="center", va="center", fontsize=6.5, color=_SUB_TEXT,
-                    transform=ax.transAxes)
-    ax.text(0.025, 0.63, "WHO DOES WHAT", fontsize=9, fontweight="bold",
-            color=_BLUE, transform=ax.transAxes)
-    ax.add_patch(plt.Rectangle((0.025, 0.54), 0.95, 0.07,
-                 facecolor=_BLUE, transform=ax.transAxes))
-    for xp, lbl in [(0.03, "WHO"), (0.22, "WHAT (RESPONSIBILITY)"), (0.78, "WHEN")]:
-        ax.text(xp, 0.575, lbl, fontsize=8, fontweight="bold",
-                color="white", transform=ax.transAxes)
-    y_row = 0.53; alt = False
-    for w in wdw[:12]:
+            # Name
+            ax.text(cx + card_w/2, 0.68, m.get("member_name","")[:18],
+                    ha="center", va="center", fontsize=max(6, min(9, int(90/n))),
+                    fontweight="bold", color=_BODY_TEXT, transform=ax.transAxes)
+            # Role
+            ax.text(cx + card_w/2, 0.50, m.get("role","")[:22],
+                    ha="center", va="center", fontsize=max(5, min(7, int(70/n))),
+                    color=_SUB_TEXT, transform=ax.transAxes)
+            # Department
+            ax.text(cx + card_w/2, 0.30, m.get("department","")[:22],
+                    ha="center", va="center", fontsize=max(5, min(7, int(70/n))),
+                    color=_SUB_TEXT, transform=ax.transAxes)
+    fig.tight_layout(pad=0.2)
+    return fig
+
+
+def _fig_wdw(wdw):
+    """Who Does What table — separate slide for sharpness."""
+    import textwrap as _tw
+    # Count total rows needed
+    all_rows = []
+    for w in wdw:
         resps = w.get("responsibilities", [])
         if isinstance(resps, str):
             try: resps = json.loads(resps)
-            except: resps = [{"what": w.get("responsibility", ""), "when": ""}]
+            except: resps = []
         if not resps:
-            resps = [{"what": w.get("responsibility", ""), "when": ""}]
-        for ri, r in enumerate(resps[:3]):
-            row_h = 0.055
-            if y_row - row_h < 0.02: break
-            if alt:
-                ax.add_patch(plt.Rectangle((0.025, y_row - row_h), 0.95, row_h,
-                             facecolor="#F4F6F8", transform=ax.transAxes))
-            if ri == 0:
-                ax.text(0.03, y_row - row_h/2, w.get("member_name","")[:18],
-                        fontsize=8, fontweight="bold", color=_BODY_TEXT,
-                        va="center", transform=ax.transAxes)
-            ax.text(0.22, y_row - row_h/2, r.get("what","")[:55],
-                    fontsize=7.5, color=_BODY_TEXT, va="center",
-                    transform=ax.transAxes)
-            ax.text(0.78, y_row - row_h/2, r.get("when","")[:20],
-                    fontsize=7.5, color=_SUB_TEXT, va="center",
-                    transform=ax.transAxes)
-            # Use ax.plot instead of axhline to avoid transform restriction
-            ax.plot([0.025, 0.975], [y_row - row_h, y_row - row_h],
-                    color="#E2E8F0", linewidth=0.5, transform=ax.transAxes)
-            y_row -= row_h; alt = not alt
-    fig.tight_layout(pad=0.3)
+            resp_text = w.get("responsibility", "")
+            if resp_text:
+                resps = [{"what": resp_text, "when": ""}]
+            else:
+                resps = [{"what": "—", "when": ""}]
+        for ri, r in enumerate(resps[:4]):
+            all_rows.append((w.get("member_name",""), ri, r))
+
+    n_rows = max(len(all_rows), 1)
+    fig_h  = max(3.0, min(7.5, n_rows * 0.45 + 1.2))
+    fig, ax = plt.subplots(figsize=(13.33, fig_h), dpi=200)
+    fig.patch.set_facecolor("#ffffff"); ax.set_facecolor("#ffffff")
+    ax.set_xlim(0, 1); ax.set_ylim(0, 1); ax.axis("off")
+
+    # Header
+    ax.add_patch(plt.Rectangle((0.01, 0.88), 0.98, 0.10,
+                 facecolor=_BLUE, transform=ax.transAxes))
+    for xp, lbl in [(0.02, "WHO"), (0.20, "WHAT (RESPONSIBILITY)"), (0.82, "WHEN")]:
+        ax.text(xp, 0.930, lbl, fontsize=9, fontweight="bold",
+                color="white", transform=ax.transAxes)
+
+    row_h  = 0.86 / max(n_rows, 1)
+    row_h  = min(row_h, 0.085)
+    y      = 0.88
+    alt    = False
+    for name, ri, r in all_rows:
+        y -= row_h
+        if y < 0.01: break
+        if alt:
+            ax.add_patch(plt.Rectangle((0.01, y), 0.98, row_h,
+                         facecolor="#F4F6F8", transform=ax.transAxes))
+        alt = not alt
+        fs = max(6.5, min(8.5, row_h * 80))
+        if ri == 0:
+            ax.text(0.02, y + row_h * 0.45, name[:22],
+                    fontsize=fs, fontweight="bold", color=_BODY_TEXT,
+                    va="center", transform=ax.transAxes)
+        what = r.get("what","") or "—"
+        ax.text(0.20, y + row_h * 0.45, what[:70],
+                fontsize=fs, color=_BODY_TEXT, va="center",
+                transform=ax.transAxes)
+        ax.text(0.82, y + row_h * 0.45, (r.get("when","") or "")[:20],
+                fontsize=fs, color=_SUB_TEXT, va="center",
+                transform=ax.transAxes)
+        ax.plot([0.01, 0.99], [y, y], color="#E2E8F0", linewidth=0.4,
+                transform=ax.transAxes)
+
+    fig.tight_layout(pad=0.2)
     return fig
 
 
@@ -1981,7 +2024,7 @@ def _fig_checklist(checklist, cw):
     total  = _score(checklist)
     target = TARGET_RAMP.get(cw, 100)
     pct    = total / TOTAL_POINTS * 100
-    fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=150)
+    fig, ax = plt.subplots(figsize=(13.33, 10.0), dpi=200)
     fig.patch.set_facecolor("#ffffff"); ax.set_facecolor("#ffffff")
     ax.set_xlim(0, 1); ax.set_ylim(0, 1); ax.axis("off")
     sc_color = _GREEN if total >= target else _AMBER
@@ -1997,7 +2040,7 @@ def _fig_checklist(checklist, cw):
                     (0.77, "PTS"), (0.83, "STATUS"), (0.94, "✓")]:
         ax.text(xp, 0.847, lbl, fontsize=7.5, fontweight="bold",
                 color="white", transform=ax.transAxes)
-    row_h = 0.024; y = 0.82; alt = False
+    row_h = 0.026; y = 0.82; alt = False
     for r in REQUIREMENTS:
         y -= row_h
         if y < 0.02: break
@@ -2201,9 +2244,11 @@ def _generate_board_pdf(supabase, pid, project, checklist, cw):
     c.showPage()
 
     # Slide 3 — Team & WDW
-    png = _fi_fig_to_png(_fig_team(team, wdw))
-    _fi_chart_slide(c, "Team Members & Who Does What", png)
+    _fi_chart_slide(c, "Team Members", _fi_fig_to_png(_fig_team(team, wdw), dpi=220))
     c.showPage()
+    if wdw:
+        _fi_chart_slide(c, "Who Does What", _fi_fig_to_png(_fig_wdw(wdw), dpi=220))
+        c.showPage()
 
     # Section: KPI & Results
     _fi_section_slide(c, "KPI & Results")
@@ -2231,7 +2276,7 @@ def _generate_board_pdf(supabase, pid, project, checklist, cw):
     c.showPage()
 
     # Slide 6 — Checklist
-    _fi_chart_slide(c, f"Audit Checklist — W{cw}", _fi_fig_to_png(_fig_checklist(checklist, cw)))
+    _fi_chart_slide(c, f"Audit Checklist — W{cw}", _fi_fig_to_png(_fig_checklist(checklist, cw), dpi=250))
     c.showPage()
 
     # Slide 7 — Action Plan
