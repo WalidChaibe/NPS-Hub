@@ -1915,11 +1915,15 @@ def _fig_gantt(steps, wu_rows, cw):
     return fig
 
 
-def _fig_team(team, wdw):
-    """Team member cards — separate from WDW for sharpness."""
-    fig, ax = plt.subplots(figsize=(13.33, 4.0), dpi=200)
-    fig.patch.set_facecolor("#ffffff"); ax.set_facecolor("#ffffff")
-    ax.set_xlim(0, 1); ax.set_ylim(0, 1); ax.axis("off")
+def _draw_team_slide(c, team):
+    """Draw team member cards natively in ReportLab."""
+    _fi_slide_header(c, "Team Members")
+
+    if not team:
+        c.setFont("Helvetica-Oblique", 12); c.setFillColor(HexColor(_SUB_TEXT))
+        c.drawCentredString(_SW / 2, _SH / 2, "No team members added yet.")
+        return
+
     role_colors = {
         "Team Leader": _BLUE_DARK, "Assistant Team Leader": _BLUE,
         "Analyst": "#2471A3", "Operator": _GREEN,
@@ -1927,40 +1931,63 @@ def _fig_team(team, wdw):
         "Day Shift Section Head": "#2E86C1", "Night Shift Section Head": "#1A5276",
         "Secretary": "#566573", "Other": "#839192",
     }
-    n = min(len(team), 10)
-    if n > 0:
-        pad = 0.01
-        card_w = (1.0 - 0.04 - pad * (n - 1)) / n
-        for i, m in enumerate(team[:n]):
-            cx = 0.02 + i * (card_w + pad)
-            rc = role_colors.get(m.get("role", "Other"), _BLUE)
-            # Card body
-            ax.add_patch(plt.Rectangle((cx, 0.10), card_w, 0.82,
-                         facecolor="#EAF3FB", edgecolor=rc, linewidth=1.2,
-                         transform=ax.transAxes))
-            # Role colour strip top
-            ax.add_patch(plt.Rectangle((cx, 0.85), card_w, 0.07,
-                         facecolor=rc, transform=ax.transAxes))
-            # Name
-            ax.text(cx + card_w/2, 0.68, m.get("member_name","")[:18],
-                    ha="center", va="center", fontsize=max(6, min(9, int(90/n))),
-                    fontweight="bold", color=_BODY_TEXT, transform=ax.transAxes)
-            # Role
-            ax.text(cx + card_w/2, 0.50, m.get("role","")[:22],
-                    ha="center", va="center", fontsize=max(5, min(7, int(70/n))),
-                    color=_SUB_TEXT, transform=ax.transAxes)
-            # Department
-            ax.text(cx + card_w/2, 0.30, m.get("department","")[:22],
-                    ha="center", va="center", fontsize=max(5, min(7, int(70/n))),
-                    color=_SUB_TEXT, transform=ax.transAxes)
-    fig.tight_layout(pad=0.2)
-    return fig
+
+    n       = min(len(team), 10)
+    PAD     = 36
+    BODY_Y  = 60                        # bottom of card area
+    BODY_TOP= _SH - 82                  # top of card area (below header)
+    CARD_H  = BODY_TOP - BODY_Y
+    gap     = 8
+    card_w  = (_SW - PAD * 2 - gap * (n - 1)) / n
+    STRIP_H = 18                        # coloured role strip at top of card
+
+    for i, m in enumerate(team[:n]):
+        cx = PAD + i * (card_w + gap)
+        rc = role_colors.get(m.get("role", "Other"), _BLUE)
+
+        # Card background
+        c.setFillColor(HexColor("#EAF3FB"))
+        c.setStrokeColor(HexColor(rc)); c.setLineWidth(1.2)
+        c.roundRect(cx, BODY_Y, card_w, CARD_H, 5, fill=1, stroke=1)
+
+        # Role colour strip at top
+        c.setFillColor(HexColor(rc))
+        c.roundRect(cx, BODY_Y + CARD_H - STRIP_H, card_w, STRIP_H, 5, fill=1, stroke=0)
+        # Cover bottom corners of strip (make only top rounded)
+        c.rect(cx, BODY_Y + CARD_H - STRIP_H, card_w, STRIP_H / 2, fill=1, stroke=0)
+
+        cx_mid = cx + card_w / 2
+
+        # Name
+        name_fs = max(7, min(11, int(card_w / 9)))
+        c.setFillColor(HexColor(_BODY_TEXT))
+        c.setFont("Helvetica-Bold", name_fs)
+        # Truncate name to fit card width
+        name = m.get("member_name", "")
+        while c.stringWidth(name, "Helvetica-Bold", name_fs) > card_w - 8 and len(name) > 3:
+            name = name[:-1]
+        c.drawCentredString(cx_mid, BODY_Y + CARD_H * 0.60, name)
+
+        # Role
+        role_fs = max(6, min(8, name_fs - 2))
+        c.setFont("Helvetica", role_fs); c.setFillColor(HexColor(_SUB_TEXT))
+        role = m.get("role", "")
+        while c.stringWidth(role, "Helvetica", role_fs) > card_w - 6 and len(role) > 3:
+            role = role[:-1]
+        c.drawCentredString(cx_mid, BODY_Y + CARD_H * 0.40, role)
+
+        # Department
+        dept = m.get("department", "")
+        while c.stringWidth(dept, "Helvetica", role_fs) > card_w - 6 and len(dept) > 3:
+            dept = dept[:-1]
+        c.drawCentredString(cx_mid, BODY_Y + CARD_H * 0.22, dept)
 
 
-def _fig_wdw(wdw):
-    """Who Does What table — separate slide for sharpness."""
-    import textwrap as _tw
-    # Count total rows needed
+def _draw_wdw_slide(c, wdw):
+    """Draw Who Does What table natively in ReportLab."""
+    _fi_slide_header(c, "Who Does What")
+
+    # Flatten all responsibility rows
     all_rows = []
     for w in wdw:
         resps = w.get("responsibilities", [])
@@ -1969,54 +1996,61 @@ def _fig_wdw(wdw):
             except: resps = []
         if not resps:
             resp_text = w.get("responsibility", "")
-            if resp_text:
-                resps = [{"what": resp_text, "when": ""}]
-            else:
-                resps = [{"what": "—", "when": ""}]
-        for ri, r in enumerate(resps[:4]):
-            all_rows.append((w.get("member_name",""), ri, r))
+            resps = [{"what": resp_text or "—", "when": ""}]
+        for ri, r in enumerate(resps):
+            all_rows.append((w.get("member_name", ""), ri, r))
 
-    n_rows = max(len(all_rows), 1)
-    fig_h  = max(3.0, min(7.5, n_rows * 0.45 + 1.2))
-    fig, ax = plt.subplots(figsize=(13.33, fig_h), dpi=200)
-    fig.patch.set_facecolor("#ffffff"); ax.set_facecolor("#ffffff")
-    ax.set_xlim(0, 1); ax.set_ylim(0, 1); ax.axis("off")
+    if not all_rows:
+        c.setFont("Helvetica-Oblique", 12); c.setFillColor(HexColor(_SUB_TEXT))
+        c.drawCentredString(_SW / 2, _SH / 2, "No responsibilities assigned yet.")
+        return
+
+    # Column positions
+    X_WHO  = 36;  W_WHO  = 160
+    X_WHAT = 200; W_WHAT = 640
+    X_WHEN = 844; W_WHEN = _SW - 844 - 30
+
+    TABLE_TOP = _SH - 80
 
     # Header
-    ax.add_patch(plt.Rectangle((0.01, 0.88), 0.98, 0.10,
-                 facecolor=_BLUE, transform=ax.transAxes))
-    for xp, lbl in [(0.02, "WHO"), (0.20, "WHAT (RESPONSIBILITY)"), (0.82, "WHEN")]:
-        ax.text(xp, 0.930, lbl, fontsize=9, fontweight="bold",
-                color="white", transform=ax.transAxes)
+    c.setFillColor(HexColor(_BLUE))
+    c.rect(30, TABLE_TOP - 20, _SW - 60, 22, fill=1, stroke=0)
+    c.setFillColor(HexColor("#ffffff")); c.setFont("Helvetica-Bold", 9)
+    c.drawString(X_WHO,  TABLE_TOP - 13, "WHO")
+    c.drawString(X_WHAT, TABLE_TOP - 13, "WHAT (RESPONSIBILITY)")
+    c.drawString(X_WHEN, TABLE_TOP - 13, "WHEN")
 
-    row_h  = 0.86 / max(n_rows, 1)
-    row_h  = min(row_h, 0.085)
-    y      = 0.88
-    alt    = False
+    # Rows
+    n_rows = len(all_rows)
+    avail  = TABLE_TOP - 20 - 36
+    row_h  = max(11, min(18, avail / max(n_rows, 1)))
+    fs     = max(7.5, min(10, row_h - 3))
+
+    y = TABLE_TOP - 20; alt = False
     for name, ri, r in all_rows:
         y -= row_h
-        if y < 0.01: break
+        if y < 34: break
         if alt:
-            ax.add_patch(plt.Rectangle((0.01, y), 0.98, row_h,
-                         facecolor="#F4F6F8", transform=ax.transAxes))
+            c.setFillColor(HexColor("#F4F6F8"))
+            c.rect(30, y, _SW - 60, row_h, fill=1, stroke=0)
         alt = not alt
-        fs = max(6.5, min(8.5, row_h * 80))
-        if ri == 0:
-            ax.text(0.02, y + row_h * 0.45, name[:22],
-                    fontsize=fs, fontweight="bold", color=_BODY_TEXT,
-                    va="center", transform=ax.transAxes)
-        what = r.get("what","") or "—"
-        ax.text(0.20, y + row_h * 0.45, what[:70],
-                fontsize=fs, color=_BODY_TEXT, va="center",
-                transform=ax.transAxes)
-        ax.text(0.82, y + row_h * 0.45, (r.get("when","") or "")[:20],
-                fontsize=fs, color=_SUB_TEXT, va="center",
-                transform=ax.transAxes)
-        ax.plot([0.01, 0.99], [y, y], color="#E2E8F0", linewidth=0.4,
-                transform=ax.transAxes)
 
-    fig.tight_layout(pad=0.2)
-    return fig
+        mid_y = y + row_h * 0.30
+
+        if ri == 0:
+            c.setFont("Helvetica-Bold", fs); c.setFillColor(HexColor(_BODY_TEXT))
+            c.drawString(X_WHO, mid_y, name[:22])
+
+        what = (r.get("what", "") or "—")[:80]
+        c.setFont("Helvetica", fs); c.setFillColor(HexColor(_BODY_TEXT))
+        c.drawString(X_WHAT, mid_y, what)
+
+        when = (r.get("when", "") or "")[:20]
+        c.setFont("Helvetica", fs); c.setFillColor(HexColor(_SUB_TEXT))
+        c.drawString(X_WHEN, mid_y, when)
+
+        c.setStrokeColor(HexColor("#E2E8F0")); c.setLineWidth(0.3)
+        c.line(30, y, _SW - 30, y)
 
 
 def _draw_checklist_slide(c, checklist, cw):
@@ -2285,10 +2319,10 @@ def _generate_board_pdf(supabase, pid, project, checklist, cw):
     c.showPage()
 
     # Slide 3 — Team & WDW
-    _fi_chart_slide(c, "Team Members", _fi_fig_to_png(_fig_team(team, wdw), dpi=220))
+    _draw_team_slide(c, team)
     c.showPage()
     if wdw:
-        _fi_chart_slide(c, "Who Does What", _fi_fig_to_png(_fig_wdw(wdw), dpi=220))
+        _draw_wdw_slide(c, wdw)
         c.showPage()
 
     # Section: KPI & Results
