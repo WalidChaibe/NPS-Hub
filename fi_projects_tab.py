@@ -1904,12 +1904,12 @@ def _fig_gantt(steps, wu_rows, cw):
         ps  = max(1, step.get("planned_start_week", 1))
         pe  = min(12, step.get("planned_end_week", ps))
         dur = pe - ps + 1
-        ax.barh(i, dur, left=ps - 1, height=68.55, color="#D6E8F7", zorder=2)
-        ax.barh(i, dur, left=ps - 1, height=68.55, color="none",
+        ax.barh(i, dur, left=ps - 1, height=0.55, color="#D6E8F7", zorder=2)
+        ax.barh(i, dur, left=ps - 1, height=0.55, color="none",
                 edgecolor=_BLUE, linewidth=0.9, zorder=3)
         pct = sp_map.get(str(step.get("id", "")), 0)
         if pct > 0:
-            ax.barh(i, dur * pct / 100, left=ps - 1, height=68.55,
+            ax.barh(i, dur * pct / 100, left=ps - 1, height=0.55,
                     color=_GREEN if pct == 100 else _BLUE, alpha=0.85, zorder=4)
             if pct >= 15:
                 ax.text(ps - 1 + dur * pct / 200, i, f"{pct}%",
@@ -1978,7 +1978,7 @@ def _draw_team_slide(c, team):
         cx_mid = cx + card_w / 2
 
         # Name
-        name_fs = max(7, min(11, int(card_w / 9)))
+        name_fs = max(9, min(13, int(card_w / 7)))
         c.setFillColor(HexColor(_BODY_TEXT))
         c.setFont("Helvetica-Bold", name_fs)
         # Truncate name to fit card width
@@ -1988,7 +1988,7 @@ def _draw_team_slide(c, team):
         c.drawCentredString(cx_mid, BODY_Y + CARD_H * 0.60, name)
 
         # Role
-        role_fs = max(6, min(8, name_fs - 2))
+        role_fs = max(8, min(10, name_fs - 1))
         c.setFont("Helvetica", role_fs); c.setFillColor(HexColor(_SUB_TEXT))
         role = m.get("role", "")
         while c.stringWidth(role, "Helvetica", role_fs) > card_w - 6 and len(role) > 3:
@@ -2215,86 +2215,190 @@ def _draw_actions_slide(c, actions):
         c.line(30, y, _SW - 30, y)
 
 
-def _fig_meeting(mtg):
+def _draw_kpi_slide(c, kpi, wu_rows):
+    """Draw KPI trend slide natively in ReportLab."""
     import textwrap as _tw
-    fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=150)
-    fig.patch.set_facecolor("#ffffff"); ax.set_facecolor("#ffffff")
-    ax.set_xlim(0, 1); ax.set_ylim(0, 1); ax.axis("off")
-    ax.add_patch(plt.Rectangle((0.02, 0.88), 0.96, 0.09,
-                 facecolor="#EAF3FB", transform=ax.transAxes))
+    kpi_name = kpi.get("kpi_name", "KPI")
+    unit     = kpi.get("unit", "")
+    base     = float(kpi.get("baseline_value") or 0)
+    tgt      = float(kpi.get("target_value") or 0)
+
+    _fi_slide_header(c, f"KPI Trend — {kpi_name}")
+
+    # KPI summary cards
+    CARD_Y = _SH - 115; CARD_H = 42
+    card_w = (_SW - 80) // 3
+    for i, (lbl, val, col) in enumerate([
+        ("Baseline", f"{base:.1f} {unit}", _SUB_TEXT),
+        ("Target",   f"{tgt:.1f} {unit}",  _GREEN),
+        ("Unit",     unit,                  _BLUE),
+    ]):
+        cx = 36 + i * (card_w + 6)
+        c.setFillColor(HexColor(col))
+        c.roundRect(cx, CARD_Y, card_w, CARD_H, 4, fill=1, stroke=0)
+        c.setFillColor(HexColor("#ffffff"))
+        c.setFont("Helvetica-Bold", 16)
+        c.drawCentredString(cx + card_w / 2, CARD_Y + CARD_H * 0.58, val)
+        c.setFont("Helvetica", 9)
+        c.drawCentredString(cx + card_w / 2, CARD_Y + CARD_H * 0.20, lbl)
+
+    # Historical context
+    hist = str(kpi.get("historical_context") or "")
+    if hist:
+        c.setFont("Helvetica-Oblique", 9); c.setFillColor(HexColor(_SUB_TEXT))
+        c.drawString(36, CARD_Y - 18, f"Context: {hist[:110]}")
+
+    # Weekly readings table
+    readings = sorted([w for w in wu_rows if w.get("kpi_value") is not None],
+                      key=lambda x: x["week_number"])
+
+    TABLE_TOP = CARD_Y - 30
+    c.setFillColor(HexColor(_BLUE))
+    c.rect(30, TABLE_TOP - 20, _SW - 60, 22, fill=1, stroke=0)
+    c.setFillColor(HexColor("#ffffff")); c.setFont("Helvetica-Bold", 9)
+    c.drawString(40, TABLE_TOP - 13, "WEEK")
+    c.drawString(160, TABLE_TOP - 13, f"KPI VALUE ({unit})")
+    c.drawString(380, TABLE_TOP - 13, "VS BASELINE")
+    c.drawString(570, TABLE_TOP - 13, "VS TARGET")
+    c.drawString(750, TABLE_TOP - 13, "STATUS")
+
+    if not readings:
+        c.setFont("Helvetica-Oblique", 11); c.setFillColor(HexColor(_SUB_TEXT))
+        c.drawCentredString(_SW / 2, TABLE_TOP - 60, "No weekly readings recorded yet.")
+        return
+
+    n_rows = len(readings)
+    avail  = TABLE_TOP - 20 - 36
+    row_h  = max(13, min(20, avail / max(n_rows, 1)))
+    fs     = max(9, min(12, row_h - 3))
+
+    y = TABLE_TOP - 20; alt = False
+    for w in readings:
+        y -= row_h
+        if y < 34: break
+        val = float(w["kpi_value"])
+        vs_base = val - base
+        vs_tgt  = val - tgt
+        # Determine if higher is better (assume yes if target > baseline)
+        higher_better = tgt >= base
+        on_track = (val >= tgt) if higher_better else (val <= tgt)
+        status_col = _GREEN if on_track else _AMBER
+        status_txt = "On Track" if on_track else "Behind"
+
+        if alt:
+            c.setFillColor(HexColor("#F4F6F8"))
+            c.rect(30, y, _SW - 60, row_h, fill=1, stroke=0)
+        alt = not alt
+
+        mid_y = y + row_h * 0.28
+        c.setFont("Helvetica-Bold", fs); c.setFillColor(HexColor(_BLUE))
+        c.drawString(40, mid_y, f"W{w['week_number']}")
+        c.setFont("Helvetica", fs); c.setFillColor(HexColor(_BODY_TEXT))
+        c.drawString(160, mid_y, f"{val:.1f}")
+        sign = "+" if vs_base >= 0 else ""
+        c.setFillColor(HexColor(_GREEN if vs_base >= 0 else _RED))
+        c.drawString(380, mid_y, f"{sign}{vs_base:.1f}")
+        sign2 = "+" if vs_tgt >= 0 else ""
+        c.setFillColor(HexColor(_GREEN if (vs_tgt >= 0) == higher_better else _RED))
+        c.drawString(570, mid_y, f"{sign2}{vs_tgt:.1f}")
+        c.setFont("Helvetica-Bold", fs); c.setFillColor(HexColor(status_col))
+        c.drawString(750, mid_y, status_txt)
+        c.setStrokeColor(HexColor("#E2E8F0")); c.setLineWidth(0.3)
+        c.line(30, y, _SW - 30, y)
+
+
+def _draw_meeting_slide(c, mtg):
+    """Draw a meeting minutes slide natively in ReportLab."""
+    import textwrap as _tw
+    week_num = mtg.get("week_number", "?")
+    _fi_slide_header(c, f"Meeting Minutes — Week {week_num}")
+
+    # Meta bar
     att_pct = int(mtg.get("attendance_pct") or 0)
     att_col = _GREEN if att_pct >= 80 else _RED
-    ax.text(0.03, 0.935, f"Date: {str(mtg.get('meeting_date',''))[:10]}",
-            fontsize=9, fontweight="bold", color=_BLUE, transform=ax.transAxes)
-    ax.text(0.22, 0.935, f"Attendees: {mtg.get('attendees','—')[:45]}",
-            fontsize=9, color=_BODY_TEXT, transform=ax.transAxes)
-    ax.text(0.03, 0.893, f"Attendance: {att_pct}%",
-            fontsize=9, fontweight="bold", color=att_col, transform=ax.transAxes)
-    y = 0.87
+    c.setFillColor(HexColor("#EAF3FB"))
+    c.rect(30, _SH - 110, _SW - 60, 32, fill=1, stroke=0)
+    c.setFont("Helvetica-Bold", 10); c.setFillColor(HexColor(_BLUE))
+    c.drawString(40, _SH - 90, f"Date: {str(mtg.get('meeting_date',''))[:10]}")
+    c.setFont("Helvetica", 10); c.setFillColor(HexColor(_BODY_TEXT))
+    att_text = str(mtg.get("attendees","—") or "—")[:60]
+    c.drawString(180, _SH - 90, f"Attendees: {att_text}")
+    c.setFont("Helvetica-Bold", 10); c.setFillColor(HexColor(att_col))
+    c.drawString(40, _SH - 104, f"Attendance: {att_pct}%")
+
+    y = _SH - 120
+    FS_SECTION = 11
+    FS_BODY    = 10
+    LINE_H     = 16
 
     def _section(title):
         nonlocal y
-        y -= 0.04
-        ax.text(0.02, y, title, fontsize=9, fontweight="bold",
-                color=_BLUE, transform=ax.transAxes)
-        y -= 0.015
+        y -= 10
+        c.setFillColor(HexColor(_BLUE)); c.setFont("Helvetica-Bold", FS_SECTION)
+        c.drawString(36, y, title)
+        c.setStrokeColor(HexColor(_BLUE)); c.setLineWidth(0.5)
+        c.line(36, y - 2, _SW - 36, y - 2)
+        y -= LINE_H
 
-    def _bullet(text):
+    def _bullet(text, indent=50):
         nonlocal y
-        for line in _tw.wrap(str(text), width=110)[:2]:
-            if y < 0.03: return
-            ax.text(0.04, y, f"• {line}", fontsize=8,
-                    color=_BODY_TEXT, transform=ax.transAxes)
-            y -= 0.03
+        lines = _tw.wrap(str(text), width=100)[:3]
+        for i, line in enumerate(lines):
+            if y < 36: return
+            prefix = "•  " if i == 0 else "    "
+            c.setFont("Helvetica", FS_BODY); c.setFillColor(HexColor(_BODY_TEXT))
+            c.drawString(indent, y, prefix + line)
+            y -= LINE_H
 
+    # Agenda
     agenda = mtg.get("agenda", [])
     if isinstance(agenda, str):
         try: agenda = json.loads(agenda)
         except: agenda = []
     if agenda:
         _section("Agenda")
-        for item in agenda[:4]: _bullet(item)
+        for item in agenda[:6]: _bullet(item)
 
-    notes = str(mtg.get("notes", "") or "")
-    if notes:
+    # Notes
+    notes = str(mtg.get("notes","") or "")
+    if notes and y > 80:
         _section("Discussion Notes")
-        for line in _tw.wrap(notes, width=110)[:3]:
-            if y < 0.03: break
-            ax.text(0.04, y, line, fontsize=8, color=_BODY_TEXT, transform=ax.transAxes)
-            y -= 0.03
+        for line in _tw.wrap(notes, width=105)[:6]:
+            if y < 36: break
+            c.setFont("Helvetica", FS_BODY); c.setFillColor(HexColor(_BODY_TEXT))
+            c.drawString(50, y, line); y -= LINE_H
 
+    # Actions
     acts = mtg.get("actions_raised", [])
     if isinstance(acts, str):
         try: acts = json.loads(acts)
         except: acts = []
-    if acts:
+    if acts and y > 80:
         _section("Action Items")
-        for act in acts[:5]:
-            if y < 0.03: break
+        for act in acts[:8]:
+            if y < 36: break
             if isinstance(act, dict):
                 closed = act.get("closed", False)
-                col = _GREEN if closed else _RED
-                ax.text(0.03, y, f"{'✓' if closed else '●'} {act.get('text','')[:50]}",
-                        fontsize=8, color=col, transform=ax.transAxes)
-                ax.text(0.65, y, f"👤 {act.get('owner','—')[:16]}",
-                        fontsize=8, color=_SUB_TEXT, transform=ax.transAxes)
-                ax.text(0.82, y, str(act.get("due",""))[:10],
-                        fontsize=8, color=_SUB_TEXT, transform=ax.transAxes)
+                col    = _GREEN if closed else _RED
+                icon   = "✓" if closed else "●"
+                c.setFont("Helvetica-Bold", FS_BODY); c.setFillColor(HexColor(col))
+                c.drawString(50, y, f"{icon}  {act.get('text','')[:52]}")
+                c.setFont("Helvetica", FS_BODY); c.setFillColor(HexColor(_SUB_TEXT))
+                c.drawString(660, y, (act.get("owner","") or "")[:16])
+                c.drawString(820, y, str(act.get("due",""))[:10])
             else:
-                ax.text(0.03, y, f"• {str(act)[:80]}", fontsize=8,
-                        color=_BODY_TEXT, transform=ax.transAxes)
-            y -= 0.035
+                c.setFont("Helvetica", FS_BODY); c.setFillColor(HexColor(_BODY_TEXT))
+                c.drawString(50, y, f"•  {str(act)[:80]}")
+            y -= LINE_H
 
+    # Next steps
     nexts = mtg.get("next_steps", [])
     if isinstance(nexts, str):
         try: nexts = json.loads(nexts)
         except: nexts = []
-    if nexts and y > 0.06:
+    if nexts and y > 60:
         _section("Next Steps")
-        for ns in nexts[:3]: _bullet(f"→  {ns}")
-
-    fig.tight_layout(pad=0.3)
-    return fig
+        for ns in nexts[:4]: _bullet(f"→  {ns}")
 
 
 # ── Main board PDF builder ────────────────────────────────────────────────────
@@ -2354,12 +2458,15 @@ def _generate_board_pdf(supabase, pid, project, checklist, cw):
     _fi_section_slide(c, "KPI & Results")
     c.showPage()
 
-    # Slide 4 — KPI Trend
+    # Slide 4 — KPI Trend (always show if KPI exists, even without readings)
     if kpi:
-        fig = _fig_kpi_trend(kpi, wu_rows)
-        if fig:
-            _fi_chart_slide(c, f"KPI Trend — {kpi.get('kpi_name','KPI')}", _fi_fig_to_png(fig))
-            c.showPage()
+        # Re-fetch wu_rows fresh to ensure kpi_value data is included
+        try:
+            _kpi_wu = supabase.table("fi_weekly_updates").select("*").eq("project_id", pid).order("week_number").execute().data or []
+        except Exception:
+            _kpi_wu = wu_rows
+        _draw_kpi_slide(c, kpi, _kpi_wu)
+        c.showPage()
 
     # Section: Master Plan
     _fi_section_slide(c, "Master Plan")
@@ -2384,15 +2491,13 @@ def _generate_board_pdf(supabase, pid, project, checklist, cw):
         _draw_actions_slide(c, actions)
         c.showPage()
 
-    # Section + Meeting slides
+    # Section + Meeting slides (native ReportLab)
     if meetings:
         _fi_section_slide(c, "Meeting Minutes")
         c.showPage()
         for mtg in meetings:
-            fig = _fig_meeting(mtg)
-            if fig:
-                _fi_chart_slide(c, f"Meeting Minutes — Week {mtg.get('week_number','?')}", _fi_fig_to_png(fig))
-                c.showPage()
+            _draw_meeting_slide(c, mtg)
+            c.showPage()
 
     c.save()
     buf.seek(0)
