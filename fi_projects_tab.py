@@ -1024,7 +1024,7 @@ def _form_kpi_setup(supabase, pid, project, checklist, cw, name, can_edit):
         kpi_date = k5.date_input("Target Date", value=_kpi_date_default)
         kpi_link = st.text_input("Company KPI Link", value=str(project.get("company_kpi_link") or ""))
         kpi_hist = st.text_area("Historical context (timeframe & prior values)",
-            value=str(kpi.get("historical_context") or ""), height=60,
+            value=str(kpi.get("historical_context") or ""), height=68,
             placeholder="e.g. OEE was 63% in Jan, 62% Feb, 61% Mar — trending down over 3 months")
         # Sub-components
         st.caption("**KPI Components** (one per line, e.g. 'Availability, Performance, Quality')")
@@ -1177,11 +1177,11 @@ def _form_master_plan(supabase, pid, project, checklist, cw, name, can_edit):
                     sid=sp.get("step_id",""); sp_map[sid]=max(sp_map.get(sid,0),sp.get("pct_complete",0))
         for i,step in enumerate(steps):
             ps=max(1,step.get("planned_start_week",1)); pe=min(12,step.get("planned_end_week",ps)); dur=pe-ps+1
-            ax.barh(i,dur,left=ps-1,height=0.55,color="#d6e8f7",zorder=2)
-            ax.barh(i,dur,left=ps-1,height=0.55,color="none",edgecolor="#0C5595",linewidth=1.0,zorder=3)
+            ax.barh(i,dur,left=ps-1,height=68.55,color="#d6e8f7",zorder=2)
+            ax.barh(i,dur,left=ps-1,height=68.55,color="none",edgecolor="#0C5595",linewidth=1.0,zorder=3)
             pct=sp_map.get(str(step.get("id","")),0)
             if pct>0:
-                ax.barh(i,dur*pct/100,left=ps-1,height=0.55,
+                ax.barh(i,dur*pct/100,left=ps-1,height=68.55,
                         color="#1E8449" if pct==100 else "#0C5595",alpha=0.85,zorder=4)
                 if pct>=15:
                     ax.text(ps-1+dur*pct/200,i,f"{pct}%",ha="center",va="center",
@@ -1457,7 +1457,7 @@ def _form_rca(supabase, pid, project, checklist, cw, name, can_edit):
                     else: st.warning("Fill problem and at least one Why.")
         else:
             with st.form("fi_fishbone"):
-                prob=st.text_area("Effect / Problem",value=prob_default[:80],height=60)
+                prob=st.text_area("Effect / Problem",value=prob_default[:80],height=68)
                 st.caption("Enter causes per category (one per line)")
                 cats={}
                 DEFAULT_CATS=["Man","Machine","Method","Material","Measurement","Environment"]
@@ -1609,7 +1609,7 @@ def _form_monitoring(supabase, pid, project, checklist, cw, name, can_edit):
         mon_act =st.checkbox("Monitoring actively used and up-to-date",value=bool(stab.get("monitoring_active")))
         mon_date=st.date_input("Last updated",
             value=date.fromisoformat(str(stab["monitoring_last_update"])) if stab.get("monitoring_last_update") else date.today())
-        mon_note=st.text_area("Evidence / description",value=stab.get("monitoring_notes",""),height=60)
+        mon_note=st.text_area("Evidence / description",value=stab.get("monitoring_notes",""),height=68)
         if st.form_submit_button("Save",type="primary") and can_edit:
             payload={"project_id":pid,"monitoring_in_place":mon_in,
                      "monitoring_types":",".join(mon_types),
@@ -1889,12 +1889,12 @@ def _fig_gantt(steps, wu_rows, cw):
         ps  = max(1, step.get("planned_start_week", 1))
         pe  = min(12, step.get("planned_end_week", ps))
         dur = pe - ps + 1
-        ax.barh(i, dur, left=ps - 1, height=0.55, color="#D6E8F7", zorder=2)
-        ax.barh(i, dur, left=ps - 1, height=0.55, color="none",
+        ax.barh(i, dur, left=ps - 1, height=68.55, color="#D6E8F7", zorder=2)
+        ax.barh(i, dur, left=ps - 1, height=68.55, color="none",
                 edgecolor=_BLUE, linewidth=0.9, zorder=3)
         pct = sp_map.get(str(step.get("id", "")), 0)
         if pct > 0:
-            ax.barh(i, dur * pct / 100, left=ps - 1, height=0.55,
+            ax.barh(i, dur * pct / 100, left=ps - 1, height=68.55,
                     color=_GREEN if pct == 100 else _BLUE, alpha=0.85, zorder=4)
             if pct >= 15:
                 ax.text(ps - 1 + dur * pct / 200, i, f"{pct}%",
