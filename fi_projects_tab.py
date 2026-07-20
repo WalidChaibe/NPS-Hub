@@ -2460,11 +2460,14 @@ def _draw_5why_slide(c, d):
             c.setFillColor(HexColor(_SUB_TEXT))
             c.setStrokeColor(HexColor(_SUB_TEXT)); c.setLineWidth(1.5)
             c.line(mid_x, y, mid_x, y - arrow_h + 4)
-            # Arrowhead
+            # Arrowhead (ReportLab path)
             c.setFillColor(HexColor(_SUB_TEXT))
-            c.triangle(mid_x - 6, y - arrow_h + 4,
-                       mid_x + 6, y - arrow_h + 4,
-                       mid_x,     y - arrow_h, fill=1)
+            p = c.beginPath()
+            p.moveTo(mid_x - 6, y - arrow_h + 4)
+            p.lineTo(mid_x + 6, y - arrow_h + 4)
+            p.lineTo(mid_x,     y - arrow_h)
+            p.close()
+            c.drawPath(p, fill=1, stroke=0)
             y -= arrow_h + 2
 
     # Root cause box at bottom
@@ -2501,10 +2504,14 @@ def _draw_fishbone_slide(c, d):
     c.setStrokeColor(HexColor(_BLUE_DARK)); c.setLineWidth(3)
     c.line(SPINE_X0, SPINE_Y, SPINE_X1, SPINE_Y)
 
-    # Arrowhead on spine
+    # Arrowhead on spine (ReportLab path)
     c.setFillColor(HexColor(_BLUE_DARK))
-    c.triangle(SPINE_X1, SPINE_Y + 7, SPINE_X1, SPINE_Y - 7,
-               SPINE_X1 + 12, SPINE_Y, fill=1)
+    p = c.beginPath()
+    p.moveTo(SPINE_X1,      SPINE_Y + 7)
+    p.lineTo(SPINE_X1,      SPINE_Y - 7)
+    p.lineTo(SPINE_X1 + 12, SPINE_Y)
+    p.close()
+    c.drawPath(p, fill=1, stroke=0)
 
     # Effect box
     c.setFillColor(HexColor(_BLUE_DARK))
