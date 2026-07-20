@@ -1017,9 +1017,11 @@ def _form_kpi_setup(supabase, pid, project, checklist, cw, name, can_edit):
         k3,k4,k5 = st.columns(3)
         kpi_base = k3.number_input("Baseline Value", value=float(kpi.get("baseline_value",0) or 0))
         kpi_tgt  = k4.number_input("Target Value",   value=float(kpi.get("target_value",0)   or 0))
-        kpi_date = k5.date_input("Target Date",
-            value=date.fromisoformat(str(kpi.get("target_date",date.today()+timedelta(weeks=12)))[:10])
-                  if kpi.get("target_date") else date.today()+timedelta(weeks=12))
+        try:
+            _kpi_date_default = date.fromisoformat(str(kpi.get("target_date",""))[:10]) if kpi.get("target_date") else date.today()+timedelta(weeks=12)
+        except Exception:
+            _kpi_date_default = date.today()+timedelta(weeks=12)
+        kpi_date = k5.date_input("Target Date", value=_kpi_date_default)
         kpi_link = st.text_input("Company KPI Link",value=project.get("company_kpi_link",""))
         kpi_hist = st.text_area("Historical context (timeframe & prior values)",
             value=kpi.get("historical_context",""), height=60,
