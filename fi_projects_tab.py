@@ -824,6 +824,14 @@ def _data_upload_chart(supabase, pid, cw, name, purpose, title="Data Chart",
                 st.pyplot(fig, use_container_width=True); plt.close(fig)
 
     with st.expander(f"➕ Upload data for {title}", expanded=not bool(saved)):
+        st.info(
+            "**How to format your file:**\n\n"
+            "**Option A — Standard table** (recommended): First column = labels (e.g. Jan, Feb, Mar), "
+            "remaining columns = values (e.g. Actual, Target). Select **'Rows are categories'** after upload.\n\n"
+            "**Option B — Wide format**: First column = metric names (e.g. Actual, Target), "
+            "remaining columns = time periods. Select **'Columns are categories'** after upload.\n\n"
+            "Accepted formats: **.xlsx**, **.xls**, **.csv**"
+        )
         up_file = st.file_uploader("Upload CSV or Excel", type=["csv","xlsx","xls"],
                                    key=f"upload_{purpose}")
         if up_file is not None:
@@ -891,9 +899,16 @@ def _data_upload_chart(supabase, pid, cw, name, purpose, title="Data Chart",
                     fig = _render_chart_from_payload(payload)
                     if fig:
                         st.pyplot(fig, use_container_width=True); plt.close(fig)
+                    def _sanitize(obj):
+                        """Recursively convert numpy/pandas types to native Python for JSON."""
+                        if isinstance(obj, dict):  return {k: _sanitize(v) for k, v in obj.items()}
+                        if isinstance(obj, list):  return [_sanitize(v) for v in obj]
+                        if hasattr(obj, "item"):   return obj.item()   # numpy scalar
+                        if obj != obj:             return None          # NaN
+                        return obj
                     supabase.table("fi_project_analysis").insert({
                         "project_id": pid, "week_number": cw, "analysis_type": "data_chart",
-                        "data": json.dumps(payload), "created_by": name,
+                        "data": json.dumps(_sanitize(payload)), "created_by": name,
                     }).execute()
                     generated_now = True
                     st.success("Chart saved ✓")
