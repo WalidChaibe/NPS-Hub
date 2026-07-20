@@ -2401,6 +2401,171 @@ def _draw_meeting_slide(c, mtg):
         for ns in nexts[:4]: _bullet(f"→  {ns}")
 
 
+
+def _draw_5why_slide(c, d):
+    """Draw a 5-Why analysis slide natively in ReportLab."""
+    _fi_slide_header(c, "Root Cause Analysis — 5 Why")
+
+    problem = d.get("problem", "")
+    whys    = d.get("whys", [])
+    root    = d.get("root_cause", "")
+
+    import textwrap as _tw
+
+    # Problem box
+    c.setFillColor(HexColor("#EAF3FB"))
+    c.roundRect(30, _SH - 118, _SW - 60, 40, 4, fill=1, stroke=0)
+    c.setFillColor(HexColor(_BLUE_DARK)); c.setFont("Helvetica-Bold", 10)
+    c.drawString(42, _SH - 98, "PROBLEM STATEMENT")
+    c.setFont("Helvetica", 10); c.setFillColor(HexColor(_BODY_TEXT))
+    # wrap problem text
+    prob_lines = _tw.wrap(problem, width=120)[:2]
+    for li, pl in enumerate(prob_lines):
+        c.drawString(42, _SH - 112 + (len(prob_lines)-1-li)*12, pl)
+
+    # Why chain — arrow boxes
+    active_whys = [(i+1, w) for i, w in enumerate(whys) if w and w.strip()]
+    n = len(active_whys)
+    if n == 0:
+        c.setFont("Helvetica-Oblique", 11); c.setFillColor(HexColor(_SUB_TEXT))
+        c.drawCentredString(_SW/2, _SH/2, "No Why entries recorded.")
+        return
+
+    BOX_TOP = _SH - 130
+    avail_h = BOX_TOP - 70    # leave room for root cause at bottom
+    box_h   = min(52, max(36, avail_h / n - 8))
+    gap     = 8
+    arrow_h = 12
+
+    y = BOX_TOP
+    colors = [_BLUE_DARK, _BLUE, "#2471A3", "#2E86C1", "#1A5276"]
+
+    for idx, (num, why) in enumerate(active_whys):
+        col = colors[idx % len(colors)]
+        # Box
+        c.setFillColor(HexColor(col))
+        c.roundRect(30, y - box_h, _SW - 60, box_h, 4, fill=1, stroke=0)
+        # Why label
+        c.setFillColor(HexColor("#ffffff")); c.setFont("Helvetica-Bold", 9)
+        c.drawString(42, y - 14, f"WHY {num}")
+        # Why text
+        c.setFont("Helvetica", 10)
+        lines = _tw.wrap(why, width=115)[:2]
+        for li, line in enumerate(lines):
+            c.drawString(42, y - 28 - li * 13, line)
+        y -= box_h + gap
+        # Arrow down (except after last)
+        if idx < n - 1:
+            mid_x = _SW / 2
+            c.setFillColor(HexColor(_SUB_TEXT))
+            c.setStrokeColor(HexColor(_SUB_TEXT)); c.setLineWidth(1.5)
+            c.line(mid_x, y, mid_x, y - arrow_h + 4)
+            # Arrowhead
+            c.setFillColor(HexColor(_SUB_TEXT))
+            c.triangle(mid_x - 6, y - arrow_h + 4,
+                       mid_x + 6, y - arrow_h + 4,
+                       mid_x,     y - arrow_h, fill=1)
+            y -= arrow_h + 2
+
+    # Root cause box at bottom
+    if root:
+        c.setFillColor(HexColor(_GREEN))
+        c.roundRect(30, 36, _SW - 60, 34, 4, fill=1, stroke=0)
+        c.setFillColor(HexColor("#ffffff")); c.setFont("Helvetica-Bold", 10)
+        c.drawString(42, 58, "ROOT CAUSE:")
+        c.setFont("Helvetica", 10)
+        c.drawString(140, 58, root[:90])
+
+
+def _draw_fishbone_slide(c, d):
+    """Draw a Fishbone (Ishikawa) diagram natively in ReportLab."""
+    _fi_slide_header(c, "Root Cause Analysis — Fishbone Diagram")
+
+    import textwrap as _tw
+
+    effect     = d.get("problem", "Unknown Effect")
+    categories = {k: v for k, v in d.get("categories", {}).items() if v}
+
+    if not categories:
+        c.setFont("Helvetica-Oblique", 11); c.setFillColor(HexColor(_SUB_TEXT))
+        c.drawCentredString(_SW/2, _SH/2, "No categories recorded.")
+        return
+
+    # Layout constants
+    SPINE_Y  = int(_SH * 0.45)       # y of main spine
+    SPINE_X0 = 60                    # left start of spine
+    SPINE_X1 = _SW - 140             # right end of spine (before effect box)
+    EFF_X    = _SW - 135             # effect box left edge
+
+    # Main spine
+    c.setStrokeColor(HexColor(_BLUE_DARK)); c.setLineWidth(3)
+    c.line(SPINE_X0, SPINE_Y, SPINE_X1, SPINE_Y)
+
+    # Arrowhead on spine
+    c.setFillColor(HexColor(_BLUE_DARK))
+    c.triangle(SPINE_X1, SPINE_Y + 7, SPINE_X1, SPINE_Y - 7,
+               SPINE_X1 + 12, SPINE_Y, fill=1)
+
+    # Effect box
+    c.setFillColor(HexColor(_BLUE_DARK))
+    c.roundRect(EFF_X, SPINE_Y - 28, 118, 56, 5, fill=1, stroke=0)
+    c.setFillColor(HexColor("#ffffff")); c.setFont("Helvetica-Bold", 9)
+    eff_lines = _tw.wrap(effect, width=16)[:4]
+    for li, el in enumerate(eff_lines):
+        c.drawCentredString(EFF_X + 59, SPINE_Y + 16 - li * 12, el)
+
+    # Distribute categories along spine (alternating top/bottom)
+    cats = list(categories.items())
+    n    = len(cats)
+    if n == 0: return
+
+    # x positions along spine
+    spacing = (SPINE_X1 - SPINE_X0 - 40) / max(n, 1)
+    bone_xs = [int(SPINE_X0 + 30 + i * spacing + spacing / 2) for i in range(n)]
+
+    BONE_LEN  = 95     # length of diagonal bone
+    CAUSE_GAP = 14     # gap between causes on sub-branches
+
+    c.setLineWidth(1.8)
+
+    for idx, (cat, causes) in enumerate(cats):
+        bx = bone_xs[idx]
+        top = idx % 2 == 0    # alternating top/bottom
+
+        bone_top_y = SPINE_Y + BONE_LEN if top else SPINE_Y - BONE_LEN
+        bone_mid_x = bx - (BONE_LEN // 2) if top else bx + (BONE_LEN // 2)
+
+        # Main bone (diagonal)
+        c.setStrokeColor(HexColor(_BLUE))
+        c.line(bx, SPINE_Y, bone_mid_x, bone_top_y)
+
+        # Category label
+        c.setFillColor(HexColor(_BLUE_DARK)); c.setFont("Helvetica-Bold", 9)
+        label_y = bone_top_y + (8 if top else -16)
+        c.drawCentredString(bone_mid_x, label_y, cat.upper())
+
+        # Sub-branches (causes)
+        c.setStrokeColor(HexColor(_SUB_TEXT)); c.setLineWidth(1)
+        for ci, cause in enumerate(causes[:5]):
+            # position along the diagonal bone
+            t      = (ci + 1) / (len(causes[:5]) + 1)
+            sx     = int(bx + (bone_mid_x - bx) * t)
+            sy     = int(SPINE_Y + (bone_top_y - SPINE_Y) * t)
+            offset = 45
+            ex     = sx - offset if top else sx + offset
+            ey     = sy + (20 if top else -20)
+            c.line(sx, sy, ex, ey)
+            # Cause text
+            c.setFont("Helvetica", 7.5); c.setFillColor(HexColor(_BODY_TEXT))
+            cause_short = cause[:22]
+            if top:
+                c.drawRightString(ex - 2, ey + 3, cause_short)
+            else:
+                c.drawString(ex + 2, ey - 10, cause_short)
+
+        c.setLineWidth(1.8)
+
+
 # ── Main board PDF builder ────────────────────────────────────────────────────
 
 def _generate_board_pdf(supabase, pid, project, checklist, cw):
@@ -2477,6 +2642,25 @@ def _generate_board_pdf(supabase, pid, project, checklist, cw):
     if fig:
         _fi_chart_slide(c, "Master Plan — Gantt Chart", _fi_fig_to_png(fig))
         c.showPage()
+
+    # Section: Root Cause Analysis
+    _fi_section_slide(c, "Root Cause Analysis")
+    c.showPage()
+
+    # RCA slides — 5-Why and Fishbone
+    try:
+        analyses = supabase.table("fi_project_analysis").select("*")            .eq("project_id", pid).in_("analysis_type", ["5why", "fishbone"])            .order("created_at", desc=True).execute().data or []
+    except Exception:
+        analyses = []
+
+    for a in analyses:
+        d = _pj(a["data"], {}) if isinstance(a["data"], str) else (a["data"] or {})
+        if a.get("analysis_type") == "5why":
+            _draw_5why_slide(c, d)
+            c.showPage()
+        elif a.get("analysis_type") == "fishbone":
+            _draw_fishbone_slide(c, d)
+            c.showPage()
 
     # Section: Audit & Actions
     _fi_section_slide(c, "Audit & Actions")
