@@ -1001,6 +1001,13 @@ def _form_kpi_setup(supabase, pid, project, checklist, cw, name, can_edit):
               "Safety Improvement","Delivery Performance","5S Score Improvement","Throughput/Productivity"]
     UNITS=[ "%","MT","SAR","K SAR","LM","SQM","Count","Score","Hours","Mins"]
 
+    # Fetch weekly updates OUTSIDE the form to avoid side-effect restrictions
+    try:
+        wu_rows = supabase.table("fi_weekly_updates").select("*").eq("project_id",pid).order("week_number").execute().data or []
+    except: wu_rows=[]
+    wu_by_week = {w["week_number"]:w for w in wu_rows}
+    cur_wu     = wu_by_week.get(cw,{})
+
     with st.form("fi_kpi_form"):
         k1,k2 = st.columns(2)
         kpi_cat  = k1.selectbox("KPI Category", KPI_CATS,
@@ -1027,12 +1034,7 @@ def _form_kpi_setup(supabase, pid, project, checklist, cw, name, can_edit):
         # KPI weekly readings
         st.divider()
         st.caption("**Weekly KPI Readings** — enter the latest value for the current week")
-        try:
-            wu_rows = supabase.table("fi_weekly_updates").select("*").eq("project_id",pid).order("week_number").execute().data or []
-        except: wu_rows=[]
-        wu_by_week = {w["week_number"]:w for w in wu_rows}
-        cur_wu = wu_by_week.get(cw,{})
-        kv = st.number_input(f"W{cw} KPI Value ({kpi_unit if kpi.get('unit') else ''})",
+        kv = st.number_input(f"W{cw} KPI Value ({kpi.get('unit','')})",
                              value=float(cur_wu.get("kpi_value",kpi_base) or kpi_base))
 
         if st.form_submit_button("Save KPI Setup", type="primary") and can_edit:
