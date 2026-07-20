@@ -1015,22 +1015,22 @@ def _form_kpi_setup(supabase, pid, project, checklist, cw, name, can_edit):
         kpi_unit = k2.selectbox("Unit", UNITS,
             index=UNITS.index(kpi.get("unit","%")) if kpi.get("unit") in UNITS else 0)
         k3,k4,k5 = st.columns(3)
-        kpi_base = k3.number_input("Baseline Value", value=float(kpi.get("baseline_value",0) or 0))
-        kpi_tgt  = k4.number_input("Target Value",   value=float(kpi.get("target_value",0)   or 0))
+        kpi_base = k3.number_input("Baseline Value", value=float(kpi.get("baseline_value") or 0))
+        kpi_tgt  = k4.number_input("Target Value",   value=float(kpi.get("target_value")   or 0))
         try:
             _kpi_date_default = date.fromisoformat(str(kpi.get("target_date",""))[:10]) if kpi.get("target_date") else date.today()+timedelta(weeks=12)
         except Exception:
             _kpi_date_default = date.today()+timedelta(weeks=12)
         kpi_date = k5.date_input("Target Date", value=_kpi_date_default)
-        kpi_link = st.text_input("Company KPI Link",value=project.get("company_kpi_link",""))
+        kpi_link = st.text_input("Company KPI Link", value=str(project.get("company_kpi_link") or ""))
         kpi_hist = st.text_area("Historical context (timeframe & prior values)",
-            value=kpi.get("historical_context",""), height=60,
+            value=str(kpi.get("historical_context") or ""), height=60,
             placeholder="e.g. OEE was 63% in Jan, 62% Feb, 61% Mar — trending down over 3 months")
         # Sub-components
         st.caption("**KPI Components** (one per line, e.g. 'Availability, Performance, Quality')")
         _ex_subs = _pj(kpi.get("sub_components"),[])
         _ex_str  = "\n".join(s.get("name","") if isinstance(s,dict) else str(s) for s in _ex_subs)
-        subs_raw = st.text_area("Components", value=_ex_str, height=70,
+        subs_raw = st.text_area("Components", value=str(_ex_str or ""), height=70,
                                 placeholder="Availability\nPerformance\nQuality")
 
         # KPI weekly readings
