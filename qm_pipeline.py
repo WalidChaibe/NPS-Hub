@@ -36,6 +36,242 @@ _CRM_DELETE_MAP_DEFAULT = {
     "EPAK-CRM-11143": 8,  "EPAK-CRM-11147": 13,
 }
 
+# ── Manual CRM Reason / Root Cause Overrides ─────────────────────────────
+# These CRM refs were manually corrected outside the source export. Their
+# Reason (and Root Cause, if that column is present) get force-set to the
+# values below, regardless of what the uploaded file says.
+#
+# IMPORTANT ORDERING NOTE: this map is applied BEFORE _CRM_DELETE_MAP_DEFAULT
+# is used to drop rows. apply_crm_deletions() only removes the LAST n rows
+# matching a CRM ref — if a ref appears in both maps and n covers every row
+# for that ref, the override must already be baked in, or the correction is
+# lost with no trace. See _check_override_delete_overlap() below, which
+# raises a visible warning if a future edit puts the same ref in both maps.
+# Format: crm_ref -> (Reason, Root Cause)
+_CRM_REASON_OVERRIDE_DEFAULT = {
+    "EPAK-CRM-10245": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10271": ("Trailer Waiting Hours Exceeded", "No place at customer warehouse"),
+    "EPAK-CRM-10274": ("Trailer Waiting Hours Exceeded", "No place at customer warehouse"),
+    "EPAK-CRM-10275": ("Trailer Waiting Hours Exceeded", "No place at customer warehouse"),
+    "EPAK-CRM-10296": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
+    "EPAK-CRM-10242": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
+    "EPAK-CRM-10295": ("Trailer Waiting Hours Exceeded", "No place at customer warehouse"),
+    "EPAK-CRM-10289": ("Trailer Waiting Hours Exceeded", "No place at customer warehouse"),
+    "EPAK-CRM-10281": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10326": ("Sales Discount", "Pre-Agreement"),
+    "EPAK-CRM-10324": ("Trailer Waiting Hours Exceeded", "No place at customer warehouse"),
+    "EPAK-CRM-10286": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10241": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10007": ("Sales Discount", "Pre-Agreement"),
+    "EPAK-CRM-10323": ("Sales Discount", "Pre-Agreement"),
+    "EPAK-CRM-10331": ("Sales Discount", "Pre-Agreement"),
+    "EPAK-CRM-10276": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10300": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10287": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
+    "EPAK-CRM-10273": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
+    "EPAK-CRM-10355": ("Trailer Waiting Hours Exceeded", "No place at customer warehouse"),
+    "EPAK-CRM-10347": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10320": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
+    "EPAK-CRM-10321": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
+    "EPAK-CRM-10263": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10378": ("Sales Discount", "Pre-Agreement"),
+    "EPAK-CRM-10388": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10379": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10357": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10308": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10409": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10412": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10408": ("Sales Discount", "Pre-Agreement"),
+    "EPAK-CRM-10432": ("Trailer Waiting Hours Exceeded", "No place at customer warehouse"),
+    "EPAK-CRM-10360": ("Trailer Waiting Hours Exceeded", "No place at customer warehouse"),
+    "EPAK-CRM-10382": ("Trailer Waiting Hours Exceeded", "No place at customer warehouse"),
+    "EPAK-CRM-10391": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
+    "EPAK-CRM-10397": ("Trailer Waiting Hours Exceeded", "No place at customer warehouse"),
+    "EPAK-CRM-10380": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10345": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
+    "EPAK-CRM-10441": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10465": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10336": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10440": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10466": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10341": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
+    "EPAK-CRM-10488": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10505": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10523": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10493": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
+    "EPAK-CRM-10570": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10558": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10518": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
+    "EPAK-CRM-10596": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10597": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10595": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10592": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10620": ("Sales Discount", "Pre-Agreement"),
+    "EPAK-CRM-10538": ("Sales Discount", "Pre-Agreement"),
+    "EPAK-CRM-10564": ("Sales Discount", "Pre-Agreement"),
+    "EPAK-CRM-10536": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
+    "EPAK-CRM-10543": ("Sales Discount", "Pre-Agreement"),
+    "EPAK-CRM-10588": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10547": ("Sales Discount", "Pre-Agreement"),
+    "EPAK-CRM-10672": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10640": ("Sales Discount", "Pre-Agreement"),
+    "EPAK-CRM-10625": ("Incorrect Loading Manifest", "Missing sign loading manifest"),
+    "EPAK-CRM-10676": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10681": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10484": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
+    "EPAK-CRM-10693": ("Sales Discount", "Pre-Agreement"),
+    "EPAK-CRM-10682": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
+    "EPAK-CRM-10521": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
+    "EPAK-CRM-10628": ("Sales Discount", "Pre-Agreement"),
+    "EPAK-CRM-10627": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10530": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10696": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
+    "EPAK-CRM-10712": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10571": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
+    "EPAK-CRM-10589": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
+    "EPAK-CRM-10641": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10647": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
+    "EPAK-CRM-10516": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
+    "EPAK-CRM-10535": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
+    "EPAK-CRM-10664": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
+    "EPAK-CRM-10708": ("Sales Discount", "Pre-Agreement"),
+    "EPAK-CRM-10534": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
+    "EPAK-CRM-10716": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
+    "EPAK-CRM-10720": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10739": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10656": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10559": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
+    "EPAK-CRM-10565": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
+    "EPAK-CRM-10761": ("Trailer Waiting Hours Exceeded", "No place at customer warehouse"),
+    "EPAK-CRM-10797": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10792": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10805": ("Trailer Waiting Hours Exceeded", "No place at customer warehouse"),
+    "EPAK-CRM-10768": ("Sales Discount", "Pre-Agreement"),
+    "EPAK-CRM-10786": ("Trailer Waiting Hours Exceeded", "No place at customer warehouse"),
+    "EPAK-CRM-10717": ("Trailer Waiting Hours Exceeded", "No place at customer warehouse"),
+    "EPAK-CRM-10731": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
+    "EPAK-CRM-10555": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
+    "EPAK-CRM-10548": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
+    "EPAK-CRM-10796": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10767": ("Sales Discount", "Pre-Agreement"),
+    "EPAK-CRM-10839": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10840": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10854": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10869": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10661": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
+    "EPAK-CRM-10554": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
+    "EPAK-CRM-10832": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10872": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10865": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10884": ("Sales Discount", "Pre-Agreement"),
+    "EPAK-CRM-10897": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
+    "EPAK-CRM-10933": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-10623": ("Trailer Waiting Hours Exceeded", "No place at customer warehouse"),
+    "EPAK-CRM-10783": ("Trailer Waiting Hours Exceeded", "No place at customer warehouse"),
+    "EPAK-CRM-10943": ("Trailer Waiting Hours Exceeded", "No place at customer warehouse"),
+    "EPAK-CRM-10944": ("Trailer Waiting Hours Exceeded", "No place at customer warehouse"),
+    "EPAK-CRM-10929": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
+    "EPAK-CRM-10976": ("Sales Discount", "Pre-Agreement"),
+    "EPAK-CRM-10874": ("Sales Discount", "Pre-Agreement"),
+    "EPAK-CRM-10866": ("Sales Discount", "Pre-Agreement"),
+    "EPAK-CRM-11003": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-11016": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-11030": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
+    "EPAK-CRM-11020": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-11029": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-11026": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-11033": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
+    "EPAK-CRM-11067": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-11070": ("Sales Discount", "Pre-Agreement"),
+    "EPAK-CRM-11074": ("Sales Discount", "Pre-Agreement"),
+    "EPAK-CRM-11045": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
+    "EPAK-CRM-11077": ("Incorrect Loading Manifest", "Missing sign loading manifest"),
+    "EPAK-CRM-11072": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
+    "EPAK-CRM-11073": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
+    "EPAK-CRM-11063": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
+    "EPAK-CRM-11086": ("Sales Discount", "Pre-Agreement"),
+    "EPAK-CRM-11098": ("Sales Discount", "Pre-Agreement"),
+    "EPAK-CRM-11090": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-11093": ("Sales Discount", "Pre-Agreement"),
+    "EPAK-CRM-11088": ("Sales Discount", "Pre-Agreement"),
+    "EPAK-CRM-11099": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-11065": ("Incorrect Loading Manifest", "Missing sign loading manifest"),
+    "EPAK-CRM-11114": ("Trailer Waiting Hours Exceeded", "No place at customer warehouse"),
+    "EPAK-CRM-11120": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-11125": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-11154": ("Trailer Waiting Hours Exceeded", "No place at customer warehouse"),
+    "EPAK-CRM-11157": ("Sales Discount", "Pre-Agreement"),
+    "EPAK-CRM-11161": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-11173": ("Sales Discount", "Pre-Agreement"),
+    "EPAK-CRM-11183": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-11194": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-11196": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
+    "EPAK-CRM-11199": ("Sales Discount", "Pre-Agreement"),
+    "EPAK-CRM-11214": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-11220": ("Sales Discount", "Pre-Agreement"),
+    "EPAK-CRM-11207": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
+    "EPAK-CRM-11206": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
+    "EPAK-CRM-11216": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
+    "EPAK-CRM-11236": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-11235": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-11247": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
+    "EPAK-CRM-11232": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-11259": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
+    "EPAK-CRM-11275": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-11279": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-11310": ("Incorrect Loading Manifest", "Missing sign loading manifest"),
+    "EPAK-CRM-11294": ("Sales Discount", "Pre-Agreement"),
+    "EPAK-CRM-11316": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-11328": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-11341": ("Sales Discount", "Pre-Agreement"),
+    "EPAK-CRM-11342": ("Trailer Waiting Hours Exceeded", "No place at customer warehouse"),
+    "EPAK-CRM-11357": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-11359": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-11339": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-11325": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
+    "EPAK-CRM-11326": ("Trailer Waiting Hours Exceeded", "No place at customer warehouse"),
+    "EPAK-CRM-11327": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
+    "EPAK-CRM-11296": ("Sales Discount", "Pre-Agreement"),
+    "EPAK-CRM-11329": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-11344": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-11374": ("Sales Discount", "Pre-Agreement"),
+    "EPAK-CRM-11366": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-11379": ("Trailer Waiting Hours Exceeded", "No place at customer warehouse"),
+    "EPAK-CRM-11369": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
+    "EPAK-CRM-11356": ("Trailer Waiting Hours Exceeded", "No place at customer warehouse"),
+    "EPAK-CRM-11376": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-11330": ("Sales Discount", "Pre-Agreement"),
+    "EPAK-CRM-11375": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-11381": ("Sales Discount", "Pre-Agreement"),
+    "EPAK-CRM-11389": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-11409": ("Trailer Waiting Hours Exceeded", "No place at customer warehouse"),
+    "EPAK-CRM-11406": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-11422": ("Sales Discount", "Pre-Agreement"),
+    "EPAK-CRM-11420": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-11421": ("FOC", "Pre-Agreement"),
+    "EPAK-CRM-11419": ("Trailer Waiting Hours Exceeded", "No place at customer warehouse"),
+    "EPAK-CRM-11400": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
+}
+
+def _check_override_delete_overlap(delete_map, override_map):
+    """
+    If a CRM ref appears in both the delete map and the override map, the
+    override MUST be applied before deletion or it can be silently lost
+    (apply_crm_deletions can remove every row for that ref). This doesn't
+    fix that — it can't, by definition, if overrides run first — but it
+    surfaces the collision so it never passes unnoticed.
+    """
+    overlap = set(delete_map.keys()) & set(override_map.keys())
+    if overlap:
+        import warnings
+        warnings.warn(
+            f"CRM ref(s) present in BOTH the delete map and the reason-override map: "
+            f"{sorted(overlap)}. Verify override_crm_reasons() runs before apply_crm_deletions() "
+            f"for these, and that the delete count doesn't remove every row for the ref.",
+            stacklevel=2,
+        )
+    return overlap
+
 _QUALITY_REASONS_DEFAULT = {
     "Poor Ink Coverage / Pinholes","Score Cracking","Missing/ Hard Score","Delamination",
     "Warped Sheets","Belt Mark","Chemical odors","Wrong score size","Misaligned Paper",
@@ -96,6 +332,19 @@ def load_settings_from_supabase(supabase=None):
         i_set = set()
     return crm_map, q_set, s_set, i_set
 
+def load_crm_reason_overrides_from_supabase(supabase=None):
+    """Returns {crm_ref: (reason, root_cause)}. Falls back to the hardcoded default."""
+    if supabase is None:
+        return _CRM_REASON_OVERRIDE_DEFAULT
+    try:
+        rows = supabase.table("qm_crm_reason_override").select("crm_ref,reason,root_cause").execute()
+        override_map = {r["crm_ref"]: (r["reason"], r.get("root_cause")) for r in (rows.data or [])}
+        if not override_map:
+            override_map = _CRM_REASON_OVERRIDE_DEFAULT
+    except Exception:
+        override_map = _CRM_REASON_OVERRIDE_DEFAULT
+    return override_map
+
 def _clean_text(x) -> str:
     s = "" if pd.isna(x) else str(x)
     s = s.replace("\n", " ").replace("\r", " ").strip()
@@ -128,6 +377,35 @@ def _is_commercial(reason_clean: str, root_cause_val) -> bool:
         return rc == _COMMERCIAL_ROOT_CAUSE_LOWER
     # No root cause column — reason alone is sufficient
     return True
+
+def _find_root_cause_col(df):
+    rc_col = next((c for c in df.columns if "root" in c.lower() and "cause" in c.lower()), None)
+    if rc_col is None:
+        rc_col = next((c for c in df.columns if "root" in c.lower()), None)
+    return rc_col
+
+def apply_crm_reason_overrides(df, override_map, crm_col=CRM_COL, df_name="df"):
+    """
+    Force-sets Reason (and Root Cause, if that column exists) for specific CRM refs
+    that were manually corrected outside the source export.
+
+    MUST run before apply_crm_deletions(). apply_crm_deletions() drops the LAST n
+    rows matching a CRM ref — if n covers every row for that ref, those rows are
+    gone before classification ever sees them. Applying the override first means
+    the correction survives regardless of what deletion does to the surviving rows.
+    """
+    if not override_map:
+        return df
+    rc_col = _find_root_cause_col(df)
+    crm_series = df[crm_col].astype(str).str.strip()
+    for crm, (reason, root_cause) in override_map.items():
+        mask = crm_series == crm
+        if not mask.any():
+            continue
+        df.loc[mask, REASON_COL] = reason
+        if rc_col is not None:
+            df.loc[mask, rc_col] = root_cause
+    return df
 
 def apply_crm_deletions(df, crm_delete_map, crm_col=CRM_COL, df_name="df"):
     rows_to_drop = []
@@ -225,19 +503,30 @@ def read_excel_from_upload(uploaded_file, sheet_name=SHEET_NAME, drop_last_two=T
     return df
 
 def build_dataset_final_issued(df_loaded, date_col, dataset_name="DATASET",
-                                crm_delete_map=None, classifier=None):
+                                crm_delete_map=None, classifier=None, crm_reason_override=None):
     if crm_delete_map is None: crm_delete_map = _CRM_DELETE_MAP_DEFAULT
     if classifier is None: classifier = _classify_reason_default
-    # raw_flagged: flag the original (no crm deletions) — work in place, no extra copy
+    if crm_reason_override is None: crm_reason_override = _CRM_REASON_OVERRIDE_DEFAULT
+
+    # Check the maps ACTUALLY being used (not just the hardcoded defaults) —
+    # these may come from Supabase and change independently over time.
+    overlap = _check_override_delete_overlap(crm_delete_map, crm_reason_override)
+
+    # Override runs FIRST, before any deletion touches Reason/Root Cause.
+    df_loaded = apply_crm_reason_overrides(df_loaded.copy(), crm_reason_override,
+                                            crm_col=CRM_COL, df_name=dataset_name)
+
+    # raw_flagged: flag the override-corrected original (no crm deletions)
     raw_flagged     = add_date_and_flags_final_issued(df_loaded.copy(), date_col=date_col,
                                                        df_name=f"{dataset_name}.raw", classifier=classifier)
-    # cleaned: apply CRM deletions, then flag — reuse df_loaded directly
+    # cleaned: apply CRM deletions (on already-overridden data), then flag
     cleaned         = apply_crm_deletions(df_loaded, crm_delete_map, crm_col=CRM_COL, df_name=dataset_name)
     cleaned_flagged = add_date_and_flags_final_issued(cleaned, date_col=date_col,
                                                        df_name=f"{dataset_name}.cleaned", classifier=classifier)
     return {
         "raw_flagged": raw_flagged, "cleaned_flagged": cleaned_flagged,
         "unclassified_counts": show_unclassified_counts(cleaned_flagged),
+        "override_delete_overlap": overlap,
     }
 
 def build_dataset_ncr(df_loaded, date_col, dataset_name="NCR", classifier=None):
