@@ -37,7 +37,7 @@ st.divider()
 mpl.rcParams["font.family"] = "DejaVu Sans"
 mpl.rcParams["font.size"]   = 11
 
-tab1, tab_projects = st.tabs(["📊 OEE Report & Analysis", "📋 FI Projects"])
+tab1, tab_setup, tab_projects = st.tabs(["📊 OEE Report & Analysis", "🔁 Setup Analysis", "📋 FI Projects"])
 
 # ════════════════════════════════════════
 # SHARED CHART HELPERS
@@ -740,3 +740,369 @@ with tab1:
                     file_name="OEE_Target_Simulation.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     key="fi_sim_dl")
+
+
+# ════════════════════════════════════════
+# SETUP ANALYSIS TAB
+# ════════════════════════════════════════
+
+MACHINE_GROUPS = {
+    "FFG": ["LMC", "Martin", "Saturn", "BOBST 924"],
+    "Corrugator": ["BHS", "FOSBER"],
+    "Die-Cut": ["BOBST 2", "BOBST 3", "MC1", "MC2"],
+    "Pre-Print": ["CI4", "CI6"],
+    "Folder Gluer": ["VEGA", "TURBOX"],
+    "Other": ["JUMBO", "IPAK"],
+}
+ALL_MACHINES = [m for grp in MACHINE_GROUPS.values() for m in grp]
+
+def _parse_setup_file(file_bytes, filename):
+    """Parse a machine order sequence file. Returns a cleaned DataFrame."""
+    try:
+        if filename.lower().endswith(".csv"):
+            df = pd.read_csv(io.BytesIO(file_bytes))
+        else:
+            df = pd.read_excel(io.BytesIO(file_bytes), engine="openpyxl" if filename.lower().endswith(".xlsx") else None)
+    except Exception:
+        df = pd.read_excel(io.BytesIO(file_bytes))
+
+    # Normalise column names
+    df.columns = [str(c).strip() for c in df.columns]
+
+    # Find key columns (flexible naming)
+    def _find_col(candidates):
+        for c in candidates:
+            matches = [col for col in df.columns if c.lower() in col.lower()]
+            if matches: return matches[0]
+        return None
+
+    start_col   = _find_col(["start date", "start_date", "startdate", "start"])
+    article_col = _find_col(["articleref", "article ref", "article_ref", "ft", "item", "article"])
+    month_col   = _find_col(["month"])
+    order_col   = _find_col(["cusorderid", "order id", "orderid", "order"])
+
+    if not start_col or not article_col:
+        raise ValueError(f"Cannot find Start Date or Article columns. Found: {list(df.columns)}")
+
+    df["_start"]   = pd.to_datetime(df[start_col], errors="coerce")
+    df["_article"] = df[article_col].astype(str).str.strip()
+
+    # Derive month from start date if no month column
+    if month_col and month_col in df.columns:
+        df["_month"] = df[month_col].astype(str).str.strip().str.capitalize()
+    else:
+        df["_month"] = df["_start"].dt.strftime("%B")
+
+    df = df.dropna(subset=["_start", "_article"])
+    df = df[df["_article"].str.len() > 0]
+    df = df.sort_values("_start").reset_index(drop=True)
+    return df
+
+
+def _count_setups(df):
+    """
+    Count setups per article per month.
+    Logic: consecutive rows with same article = same run (1 setup).
+    Non-consecutive same article in same month = repeated setup.
+    Returns: dict {month: {article: n_setups}}
+    """
+    results = {}  # {month: {article: count}}
+
+    for month, mdf in df.groupby("_month"):
+        mdf = mdf.sort_values("_start").reset_index(drop=True)
+        article_setups = {}
+        prev_article = None
+
+        for _, row in mdf.iterrows():
+            art = row["_article"]
+            if art != prev_article:
+                # New run for this article
+                article_setups[art] = article_setups.get(art, 0) + 1
+            prev_article = art
+
+        results[month] = article_setups
+
+    return results
+
+
+def _build_setup_summary(setup_counts, months):
+    """
+    Build summary table:
+    Rows: #of orders, #of setups, 1, 2, 3, 4, 5, 6+
+    Columns: months
+    """
+    rows = []
+    for month in months:
+        counts = setup_counts.get(month, {})
+        n_orders = len(counts)
+        n_setups = sum(counts.values())
+        # Distribution: how many FTs had exactly N setups
+        dist = {}
+        for art, n in counts.items():
+            key = min(n, 6)  # cap at 6+
+            dist[key] = dist.get(key, 0) + 1
+
+        rows.append({
+            "month": month,
+            "n_orders": n_orders,
+            "n_setups": n_setups,
+            **{str(i): dist.get(i, 0) for i in range(1, 7)},
+        })
+    return rows
+
+
+def _setup_bar_chart(pivot_df, machine_name):
+    """Bar chart of repeated setups (2+) per month."""
+    months = [c for c in pivot_df.columns if c not in ["Metric"]]
+    repeat_rows = [str(i) for i in range(2, 7) if str(i) in pivot_df["Metric"].values]
+    if not repeat_rows or not months:
+        return None
+
+    colors = ["#006394", "#C1A02E", "#D8C37D", "#9B59B6", "#DE201B"]
+    fig, ax = plt.subplots(figsize=(10, 5), dpi=150)
+    x = np.arange(len(months))
+    w = 0.8 / max(len(repeat_rows), 1)
+
+    for i, row_label in enumerate(repeat_rows):
+        row_data = pivot_df[pivot_df["Metric"] == row_label]
+        if row_data.empty: continue
+        vals = [float(row_data[m].iloc[0]) if m in row_data.columns else 0 for m in months]
+        offset = (i - len(repeat_rows) / 2 + 0.5) * w
+        bars = ax.bar(x + offset, vals, w, color=colors[i % len(colors)],
+                      label=f"{row_label}x setups", alpha=0.9)
+        for bar, val in zip(bars, vals):
+            if val > 0:
+                ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.2,
+                        str(int(val)), ha="center", va="bottom", fontsize=9)
+
+    ax.set_xticks(x); ax.set_xticklabels(months, fontsize=10)
+    ax.set_ylabel("# of FTs"); ax.set_title(f"{machine_name} — Repeated Setups", fontsize=12)
+    ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False)
+    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.12), ncol=len(repeat_rows), frameon=False)
+    plt.tight_layout(rect=[0, 0.08, 1, 1])
+    buf = io.BytesIO(); fig.savefig(buf, format="png", dpi=150, bbox_inches="tight")
+    buf.seek(0); plt.close(fig)
+    return buf
+
+
+def _detail_table(setup_counts, months):
+    """Return per-FT setup counts as a DataFrame."""
+    all_arts = sorted(set(art for m in months for art in setup_counts.get(m, {}).keys()))
+    rows = []
+    for art in all_arts:
+        row = {"Article Ref": art}
+        total = 0
+        for month in months:
+            n = setup_counts.get(month, {}).get(art, 0)
+            row[month] = n
+            total += n
+        row["Total"] = total
+        rows.append(row)
+    df = pd.DataFrame(rows)
+    if not df.empty:
+        df = df.sort_values("Total", ascending=False).reset_index(drop=True)
+    return df
+
+
+MONTH_ORDER = ["January","February","March","April","May","June",
+               "July","August","September","October","November","December"]
+
+
+with tab_setup:
+    st.markdown("### 🔁 Setup Analysis")
+    st.caption("Upload order sequence files per machine to identify repeated setups (same FT set up multiple times in a month).")
+
+    # ── File uploaders per group ──────────────────────────────────────────────
+    uploaded_files = {}  # {machine_name: uploaded_file}
+
+    for group_name, machines in MACHINE_GROUPS.items():
+        with st.expander(f"📂 {group_name}", expanded=True):
+            cols = st.columns(len(machines))
+            for i, machine in enumerate(machines):
+                f = cols[i].file_uploader(
+                    machine,
+                    type=["xls", "xlsx", "csv"],
+                    key=f"setup_file_{machine}",
+                    label_visibility="visible"
+                )
+                if f:
+                    uploaded_files[machine] = f
+
+    n_uploaded = len(uploaded_files)
+    if n_uploaded == 0:
+        st.info("⬆️ Upload at least one machine file above, then click Generate.")
+    else:
+        st.success(f"✅ {n_uploaded} file(s) uploaded: {', '.join(uploaded_files.keys())}")
+
+    if st.button("🔄 Generate Setup Analysis", type="primary", key="setup_run", disabled=n_uploaded == 0):
+        st.session_state["setup_run"] = True
+        st.session_state["setup_results"] = {}
+
+    if st.session_state.get("setup_run") and uploaded_files:
+        results = {}  # {machine: {month: {article: n}}}
+        errors  = {}
+
+        with st.spinner("Parsing files..."):
+            for machine, f in uploaded_files.items():
+                try:
+                    df = _parse_setup_file(f.getvalue(), f.name)
+                    results[machine] = _count_setups(df)
+                except Exception as e:
+                    errors[machine] = str(e)
+
+        if errors:
+            for m, e in errors.items():
+                st.error(f"❌ {m}: {e}")
+
+        if not results:
+            st.warning("No data could be parsed. Check your file formats.")
+        else:
+            # Collect all months across all machines, sorted
+            all_months_set = set()
+            for machine_counts in results.values():
+                all_months_set.update(machine_counts.keys())
+            months = sorted(all_months_set, key=lambda m: MONTH_ORDER.index(m) if m in MONTH_ORDER else 99)
+
+            # ── Summary table (all machines) ──────────────────────────────────
+            st.divider()
+            st.markdown("### 📋 Summary — All Machines")
+
+            summary_rows = []
+            for group_name, machines in MACHINE_GROUPS.items():
+                for machine in machines:
+                    if machine not in results: continue
+                    setup_counts = results[machine]
+                    machine_rows = _build_setup_summary(setup_counts, months)
+                    for mr in machine_rows:
+                        summary_rows.append({"Group": group_name, "Machine": machine, **mr})
+
+            if summary_rows:
+                # Build pivot display matching the screenshot format
+                display_rows = []
+                prev_machine = None
+                for sr in summary_rows:
+                    machine_label = sr["Machine"] if sr["Machine"] != prev_machine else ""
+                    prev_machine  = sr["Machine"]
+
+                display_data = {}
+                for machine in [m for grp in MACHINE_GROUPS.values() for m in grp if m in results]:
+                    machine_rows = [sr for sr in summary_rows if sr["Machine"] == machine]
+                    if not machine_rows: continue
+
+                    display_data[machine] = {}
+                    for mr in machine_rows:
+                        m = mr["month"]
+                        display_data[machine].setdefault(m, {})
+                        display_data[machine][m]["#of orders"] = mr["n_orders"]
+                        display_data[machine][m]["#of setups"] = mr["n_setups"]
+                        for i in range(1, 7):
+                            display_data[machine][m][str(i)] = mr[str(i)]
+
+                # Build the pivot DataFrame
+                metric_labels = ["#of orders", "#of setups", "1", "2", "3", "4", "5", "6"]
+                pivot_rows = []
+                for machine, mdata in display_data.items():
+                    for label in metric_labels:
+                        row = {"Machine": machine, "Metric": label}
+                        for month in months:
+                            row[month] = mdata.get(month, {}).get(label, 0)
+                        pivot_rows.append(row)
+
+                pivot_df = pd.DataFrame(pivot_rows)
+
+                # Style and display
+                def _style_pivot(df):
+                    styled = df.style
+                    def _row_style(row):
+                        if row["Metric"] == "#of orders":
+                            return ["background-color: #EAF3FB; font-weight: bold"] * len(row)
+                        elif row["Metric"] == "#of setups":
+                            return ["background-color: #FFF3E0; font-weight: bold"] * len(row)
+                        elif row["Metric"] in ["3","4","5","6"]:
+                            return ["color: #DE201B; font-weight: bold"] + [""] * (len(row)-1)
+                        return [""] * len(row)
+                    styled = styled.apply(_row_style, axis=1)
+                    return styled
+
+                st.dataframe(_style_pivot(pivot_df), use_container_width=True, hide_index=True)
+
+                # ── Excel export of summary ───────────────────────────────────
+                _buf_sum = io.BytesIO()
+                pivot_df.to_excel(_buf_sum, index=False, engine="openpyxl")
+                _buf_sum.seek(0)
+                st.download_button(
+                    "📥 Download Summary (.xlsx)",
+                    data=_buf_sum,
+                    file_name="Setup_Analysis_Summary.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="setup_summary_dl"
+                )
+
+            # ── Per-machine detail ────────────────────────────────────────────
+            st.divider()
+            st.markdown("### 🔍 Detail by Machine")
+
+            for group_name, machines in MACHINE_GROUPS.items():
+                group_machines = [m for m in machines if m in results]
+                if not group_machines: continue
+
+                st.markdown(f"#### {group_name}")
+                for machine in group_machines:
+                    setup_counts = results[machine]
+                    machine_rows = _build_setup_summary(setup_counts, months)
+                    if not machine_rows: continue
+
+                    with st.expander(f"🔧 {machine}", expanded=True):
+                        # Mini summary metrics
+                        metric_cols = st.columns(len(months))
+                        for i, month in enumerate(months):
+                            mr = next((r for r in machine_rows if r["month"] == month), None)
+                            if mr:
+                                metric_cols[i].metric(f"{month[:3]} Orders", mr["n_orders"])
+                                metric_cols[i].metric(f"{month[:3]} Setups", mr["n_setups"])
+                                repeat_count = sum(mr[str(k)] for k in range(2, 7))
+                                metric_cols[i].metric(f"{month[:3]} Repeated", repeat_count,
+                                                      delta=f"{repeat_count/mr['n_orders']*100:.0f}% of orders" if mr["n_orders"] else None,
+                                                      delta_color="inverse" if repeat_count > 0 else "off")
+
+                        # Chart
+                        machine_pivot = pd.DataFrame([
+                            {"Metric": label,
+                             **{month: next((r[label] for r in machine_rows if r["month"] == month), 0)
+                                for month in months}}
+                            for label in ["1","2","3","4","5","6"]
+                        ])
+                        chart_buf = _setup_bar_chart(machine_pivot, machine)
+                        if chart_buf:
+                            st.image(chart_buf)
+
+                        # Detail table (all FTs)
+                        st.markdown("##### Article-level Detail")
+                        detail_df = _detail_table(setup_counts, months)
+                        if not detail_df.empty:
+                            # Highlight FTs with repeated setups
+                            def _highlight_repeats(row):
+                                month_vals = [row.get(m, 0) for m in months]
+                                if any(v >= 3 for v in month_vals):
+                                    return ["background-color: #FFEAEA"] * len(row)
+                                elif any(v >= 2 for v in month_vals):
+                                    return ["background-color: #FFF9E0"] * len(row)
+                                return [""] * len(row)
+                            st.dataframe(
+                                detail_df.style.apply(_highlight_repeats, axis=1),
+                                use_container_width=True,
+                                hide_index=True,
+                                height=min(400, 35 * len(detail_df) + 38)
+                            )
+
+                            # Download per machine
+                            _buf_m = io.BytesIO()
+                            detail_df.to_excel(_buf_m, index=False, engine="openpyxl")
+                            _buf_m.seek(0)
+                            st.download_button(
+                                f"📥 Download {machine} Detail (.xlsx)",
+                                data=_buf_m,
+                                file_name=f"Setup_Analysis_{machine.replace(' ','_')}.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                key=f"setup_dl_{machine}"
+                            )
