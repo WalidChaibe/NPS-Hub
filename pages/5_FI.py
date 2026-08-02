@@ -934,7 +934,7 @@ with tab_setup:
     else:
         st.success(f"✅ {n_uploaded} file(s) uploaded: {', '.join(uploaded_files.keys())}")
 
-    if st.button("🔄 Generate Setup Analysis", type="primary", key="setup_run", disabled=n_uploaded == 0):
+    if st.button("🔄 Generate Setup Analysis", type="primary", key="setup_btn", disabled=n_uploaded == 0):
         st.session_state["setup_run"] = True
         st.session_state["setup_results"] = {}
 
