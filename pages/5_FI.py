@@ -785,11 +785,26 @@ def _parse_setup_file(file_bytes, filename):
         raise ValueError(f"Cannot find Month column. Columns found: {list(df.columns)}")
 
     df["_article"] = df[article_col].astype(str).str.strip()
-    df["_month"]   = df[month_col].astype(str).str.strip().str.capitalize()
 
-    if start_col:
-        df["_start"] = pd.to_datetime(df[start_col], errors="coerce")
-        df = df.sort_values("_start")
+    # Month column may be stored as datetime in Excel — convert to month name
+    raw_month = df[month_col]
+    if pd.api.types.is_datetime64_any_dtype(raw_month):
+        df["_month"] = raw_month.dt.strftime("%B")
+    else:
+        # Try converting string to datetime first, then extract month name
+        def _to_month_name(val):
+            s = str(val).strip()
+            # Already a month name
+            import calendar
+            month_names = [m for m in calendar.month_name if m]
+            if s.capitalize() in month_names:
+                return s.capitalize()
+            # Try parsing as datetime
+            try:
+                return pd.to_datetime(s).strftime("%B")
+            except Exception:
+                return s
+        df["_month"] = raw_month.apply(_to_month_name)
 
     df = df[df["_article"].str.len() > 0]
     df = df[df["_month"].str.len() > 0]
@@ -807,7 +822,7 @@ def _count_setups(df):
     results = {}  # {month: {article: count}}
 
     for month, mdf in df.groupby("_month"):
-        mdf = mdf.sort_values("_start").reset_index(drop=True)
+        mdf = mdf.reset_index(drop=True)
         article_setups = {}
         prev_article = None
 
