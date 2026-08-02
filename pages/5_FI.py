@@ -757,45 +757,43 @@ MACHINE_GROUPS = {
 ALL_MACHINES = [m for grp in MACHINE_GROUPS.values() for m in grp]
 
 def _parse_setup_file(file_bytes, filename):
-    """Parse a machine order sequence file. Returns a cleaned DataFrame."""
-    try:
-        if filename.lower().endswith(".csv"):
-            df = pd.read_csv(io.BytesIO(file_bytes))
-        else:
-            df = pd.read_excel(io.BytesIO(file_bytes), engine="openpyxl" if filename.lower().endswith(".xlsx") else None)
-    except Exception:
+    """Parse a machine order sequence file. Only needs Month and Articleref."""
+    if filename.lower().endswith(".csv"):
+        df = pd.read_csv(io.BytesIO(file_bytes))
+    else:
         df = pd.read_excel(io.BytesIO(file_bytes))
 
-    # Normalise column names
     df.columns = [str(c).strip() for c in df.columns]
 
-    # Find key columns (flexible naming)
-    def _find_col(candidates):
-        for c in candidates:
-            matches = [col for col in df.columns if c.lower() in col.lower()]
-            if matches: return matches[0]
-        return None
+    # Find Month column (exact match preferred)
+    month_col = next((c for c in df.columns if c.strip().lower() == "month"), None)
+    if not month_col:
+        month_col = next((c for c in df.columns if "month" in c.lower()), None)
 
-    start_col   = _find_col(["start date", "start_date", "startdate", "start"])
-    article_col = _find_col(["articleref", "article ref", "article_ref", "ft", "item", "article"])
-    month_col   = _find_col(["month"])
-    order_col   = _find_col(["cusorderid", "order id", "orderid", "order"])
+    # Find Article column
+    article_col = next((c for c in df.columns if c.strip().lower() in
+                        ["articleref", "article ref", "article_ref", "ft", "item"]), None)
+    if not article_col:
+        article_col = next((c for c in df.columns if "article" in c.lower() or "ref" in c.lower()), None)
 
-    if not start_col or not article_col:
-        raise ValueError(f"Cannot find Start Date or Article columns. Found: {list(df.columns)}")
+    # Find Start Date for ordering
+    start_col = next((c for c in df.columns if "start" in c.lower()), None)
 
-    df["_start"]   = pd.to_datetime(df[start_col], errors="coerce")
+    if not article_col:
+        raise ValueError(f"Cannot find Article/FT column. Columns found: {list(df.columns)}")
+    if not month_col:
+        raise ValueError(f"Cannot find Month column. Columns found: {list(df.columns)}")
+
     df["_article"] = df[article_col].astype(str).str.strip()
+    df["_month"]   = df[month_col].astype(str).str.strip().str.capitalize()
 
-    # Derive month from start date if no month column
-    if month_col and month_col in df.columns:
-        df["_month"] = df[month_col].astype(str).str.strip().str.capitalize()
-    else:
-        df["_month"] = df["_start"].dt.strftime("%B")
+    if start_col:
+        df["_start"] = pd.to_datetime(df[start_col], errors="coerce")
+        df = df.sort_values("_start")
 
-    df = df.dropna(subset=["_start", "_article"])
     df = df[df["_article"].str.len() > 0]
-    df = df.sort_values("_start").reset_index(drop=True)
+    df = df[df["_month"].str.len() > 0]
+    df = df.reset_index(drop=True)
     return df
 
 
