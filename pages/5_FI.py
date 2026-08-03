@@ -1120,69 +1120,67 @@ with tab_setup:
                                 key=f"setup_dl_{machine}"
                             )
 
-            # ── Cross-machine combined table (only if 2+ machines uploaded in group) ──
-            if len(group_machines) >= 2:
-                st.markdown(f"##### 🔀 {group_name} — Combined FT Analysis (All Machines)")
-                st.caption("FTs summed across all uploaded machines in this group. Highlights FTs that ran on multiple machines in the same month.")
+                # ── Cross-machine combined table (only if 2+ machines uploaded in group) ──
+                if len(group_machines) >= 2:
+                    st.markdown(f"##### 🔀 {group_name} — Combined FT Analysis (All Machines)")
+                    st.caption("FTs summed across all uploaded machines in this group. Highlights FTs that ran on multiple machines in the same month.")
 
-                # Build combined detail
-                combined = {}  # {ft: {month: total_setups}}
-                machine_presence = {}  # {ft: {month: [machine1, machine2...]}}
+                    combined = {}
+                    machine_presence = {}
 
-                for machine in group_machines:
-                    setup_counts = results[machine]
-                    for month, art_counts in setup_counts.items():
-                        for ft, n in art_counts.items():
-                            if ft not in combined:
-                                combined[ft] = {}
-                                machine_presence[ft] = {}
-                            combined[ft][month] = combined[ft].get(month, 0) + n
-                            if month not in machine_presence[ft]:
-                                machine_presence[ft][month] = []
-                            machine_presence[ft][month].append(machine)
+                    for machine in group_machines:
+                        setup_counts = results[machine]
+                        for month, art_counts in setup_counts.items():
+                            for ft, n in art_counts.items():
+                                if ft not in combined:
+                                    combined[ft] = {}
+                                    machine_presence[ft] = {}
+                                combined[ft][month] = combined[ft].get(month, 0) + n
+                                if month not in machine_presence[ft]:
+                                    machine_presence[ft][month] = []
+                                machine_presence[ft][month].append(machine)
 
-                # Build DataFrame
-                all_fts = sorted(combined.keys())
-                comb_rows = []
-                for ft in all_fts:
-                    row = {"FT": ft}
-                    total = 0
-                    on_multiple = False
-                    for month in months:
-                        n = combined[ft].get(month, 0)
-                        row[month] = n
-                        total += n
-                        if len(machine_presence[ft].get(month, [])) > 1:
-                            on_multiple = True
-                    row["Total"] = total
-                    row["On Multiple Machines"] = "⚠️ Yes" if on_multiple else ""
-                    comb_rows.append(row)
+                    all_fts = sorted(combined.keys())
+                    comb_rows = []
+                    for ft in all_fts:
+                        row = {"FT": ft}
+                        total = 0
+                        on_multiple = False
+                        for month in months:
+                            n = combined[ft].get(month, 0)
+                            row[month] = n
+                            total += n
+                            if len(machine_presence[ft].get(month, [])) > 1:
+                                on_multiple = True
+                        row["Total"] = total
+                        row["On Multiple Machines"] = "⚠️ Yes" if on_multiple else ""
+                        comb_rows.append(row)
 
-                comb_df = pd.DataFrame(comb_rows)
-                if not comb_df.empty:
-                    comb_df = comb_df.sort_values("Total", ascending=False).reset_index(drop=True)
+                    comb_df = pd.DataFrame(comb_rows)
+                    if not comb_df.empty:
+                        comb_df = comb_df.sort_values("Total", ascending=False).reset_index(drop=True)
 
-                    def _highlight_combined(row):
-                        if row.get("On Multiple Machines") == "⚠️ Yes":
-                            return ["background-color: #FFF3CD"] * len(row)
-                        if row.get("Total", 0) >= 3:
-                            return ["background-color: #FFEAEA"] * len(row)
-                        return [""] * len(row)
+                        def _highlight_combined(row):
+                            if row.get("On Multiple Machines") == "⚠️ Yes":
+                                return ["background-color: #FFF3CD"] * len(row)
+                            if row.get("Total", 0) >= 3:
+                                return ["background-color: #FFEAEA"] * len(row)
+                            return [""] * len(row)
 
-                    st.dataframe(
-                        comb_df.style.apply(_highlight_combined, axis=1),
-                        use_container_width=True,
-                        hide_index=True,
-                        height=min(500, 35 * len(comb_df) + 38)
-                    )
+                        st.dataframe(
+                            comb_df.style.apply(_highlight_combined, axis=1),
+                            use_container_width=True,
+                            hide_index=True,
+                            height=min(500, 35 * len(comb_df) + 38)
+                        )
 
-                    _buf_comb = io.BytesIO()
-                    comb_df.to_excel(_buf_comb, index=False, engine="openpyxl")
-                    _buf_comb.seek(0)
-                    st.download_button(
-                        f"📥 Download {group_name} Combined FT Analysis (.xlsx)",
-                        data=_buf_comb,
-                        file_name=f"Setup_Analysis_{group_name.replace(' ','_')}_Combined.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        key=f"setup_dl_combined_{group_name}"
-                    )
+                        _buf_comb = io.BytesIO()
+                        comb_df.to_excel(_buf_comb, index=False, engine="openpyxl")
+                        _buf_comb.seek(0)
+                        st.download_button(
+                            f"📥 Download {group_name} Combined FT Analysis (.xlsx)",
+                            data=_buf_comb,
+                            file_name=f"Setup_Analysis_{group_name.replace(' ','_')}_Combined.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            key=f"setup_dl_combined_{group_name}"
+                        )
