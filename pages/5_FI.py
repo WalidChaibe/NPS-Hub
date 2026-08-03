@@ -852,14 +852,14 @@ def _build_setup_summary(setup_counts, months):
         # Distribution: how many FTs had exactly N setups
         dist = {}
         for art, n in counts.items():
-            key = min(n, 6)  # cap at 6+
-            dist[key] = dist.get(key, 0) + 1
+            dist[n] = dist.get(n, 0) + 1
 
+        max_setups = max(dist.keys()) if dist else 1
         rows.append({
             "month": month,
             "n_orders": n_orders,
             "n_setups": n_setups,
-            **{str(i): dist.get(i, 0) for i in range(1, 7)},
+            **{str(i): dist.get(i, 0) for i in range(1, max_setups + 1)},
         })
     return rows
 
@@ -1079,11 +1079,17 @@ with tab_setup:
                                                       delta_color="inverse" if repeat_count > 0 else "off")
 
                         # Chart
+                        # Find max setup count across all months for this machine
+                        _max_s = max(
+                            (int(k) for r in machine_rows for k in r.keys()
+                             if k.isdigit() and r[k] > 0),
+                            default=6
+                        )
                         machine_pivot = pd.DataFrame([
                             {"Metric": label,
-                             **{month: next((r[label] for r in machine_rows if r["month"] == month), 0)
+                             **{month: next((r.get(label, 0) for r in machine_rows if r["month"] == month), 0)
                                 for month in months}}
-                            for label in ["1","2","3","4","5","6"]
+                            for label in [str(i) for i in range(1, _max_s + 1)]
                         ])
                         chart_buf = _setup_bar_chart(machine_pivot, machine)
                         if chart_buf:
@@ -1157,13 +1163,34 @@ with tab_setup:
                         comb_rows.append(row)
 
                     comb_df = pd.DataFrame(comb_rows)
+
+                    # Build summary header rows: #of orders and #of setups
+                    summary_header = []
+                    for metric, label in [("n_orders", "#of orders"), ("n_setups", "#of setups")]:
+                        hrow = {"FT": label, "Total": "", "On Multiple Machines": ""}
+                        for month in months:
+                            if metric == "n_orders":
+                                # Count FTs that had at least 1 setup this month
+                                hrow[month] = sum(1 for ft in all_fts if combined[ft].get(month, 0) > 0)
+                            else:
+                                # Sum all setups this month
+                                hrow[month] = sum(combined[ft].get(month, 0) for ft in all_fts)
+                        summary_header.append(hrow)
+
+                    if not comb_df.empty:
+                        header_df = pd.DataFrame(summary_header)
+                        comb_df = pd.concat([header_df, comb_df], ignore_index=True)
                     if not comb_df.empty:
                         comb_df = comb_df.sort_values("Total", ascending=False).reset_index(drop=True)
 
                         def _highlight_combined(row):
+                            if row.get("FT") == "#of orders":
+                                return ["background-color: #EAF3FB; font-weight: bold"] * len(row)
+                            if row.get("FT") == "#of setups":
+                                return ["background-color: #FFF3E0; font-weight: bold"] * len(row)
                             if row.get("On Multiple Machines") == "⚠️ Yes":
                                 return ["background-color: #FFF3CD"] * len(row)
-                            if row.get("Total", 0) >= 3:
+                            if isinstance(row.get("Total"), (int, float)) and row.get("Total", 0) >= 3:
                                 return ["background-color: #FFEAEA"] * len(row)
                             return [""] * len(row)
 
