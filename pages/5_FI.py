@@ -1008,11 +1008,18 @@ with tab_setup:
                         display_data[machine].setdefault(m, {})
                         display_data[machine][m]["#of orders"] = mr["n_orders"]
                         display_data[machine][m]["#of setups"] = mr["n_setups"]
-                        for i in range(1, 7):
-                            display_data[machine][m][str(i)] = mr[str(i)]
+                        for k in mr:
+                            if str(k).isdigit():
+                                display_data[machine][m][str(k)] = mr[k]
 
                 # Build the pivot DataFrame
-                metric_labels = ["#of orders", "#of setups", "1", "2", "3", "4", "5", "6"]
+                # Dynamic metric labels based on actual max setups across all machines
+                _all_keys = set()
+                for mdata in display_data.values():
+                    for mvals in mdata.values():
+                        _all_keys.update(k for k in mvals if str(k).isdigit())
+                _max_key = max((int(k) for k in _all_keys), default=6)
+                metric_labels = ["#of orders", "#of setups"] + [str(i) for i in range(1, _max_key + 1)]
                 pivot_rows = []
                 for machine, mdata in display_data.items():
                     for label in metric_labels:
