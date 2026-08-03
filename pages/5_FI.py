@@ -1051,6 +1051,61 @@ with tab_setup:
                     key="setup_summary_dl"
                 )
 
+            # ── Section-level summary table ───────────────────────────────────────────
+            st.divider()
+            st.markdown("### 🏭 Summary by Section")
+
+            section_pivot_rows = []
+            for group_name, machines in MACHINE_GROUPS.items():
+                group_machines_in_results = [m for m in machines if m in results]
+                if not group_machines_in_results: continue
+
+                section_dist = {}
+                for month in months:
+                    n_orders = 0; n_setups = 0
+                    dist = {str(i): 0 for i in range(1, 7)}
+                    for machine in group_machines_in_results:
+                        counts = results[machine].get(month, {})
+                        n_orders += len(counts)
+                        n_setups += sum(counts.values())
+                        for art, n in counts.items():
+                            key = str(min(n, 6))
+                            dist[key] = dist.get(key, 0) + 1
+                    section_dist[month] = {"#of orders": n_orders, "#of setups": n_setups, **dist}
+
+                for metric in ["#of orders", "#of setups", "1", "2", "3", "4", "5", "6"]:
+                    row = {"Section": group_name, "Metric": metric}
+                    for month in months:
+                        row[month] = section_dist.get(month, {}).get(metric, 0)
+                    section_pivot_rows.append(row)
+
+            if section_pivot_rows:
+                sec_df = pd.DataFrame(section_pivot_rows)
+
+                def _style_section(df):
+                    def _row_style(row):
+                        if row["Metric"] == "#of orders":
+                            return ["background-color: #EAF3FB; font-weight: bold"] * len(row)
+                        elif row["Metric"] == "#of setups":
+                            return ["background-color: #FFF3E0; font-weight: bold"] * len(row)
+                        elif row["Metric"] in ["3","4","5","6"]:
+                            return ["color: #DE201B; font-weight: bold"] + [""] * (len(row)-1)
+                        return [""] * len(row)
+                    return df.style.apply(_row_style, axis=1)
+
+                st.dataframe(_style_section(sec_df), use_container_width=True, hide_index=True)
+
+                _buf_sec = io.BytesIO()
+                sec_df.to_excel(_buf_sec, index=False, engine="openpyxl")
+                _buf_sec.seek(0)
+                st.download_button(
+                    "📥 Download Section Summary (.xlsx)",
+                    data=_buf_sec,
+                    file_name="Setup_Analysis_Section_Summary.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="setup_section_dl"
+                )
+
             # ── Per-machine detail ────────────────────────────────────────────
             st.divider()
             st.markdown("### 🔍 Detail by Machine")
