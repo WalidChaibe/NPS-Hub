@@ -1060,17 +1060,28 @@ with tab_setup:
                 group_machines_in_results = [m for m in machines if m in results]
                 if not group_machines_in_results: continue
 
+                # Build combined dict for this section — same logic as cross-machine table
+                # {ft: {month: total_setups_across_all_machines}}
+                sec_combined = {}
+                for machine in group_machines_in_results:
+                    for month, art_counts in results[machine].items():
+                        for ft, n in art_counts.items():
+                            if ft not in sec_combined:
+                                sec_combined[ft] = {}
+                            sec_combined[ft][month] = sec_combined[ft].get(month, 0) + n
+
+                # Now derive summary from sec_combined
                 section_dist = {}
                 for month in months:
                     n_orders = 0; n_setups = 0
                     dist = {str(i): 0 for i in range(1, 7)}
-                    for machine in group_machines_in_results:
-                        counts = results[machine].get(month, {})
-                        n_orders += len(counts)
-                        n_setups += sum(counts.values())
-                        for art, n in counts.items():
-                            key = str(min(n, 6))
-                            dist[key] = dist.get(key, 0) + 1
+                    for ft, month_counts in sec_combined.items():
+                        n = month_counts.get(month, 0)
+                        if n == 0: continue
+                        n_orders += 1                    # unique FT this month
+                        n_setups += n                    # total setups this FT this month
+                        key = str(min(n, 6))
+                        dist[key] = dist.get(key, 0) + 1
                     section_dist[month] = {"#of orders": n_orders, "#of setups": n_setups, **dist}
 
                 for metric in ["#of orders", "#of setups", "1", "2", "3", "4", "5", "6"]:
