@@ -852,14 +852,14 @@ def _build_setup_summary(setup_counts, months):
         # Distribution: how many FTs had exactly N setups
         dist = {}
         for art, n in counts.items():
-            dist[n] = dist.get(n, 0) + 1
+            key = min(n, 6)  # cap at 6+
+            dist[key] = dist.get(key, 0) + 1
 
-        max_setups = max(dist.keys()) if dist else 1
         rows.append({
             "month": month,
             "n_orders": n_orders,
             "n_setups": n_setups,
-            **{str(i): dist.get(i, 0) for i in range(1, max_setups + 1)},
+            **{str(i): dist.get(i, 0) for i in range(1, 7)},
         })
     return rows
 
@@ -867,7 +867,7 @@ def _build_setup_summary(setup_counts, months):
 def _setup_bar_chart(pivot_df, machine_name):
     """Bar chart of repeated setups (2+) per month."""
     months = [c for c in pivot_df.columns if c not in ["Metric"]]
-    repeat_rows = [m for m in pivot_df["Metric"].values if str(m).isdigit() and int(m) >= 2]
+    repeat_rows = [str(i) for i in range(2, 7) if str(i) in pivot_df["Metric"].values]
     if not repeat_rows or not months:
         return None
 
@@ -882,7 +882,7 @@ def _setup_bar_chart(pivot_df, machine_name):
         vals = [float(row_data[m].iloc[0]) if m in row_data.columns else 0 for m in months]
         offset = (i - len(repeat_rows) / 2 + 0.5) * w
         bars = ax.bar(x + offset, vals, w, color=colors[i % len(colors)],
-                      label=f"{row_label}x setups", alpha=0.9)
+                      label=f"{row_label}x setups" if int(row_label) < 6 else "6 or more setups", alpha=0.9)
         for bar, val in zip(bars, vals):
             if val > 0:
                 ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.2,
@@ -1008,18 +1008,11 @@ with tab_setup:
                         display_data[machine].setdefault(m, {})
                         display_data[machine][m]["#of orders"] = mr["n_orders"]
                         display_data[machine][m]["#of setups"] = mr["n_setups"]
-                        for k in mr:
-                            if str(k).isdigit():
-                                display_data[machine][m][str(k)] = mr[k]
+                        for i in range(1, 7):
+                            display_data[machine][m][str(i)] = mr.get(str(i), 0)
 
                 # Build the pivot DataFrame
-                # Dynamic metric labels based on actual max setups across all machines
-                _all_keys = set()
-                for mdata in display_data.values():
-                    for mvals in mdata.values():
-                        _all_keys.update(k for k in mvals if str(k).isdigit())
-                _max_key = max((int(k) for k in _all_keys), default=6)
-                metric_labels = ["#of orders", "#of setups"] + [str(i) for i in range(1, _max_key + 1)]
+                metric_labels = ["#of orders", "#of setups", "1", "2", "3", "4", "5", "6"]
                 pivot_rows = []
                 for machine, mdata in display_data.items():
                     for label in metric_labels:
@@ -1080,7 +1073,7 @@ with tab_setup:
                             if mr:
                                 metric_cols[i].metric(f"{month[:3]} Orders", mr["n_orders"])
                                 metric_cols[i].metric(f"{month[:3]} Setups", mr["n_setups"])
-                                repeat_count = sum(mr.get(str(k), 0) for k in mr if str(k).isdigit() and int(k) >= 2)
+                                repeat_count = sum(mr.get(str(k), 0) for k in range(2, 7))
                                 metric_cols[i].metric(f"{month[:3]} Repeated", repeat_count,
                                                       delta=f"{repeat_count/mr['n_orders']*100:.0f}% of orders" if mr["n_orders"] else None,
                                                       delta_color="inverse" if repeat_count > 0 else "off")
@@ -1185,11 +1178,12 @@ with tab_setup:
                         summary_header.append(hrow)
 
                     if not comb_df.empty:
+                        comb_df["Total"] = pd.to_numeric(comb_df["Total"], errors="coerce")
+                        comb_df = comb_df.sort_values("Total", ascending=False).reset_index(drop=True)
                         header_df = pd.DataFrame(summary_header)
                         comb_df = pd.concat([header_df, comb_df], ignore_index=True)
-                    if not comb_df.empty:
-                        comb_df = comb_df.sort_values("Total", ascending=False).reset_index(drop=True)
 
+                    if not comb_df.empty:
                         def _highlight_combined(row):
                             if row.get("FT") == "#of orders":
                                 return ["background-color: #EAF3FB; font-weight: bold"] * len(row)
