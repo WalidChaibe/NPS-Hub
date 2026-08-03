@@ -867,7 +867,7 @@ def _build_setup_summary(setup_counts, months):
 def _setup_bar_chart(pivot_df, machine_name):
     """Bar chart of repeated setups (2+) per month."""
     months = [c for c in pivot_df.columns if c not in ["Metric"]]
-    repeat_rows = [str(i) for i in range(2, 7) if str(i) in pivot_df["Metric"].values]
+    repeat_rows = [m for m in pivot_df["Metric"].values if str(m).isdigit() and int(m) >= 2]
     if not repeat_rows or not months:
         return None
 
@@ -1080,7 +1080,7 @@ with tab_setup:
                             if mr:
                                 metric_cols[i].metric(f"{month[:3]} Orders", mr["n_orders"])
                                 metric_cols[i].metric(f"{month[:3]} Setups", mr["n_setups"])
-                                repeat_count = sum(mr[str(k)] for k in range(2, 7))
+                                repeat_count = sum(mr.get(str(k), 0) for k in mr if str(k).isdigit() and int(k) >= 2)
                                 metric_cols[i].metric(f"{month[:3]} Repeated", repeat_count,
                                                       delta=f"{repeat_count/mr['n_orders']*100:.0f}% of orders" if mr["n_orders"] else None,
                                                       delta_color="inverse" if repeat_count > 0 else "off")
