@@ -1084,7 +1084,7 @@ with tab_setup:
                         dist[key] = dist.get(key, 0) + 1
                     section_dist[month] = {"#of orders": n_orders, "#of setups": n_setups, **dist}
 
-                for metric in ["#of orders", "#of setups", "1", "2", "3", "4", "5", "6"]:
+                for metric in ["#of orders", "#of setups", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]:
                     row = {"Section": group_name, "Metric": metric}
                     for month in months:
                         row[month] = section_dist.get(month, {}).get(metric, 0)
