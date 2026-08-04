@@ -1080,7 +1080,7 @@ with tab_setup:
                         if n == 0: continue
                         n_orders += 1                    # unique FT this month
                         n_setups += n                    # total setups this FT this month
-                        key = str(min(n, 6))
+                        key = str(min(n, 12))
                         dist[key] = dist.get(key, 0) + 1
                     section_dist[month] = {"#of orders": n_orders, "#of setups": n_setups, **dist}
 
