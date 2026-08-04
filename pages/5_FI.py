@@ -1072,19 +1072,20 @@ with tab_setup:
 
                 # Now derive summary from sec_combined
                 section_dist = {}
+                max_setups = 1
                 for month in months:
                     n_orders = 0; n_setups = 0
-                    dist = {str(i): 0 for i in range(1, 7)}
+                    dist = {}
                     for ft, month_counts in sec_combined.items():
                         n = month_counts.get(month, 0)
                         if n == 0: continue
-                        n_orders += 1                    # unique FT this month
-                        n_setups += n                    # total setups this FT this month
-                        key = str(min(n, 12))
-                        dist[key] = dist.get(key, 0) + 1
+                        n_orders += 1
+                        n_setups += n
+                        dist[str(n)] = dist.get(str(n), 0) + 1
+                        if n > max_setups: max_setups = n
                     section_dist[month] = {"#of orders": n_orders, "#of setups": n_setups, **dist}
 
-                for metric in ["#of orders", "#of setups", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]:
+                for metric in ["#of orders", "#of setups"] + [str(i) for i in range(1, max_setups + 1)]:
                     row = {"Section": group_name, "Metric": metric}
                     for month in months:
                         row[month] = section_dist.get(month, {}).get(metric, 0)
