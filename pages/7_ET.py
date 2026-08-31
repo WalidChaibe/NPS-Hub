@@ -1269,7 +1269,7 @@ with tab6:
 
                     # ── Seen & Understood ──
                     st.divider()
-                    with st.expander("👁️ Seen & Understood — Edit", expanded=False):
+                    if st.checkbox("👁️ Seen & Understood — Edit", key=f"seen_toggle_{opl['id']}"):
                         new_ops = st.text_input(
                             "Operators (comma separated)",
                             value=opl.get("operators", ""),
@@ -1282,7 +1282,7 @@ with tab6:
                     # ── Full Edit — plant_manager or pillar_leader only ──
                     can_full_edit = (role == "plant_manager") or (role == "pillar_leader" and pillar == "ET")
                     if can_full_edit:
-                        with st.expander("✏️ Edit OPL", expanded=False):
+                        if st.checkbox("✏️ Edit OPL", key=f"edit_toggle_{opl['id']}"):
                             with st.form(key=f"opl_edit_{opl['id']}"):
                                 e1, e2, e3 = st.columns(3)
                                 e_subject  = e1.text_input("Subject", value=opl.get("subject",""), key=f"e_sub_{opl['id']}")
