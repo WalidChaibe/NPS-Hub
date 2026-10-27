@@ -951,11 +951,34 @@ with tab6:
     @st.cache_data(show_spinner=False, ttl=60 * 60 * 24 * 30, max_entries=5000)
     def _opl_translate_cached(text, lang):
         # Errors are raised (not cached) so a failed call is retried next time
-        from deep_translator import GoogleTranslator
-        out = GoogleTranslator(source="auto", target=lang).translate(text)
-        if not out:
-            raise ValueError("empty translation")
-        return out
+        errors = []
+        # 1) Google's free public endpoint — no key, no account, nothing billed
+        try:
+            import requests
+            r = requests.get(
+                "https://translate.googleapis.com/translate_a/single",
+                params={"client": "gtx", "sl": "auto", "tl": lang, "dt": "t", "q": text},
+                headers={"User-Agent": "Mozilla/5.0"},
+                timeout=10,
+            )
+            r.raise_for_status()
+            data = r.json()
+            out = "".join(seg[0] for seg in (data[0] or []) if seg and seg[0])
+            if out.strip():
+                return out
+            errors.append("Google: empty answer")
+        except Exception as e:
+            errors.append(f"Google: {type(e).__name__}: {str(e)[:150]}")
+        # 2) Backup: deep-translator (also free)
+        try:
+            from deep_translator import GoogleTranslator
+            out = GoogleTranslator(source="auto", target=lang).translate(text)
+            if out and out.strip():
+                return out
+            errors.append("deep-translator: empty answer")
+        except Exception as e:
+            errors.append(f"deep-translator: {type(e).__name__}: {str(e)[:150]}")
+        raise RuntimeError(" | ".join(errors))
 
     def _opl_tr(text, lang):
         """Returns (text, ok). Falls back to the original text if the service fails."""
@@ -963,7 +986,8 @@ with tab6:
             return text, True
         try:
             return _opl_translate_cached(text, lang), True
-        except Exception:
+        except Exception as e:
+            st.session_state["_opl_tr_err"] = str(e)   # shown under the warning
             return text, False
 
     def _opl_show_text(text, size, lang, bold=False):
@@ -1458,6 +1482,7 @@ with tab6:
                     st.success(f"✅ ZIP ready: {_n - len(_fails)} of {_n} OPLs.")
                     if _not_tr:
                         st.warning("⚠️ Translation service didn't answer for these — included in English: " + ", ".join(_not_tr))
+                        st.caption(f"Details: {st.session_state.get('_opl_tr_err', '')}")
                     if _fails:
                         st.error("❌ These could not be built:\n\n" + "\n\n".join(_fails))
                 if st.session_state.get("opl_zip_bytes"):
@@ -1497,6 +1522,7 @@ with tab6:
                         _subj, _bt1, _bt2, _gt1, _gt2 = _v["subject"], _v["bad_text_1"], _v["bad_text_2"], _v["good_text_1"], _v["good_text_2"]
                         if _tr_fail:
                             st.warning("⚠️ Translation service not reachable right now — some text is shown in English. Try again in a minute.")
+                            st.caption(f"Details: {st.session_state.get('_opl_tr_err', '')}")
 
                         # Download PDF — printed in the language selected above
                         _pdf_lang = None if _tr_fail else _lang
