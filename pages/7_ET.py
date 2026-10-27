@@ -938,6 +938,8 @@ with tab6:
         "हिन्दी — Hindi":      "hi",
         "বাংলা — Bengali":     "bn",
         "Filipino":           "tl",
+        "සිංහල — Sinhala (Sri Lanka)": "si",
+        "മലയാളം — Malayalam": "ml",
     }
     # Fixed labels so we don't call the translator for them
     OPL_LABELS = {
@@ -946,6 +948,8 @@ with tab6:
         "hi": ("गलत", "सही", "विषय"),
         "bn": ("ভুল", "সঠিক", "বিষয়"),
         "tl": ("Mali", "Tama", "Paksa"),
+        "si": ("වැරදි", "නිවැරදි", "මාතෘකාව"),
+        "ml": ("തെറ്റ്", "ശരി", "വിഷയം"),
     }
 
     @st.cache_data(show_spinner=False, ttl=60 * 60 * 24 * 30, max_entries=5000)
@@ -1006,13 +1010,19 @@ with tab6:
 
     # ── PDF fonts for translated OPLs (free Noto fonts, stored in the repo's /fonts folder) ──
     _OPL_FONT_DIR  = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "fonts")
-    _OPL_PDF_FONTS = {"ar": "NotoNaskhArabic", "hi": "NotoSansDevanagari", "bn": "NotoSansBengali"}
+    _OPL_PDF_FONTS = {"ar": "NotoNaskhArabic", "hi": "NotoSansDevanagari", "bn": "NotoSansBengali",
+                      "si": "NotoSansSinhala", "ml": "NotoSansMalayalam"}
+    _OPL_SHAPED    = ("hi", "bn", "si", "ml")   # scripts whose letters must be combined (need uharfbuzz)
+    _OPL_LANG_NAME = {None: "English", "ar": "Arabic", "hi": "Hindi", "bn": "Bengali",
+                      "tl": "Filipino", "si": "Sinhala", "ml": "Malayalam"}
     _OPL_GK_LABELS = {
         None: ("Images & Observations", "Comments & Explanation"),
         "ar": ("الصور والملاحظات", "التعليقات والشرح"),
         "hi": ("चित्र और अवलोकन", "टिप्पणियाँ और स्पष्टीकरण"),
         "bn": ("ছবি ও পর্যবেক্ষণ", "মন্তব্য ও ব্যাখ্যা"),
         "tl": ("Mga Larawan at Obserbasyon", "Mga Komento at Paliwanag"),
+        "si": ("රූප සහ නිරීක්ෂණ", "අදහස් සහ පැහැදිලි කිරීම"),
+        "ml": ("ചിത്രങ്ങളും നിരീക്ഷണങ്ങളും", "അഭിപ്രായങ്ങളും വിശദീകരണവും"),
     }
 
     def _opl_pdf_fonts_ready(lang):
@@ -1028,7 +1038,7 @@ with tab6:
                 if nm not in pdfmetrics.getRegisteredFontNames():
                     pdfmetrics.registerFont(TTFont(nm, os.path.join(_OPL_FONT_DIR, nm + ".ttf")))
                 # Hindi/Bengali need uharfbuzz to join letters; without it the PDF would be wrong
-                if lang in ("hi", "bn") and not pdfmetrics.getFont(nm).shapable:
+                if lang in _OPL_SHAPED and not pdfmetrics.getFont(nm).shapable:
                     return False
             if lang == "ar":
                 import arabic_reshaper, bidi.algorithm   # noqa: F401  (must be installed)
@@ -1065,7 +1075,7 @@ with tab6:
         out = []
         for use, chars in groups:
             piece = "".join(chars)
-            if use == fnt and lang in ("hi", "bn"):
+            if use == fnt and lang in _OPL_SHAPED:
                 from reportlab.pdfbase.ttfonts import shapeStr
                 shaped = shapeStr(piece, fnt, size)
                 sd = getattr(shaped, "__shapeData__", None)
@@ -1156,7 +1166,8 @@ with tab6:
         c.rect(title_x, hdr_y, title_w, hdr_h, fill=1, stroke=1)
         c.setFillColor(black)
         c.setFont("Helvetica-Bold", 20)
-        c.drawCentredString(title_x + title_w/2, hdr_y + 13, "ONE POINT LESSON")
+        _title = "ONE POINT LESSON" + (f" - {_OPL_LANG_NAME.get(lang, '').upper()}" if lang else "")
+        c.drawCentredString(title_x + title_w/2, hdr_y + 13, _title)
 
         # ── HEADER ROW 2: OPL label | Subject / Type ──
         r2_h = 34
@@ -1444,44 +1455,81 @@ with tab6:
 
             # ── Download the filtered OPLs as one ZIP of PDFs ──
             with st.expander(f"📦 Download these {len(filtered_opls)} OPLs as ZIP", expanded=False):
-                st.caption("One PDF per OPL, for the OPLs matching the filters above. Text size follows the 🔠 slider.")
-                _zl = st.selectbox("Language", list(OPL_LANGS.keys()), key="opl_zip_lang")
-                _zlang = OPL_LANGS[_zl]
-                if st.button(f"⚙️ Build ZIP ({len(filtered_opls)} OPLs)", key="opl_zip_build", disabled=not filtered_opls):
+                st.caption(f"One PDF per OPL, for the OPLs matching the filters above. "
+                           f"Body text size: {_opl_fsize / 2:g} pt (set by the 🔠 Text size slider).")
+                _zip_opts = ["🌍 All languages (one folder per language)"] + list(OPL_LANGS.keys())
+                _zl = st.selectbox("Language", _zip_opts, key="opl_zip_lang")
+                _zall = (_zl == _zip_opts[0])
+                _zlangs = ([None] + [v for v in OPL_LANGS.values() if v]) if _zall else [OPL_LANGS[_zl]]
+                _njobs = len(filtered_opls) * len(_zlangs)
+                if _zall and len(filtered_opls) > 40:
+                    st.info(f"ℹ️ {len(filtered_opls)} OPLs × {len(_zlangs)} languages = {_njobs} PDFs. "
+                            "Use the filters to build in batches of about 40 OPLs (e.g. one pillar at a time) — "
+                            "the free translator slows down on very large runs.")
+                if st.button(f"⚙️ Build ZIP ({_njobs} PDFs)", key="opl_zip_build", disabled=not filtered_opls):
                     import zipfile as _opl_zip, re as _opl_re
-                    if _zlang and not _opl_pdf_fonts_ready(_zlang):
-                        st.warning("⚠️ PDF fonts for this language are missing from the /fonts folder — ZIP will be in English.")
-                        _zlang = None
+                    st.session_state.pop("opl_zip_bytes", None)
+                    _no_font = [l for l in _zlangs if l and not _opl_pdf_fonts_ready(l)]
                     _zbuf = _opl_io.BytesIO()
                     _prog = st.progress(0.0, text="Building PDFs...")
-                    _fails, _not_tr = [], []
-                    _n = len(filtered_opls)
+                    _fails, _not_tr, _built = [], [], {l: 0 for l in _zlangs}
+                    _step = 0
                     with _opl_zip.ZipFile(_zbuf, "w", _opl_zip.ZIP_DEFLATED) as _zf:
-                        for _i, _o in enumerate(filtered_opls, 1):
+                        for _o in filtered_opls:
+                            _oid = _o.get("opl_id") or str(_o["id"])
+                            _nm = f"{_oid}_{_o.get('subject', '')}"
+                            _nm = _opl_re.sub(r'[\\/:*?"<>|\r\n\t]+', "_", _nm).strip()[:80]
                             try:
                                 _full = {**_o, **_opl_fetch_images(_o["id"])}
-                                _li, _tri = _zlang, None
-                                if _zlang:
-                                    _tri = {}
-                                    for _k in ("subject", "bad_text_1", "bad_text_2", "good_text_1", "good_text_2"):
-                                        _tri[_k], _ok = _opl_tr(_full.get(_k, "") or "", _zlang)
-                                        if not _ok:
-                                            _li, _tri = None, None
-                                            _not_tr.append(_o.get("opl_id") or str(_o["id"]))
-                                            break
-                                _pdf = generate_opl_pdf(_full, lang=_li, tr=_tri, body_size=_opl_fsize / 2)
-                                _nm = f"{_o.get('opl_id') or _o['id']}_{_o.get('subject', '')}"
-                                _nm = _opl_re.sub(r'[\\/:*?"<>|\r\n\t]+', "_", _nm).strip()[:80]
-                                _zf.writestr(f"{_nm}{'_' + _li if _li else ''}.pdf", _pdf.getvalue())
                             except Exception as _e:
-                                _fails.append(f"{_o.get('opl_id') or _o['id']}: {_e}")
-                            _prog.progress(_i / _n, text=f"Building PDFs... {_i}/{_n}")
+                                _fails.append(f"{_oid} (all languages): could not load images: {_e}")
+                                _step += len(_zlangs)
+                                _prog.progress(_step / _njobs, text=f"Building PDFs... {_step}/{_njobs}")
+                                continue
+                            for _L in _zlangs:
+                                try:
+                                    _li, _tri = _L, None
+                                    if _L in _no_font:
+                                        _li = None
+                                    elif _L:
+                                        _tri = {}
+                                        for _k in ("subject", "bad_text_1", "bad_text_2", "good_text_1", "good_text_2"):
+                                            _tri[_k], _ok = _opl_tr(_full.get(_k, "") or "", _L)
+                                            if not _ok:
+                                                _li, _tri = None, None
+                                                break
+                                    if _L and _li is None:
+                                        _not_tr.append(f"{_oid} ({_OPL_LANG_NAME[_L]})")
+                                    _pdf = generate_opl_pdf(_full, lang=_li, tr=_tri, body_size=_opl_fsize / 2)
+                                    _fn = _nm + (f"_{_L}" if _L else "") + ("_NOT_TRANSLATED" if (_L and _li is None) else "") + ".pdf"
+                                    _path = f"{_OPL_LANG_NAME[_L]}/{_fn}" if _zall else _fn
+                                    _zf.writestr(_path, _pdf.getvalue())
+                                    _built[_L] += 1
+                                except Exception as _e:
+                                    _fails.append(f"{_oid} ({_OPL_LANG_NAME[_L]}): {_e}")
+                                _step += 1
+                                _prog.progress(_step / _njobs, text=f"Building PDFs... {_step}/{_njobs}")
+                        # Report inside the ZIP so the archive explains itself
+                        _rep = [f"OPL export — {datetime.now():%Y-%m-%d %H:%M}",
+                                f"OPLs: {len(filtered_opls)} | Body text size: {_opl_fsize / 2:g} pt", ""]
+                        _rep += [f"{_OPL_LANG_NAME[l]}: {_built[l]} PDFs" for l in _zlangs]
+                        if _no_font:
+                            _rep += ["", "Fonts missing (kept in English, marked _NOT_TRANSLATED): "
+                                     + ", ".join(_OPL_LANG_NAME[l] for l in _no_font)]
+                        if _not_tr:
+                            _rep += ["", "Not translated — English text, file name ends in _NOT_TRANSLATED:"] + _not_tr
+                        if _fails:
+                            _rep += ["", "FAILED — not in this ZIP:"] + _fails
+                        _zf.writestr("_report.txt", "\n".join(_rep))
                     st.session_state["opl_zip_bytes"] = _zbuf.getvalue()
-                    st.session_state["opl_zip_name"] = f"OPLs_{_zlang or 'en'}_{datetime.now():%Y-%m-%d}.zip"
+                    st.session_state["opl_zip_name"] = (f"OPLs_{'all-languages' if _zall else (_zlangs[0] or 'en')}"
+                                                        f"_{datetime.now():%Y-%m-%d}.zip")
                     _prog.empty()
-                    st.success(f"✅ ZIP ready: {_n - len(_fails)} of {_n} OPLs.")
+                    st.success(f"✅ ZIP ready: {sum(_built.values())} of {_njobs} PDFs "
+                               f"({len(st.session_state['opl_zip_bytes']) / 1_048_576:.1f} MB). Details in _report.txt inside the ZIP.")
                     if _not_tr:
-                        st.warning("⚠️ Translation service didn't answer for these — included in English: " + ", ".join(_not_tr))
+                        st.warning(f"⚠️ {len(_not_tr)} PDFs could not be translated — included in English, "
+                                   "file name ends in _NOT_TRANSLATED. Build again in a few minutes to fill them in.")
                         st.caption(f"Details: {st.session_state.get('_opl_tr_err', '')}")
                     if _fails:
                         st.error("❌ These could not be built:\n\n" + "\n\n".join(_fails))
