@@ -595,10 +595,6 @@ with tab2:
                 months_range = list(range(1, selected_month+1))
                 MONTH_LABELS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
                 slides_for_pdf = []
-                # Store for trend explorer (persists across reruns)
-                st.session_state["qm_df_final"]       = df_final
-                st.session_state["qm_selected_year"]  = selected_year
-                st.session_state["qm_selected_month"] = selected_month
 
                 # ── Re-fetch settings + rebuild with latest classifications (uses cached raw dataframes) ──
                 _crm_map, _q_set, _s_set, _i_set = load_settings_from_supabase(supabase)
@@ -613,6 +609,10 @@ with tab2:
                 df             = df_final
                 df_raw_flagged = df_final_raw_flagged
                 df_ncr_dash    = df_ncr
+                # Store for trend explorer (persists across reruns) — after the rebuild, so it uses latest classifications
+                st.session_state["qm_df_final"]       = df_final
+                st.session_state["qm_selected_year"]  = selected_year
+                st.session_state["qm_selected_month"] = selected_month
 
                 def donut_chart(ax, counts):
                     labels = ["Service","Quality","Invalid","Commercial"]
@@ -1915,7 +1915,7 @@ with tab2:
                     mime="application/pdf",
                 )
 
-            # ── Reason Trend Explorer (outside run block — persists on rerun) ──
+            # ── Trend Explorer: by Reason or by Root Cause (outside run block — persists on rerun) ──
             if "qm_df_final" in st.session_state and "qm_selected_year" in st.session_state:
                 _df_trend     = st.session_state["qm_df_final"]
                 _year_trend   = st.session_state["qm_selected_year"]
@@ -1923,29 +1923,71 @@ with tab2:
                 _prev_year_trend = _year_trend - 1
 
                 st.divider()
-                st.subheader("📈 Reason Trend Explorer")
-                st.caption("Select a reason to see its monthly trend — FINAL file, Final Approval Date.")
+                st.subheader("📈 Trend Explorer")
+                st.caption("Select a reason or a root cause to see its monthly trend — FINAL file, Final Approval Date, valid complaints.")
 
-                _all_reasons_t = sorted([
-                    r for r in _df_trend[(_df_trend["Is_Valid"]==True)]["Reason"].astype(str).str.strip().unique()
-                    if r and r.lower() not in ("nan","")
-                ])
+                _valid_t = _df_trend[_df_trend["Is_Valid"] == True].copy()
+                _valid_t["_Reason"] = _valid_t["Reason"].astype(str).str.strip()
 
-                _selected_reason = st.selectbox(
-                    "Select Reason", ["— select a reason —"] + _all_reasons_t,
-                    key="qm_trend_reason"
-                )
+                # Root cause column — same detection as the Root Cause drill-down
+                _rc_col_t = next((c for c in _valid_t.columns if "root" in c.lower() and "cause" in c.lower()), None)
+                if _rc_col_t is None:
+                    _rc_col_t = next((c for c in _valid_t.columns if "root" in c.lower()), None)
+                if _rc_col_t is None:
+                    _rc_col_t = next((c for c in _valid_t.columns if "cause" in c.lower()), None)
+                if _rc_col_t is not None:
+                    # Blank root causes are kept and labelled, not dropped
+                    _valid_t["_RC"] = (_valid_t[_rc_col_t].astype(str).str.strip()
+                                       .replace({"nan": "Not Specified", "None": "Not Specified", "": "Not Specified"}))
 
-                if _selected_reason != "— select a reason —":
+                _mode_t = st.radio("Explore by", ["Reason", "Root Cause"], horizontal=True, key="qm_trend_mode")
+
+                _sel_mask   = None
+                _sel_title  = ""
+                if _mode_t == "Reason":
+                    _all_reasons_t = sorted([
+                        r for r in _valid_t["_Reason"].unique()
+                        if r and r.lower() not in ("nan", "")
+                    ])
+                    _selected_reason = st.selectbox(
+                        "Select Reason", ["— select a reason —"] + _all_reasons_t,
+                        key="qm_trend_reason"
+                    )
+                    if _selected_reason != "— select a reason —":
+                        _sel_mask  = _valid_t["_Reason"] == _selected_reason
+                        _sel_title = f"Reason: {_selected_reason}"
+                else:
+                    if _rc_col_t is None:
+                        st.warning("No root cause column found in the FINAL file.")
+                    else:
+                        _rc_counts_t = _valid_t["_RC"].value_counts()
+                        _all_rc_t = sorted(_rc_counts_t.index.tolist(), key=lambda x: (x == "Not Specified", x.lower()))
+                        _c_rc, _c_rs = st.columns(2)
+                        _selected_rc = _c_rc.selectbox(
+                            "Select Root Cause", ["— select a root cause —"] + _all_rc_t,
+                            format_func=lambda x: x if x.startswith("—") else f"{x}  ({int(_rc_counts_t.get(x, 0))})",
+                            key="qm_trend_rc"
+                        )
+                        if _selected_rc != "— select a root cause —":
+                            _rc_rows = _valid_t["_RC"] == _selected_rc
+                            _rs_opts = sorted(_valid_t.loc[_rc_rows, "_Reason"].unique().tolist())
+                            _rc_reason = _c_rs.selectbox(
+                                "Within reason (optional)", ["All reasons"] + _rs_opts,
+                                key=f"qm_trend_rc_reason"
+                            )
+                            if _rc_reason == "All reasons":
+                                _sel_mask  = _rc_rows
+                                _sel_title = f"Root Cause: {_selected_rc}"
+                            else:
+                                _sel_mask  = _rc_rows & (_valid_t["_Reason"] == _rc_reason)
+                                _sel_title = f"Root Cause: {_selected_rc}  |  Reason: {_rc_reason}"
+
+                if _sel_mask is not None:
                     _MONTH_LABELS_T = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
                     _months_t = list(range(1, 13))
 
                     def _get_monthly_trend(yr):
-                        base = _df_trend[
-                            (_df_trend["Is_Valid"]==True) &
-                            (_df_trend["Reason"].astype(str).str.strip()==_selected_reason) &
-                            (_df_trend["Year"]==yr)
-                        ]
+                        base = _valid_t[_sel_mask & (_valid_t["Year"] == yr)]
                         return base.groupby("Month").size().reindex(_months_t, fill_value=0)
 
                     _vals_prev = _get_monthly_trend(_prev_year_trend)
@@ -1982,6 +2024,7 @@ with tab2:
                     _ax_t.set_xticks(_x)
                     _ax_t.set_xticklabels(_MONTH_LABELS_T, fontsize=11)
                     _ax_t.set_ylabel("Count")
+                    _ax_t.set_title(fill(_sel_title, 110), fontsize=13, fontweight="bold", color="#333333", loc="left")
                     _ax_t.set_ylim(0, max(max(_vals_prev.max(), _vals_sel.max()), 1) * 1.25)
                     _ax_t.spines["top"].set_visible(False)
                     _ax_t.spines["right"].set_visible(False)
