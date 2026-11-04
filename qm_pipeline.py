@@ -11,6 +11,7 @@ GEN_CAT_COL           = "Gen Categories"
 PHYS_STATUS_COL       = "Physical Status"
 REASON_TYPE_COL       = "Reason Type"
 COST_COL              = "Cost Amount"
+ORDER_TYPE_COL        = "Order Type"
 
 GEN_CAT_ALLOWED       = {"Customer Complaint", "Customer Return", "Process Improvement"}
 PHYS_STATUS_BLOCKLIST = {"Baled Waste", "Plastic/Wood Waste"}
@@ -247,11 +248,35 @@ _CRM_REASON_OVERRIDE_DEFAULT = {
     "EPAK-CRM-11409": ("Trailer Waiting Hours Exceeded", "No place at customer warehouse"),
     "EPAK-CRM-11406": ("FOC", "Pre-Agreement"),
     "EPAK-CRM-11422": ("Sales Discount", "Pre-Agreement"),
+    "EPAK-CRM-11454": ("Sales Discount", "Pre-Agreement"),
     "EPAK-CRM-11420": ("FOC", "Pre-Agreement"),
     "EPAK-CRM-11421": ("FOC", "Pre-Agreement"),
     "EPAK-CRM-11419": ("Trailer Waiting Hours Exceeded", "No place at customer warehouse"),
     "EPAK-CRM-11400": ("Trailer Waiting Hours Exceeded", "Customer change delivery schedule without intimation"),
 }
+
+# ── Manual CRM Date Corrections ──────────────────────────────────────────
+# Dates that are wrong in the CRM export because of a system error.
+# Applied to FINAL and ISSUED before Year/Month and lead time are calculated.
+# Format: crm_ref -> {column name: correct date (YYYY-MM-DD)}
+_CRM_DATE_OVERRIDE_DEFAULT = {
+    # Fully approved 15-Sep-2025; export shows 14-Oct-2026 (system error)
+    "EPAK-CRM-10904": {FINAL_APPROVAL_COL: "2025-09-15"},
+}
+
+def apply_crm_date_overrides(df, override_map, crm_col=CRM_COL):
+    """Force-sets specific date columns for specific CRM refs (all rows of that ref)."""
+    if not override_map or crm_col not in df.columns:
+        return df
+    crm_series = df[crm_col].astype(str).str.strip()
+    for crm, cols in override_map.items():
+        mask = crm_series == crm
+        if not mask.any():
+            continue
+        for col, val in cols.items():
+            if col in df.columns:
+                df.loc[mask, col] = pd.Timestamp(val)
+    return df
 
 def _check_override_delete_overlap(delete_map, override_map):
     """
@@ -455,6 +480,16 @@ def add_date_and_flags_final_issued(df, date_col, df_name="df", classifier=None)
     cat[is_commercial]   = "Commercial"              # commercial overrides everything
 
     df["Complaint_Category"] = cat
+
+    # Display-only label for pie charts and the Internal Return slides.
+    # Complaint_Category is NOT changed, so every count, ratio and lead time stays exactly as before.
+    disp = cat.copy()
+    is_inv = cat.eq("Invalid")
+    if ORDER_TYPE_COL in df.columns:
+        is_waste = df[ORDER_TYPE_COL].map(_clean_text).str.lower().str.contains("waste order", regex=False)
+        disp[is_inv & is_waste] = "Waste Order"
+    disp[is_inv & gen_cat.eq("Internal Return")] = "Internal Return"   # Internal Return takes priority
+    df["Display_Category"] = disp
     return df
 
 def add_date_and_flags_ncr(df, date_col, df_name="NCR", classifier=None):
@@ -515,6 +550,8 @@ def build_dataset_final_issued(df_loaded, date_col, dataset_name="DATASET",
     # Override runs FIRST, before any deletion touches Reason/Root Cause.
     df_loaded = apply_crm_reason_overrides(df_loaded.copy(), crm_reason_override,
                                             crm_col=CRM_COL, df_name=dataset_name)
+    # Date corrections (e.g. system-error approval dates) — before dates are used anywhere
+    df_loaded = apply_crm_date_overrides(df_loaded, _CRM_DATE_OVERRIDE_DEFAULT, crm_col=CRM_COL)
 
     # raw_flagged: flag the override-corrected original (no crm deletions)
     raw_flagged     = add_date_and_flags_final_issued(df_loaded.copy(), date_col=date_col,

@@ -212,7 +212,8 @@ with tab2:
     mpl.rcParams["figure.dpi"] = 160
     mpl.rcParams["savefig.dpi"] = 320
     mpl.rcParams["savefig.bbox"] = "tight"
-    COLORS = {"Service": "#C1A02E", "Quality": "#006394", "Invalid": "#D8C37D", "Commercial": "#2E8449"}
+    COLORS = {"Service": "#C1A02E", "Quality": "#006394", "Invalid": "#D8C37D", "Commercial": "#2E8449",
+              "Internal Return": "#7FA7C9", "Waste Order": "#9E9E9E"}
 
     def fig_to_png_bytes(fig, dpi=300):
         buf = io.BytesIO()
@@ -220,12 +221,26 @@ with tab2:
         buf.seek(0)
         return buf
 
+    def _qm_show():
+        return bool(st.session_state.get("qm_show_charts", False))
+
     def show_fig(fig, dpi=150):
+        """Renders the chart for the PDF; shows it on screen only if 'Show charts on screen' is on."""
         buf = fig_to_png_bytes(fig, dpi=dpi)
-        st.image(buf)
+        if _qm_show():
+            st.image(buf)
         plt.close(fig)
         buf.seek(0)
         return buf
+
+    def _ui_head(t):
+        if _qm_show(): st.header(t)
+
+    def _ui_sub(t):
+        if _qm_show(): st.subheader(t)
+
+    def _ui_div():
+        if _qm_show(): st.divider()
 
     def ppt_slide_title_bar(c, title, W, H):
         # Title text
@@ -473,18 +488,20 @@ with tab2:
                     opts = ["All"]+list(range(3,max_n+1))
                     v = col.selectbox(label, opts, index=opts.index(default) if default in opts else 0)
                     return None if v=="All" else int(v)
-                TOPN_QUALITY_DEFECT = topn(c1, "Q Defects CM vs YTD", 15)
-                TOPN_QUALITY_CM     = topn(c2, "Q Defects CM", 10)
-                TOPN_SERVICE_REASON = topn(c3, "Svc Reasons CM vs YTD", 15)
-                TOPN_SERVICE_CM     = topn(c4, "Svc Reasons CM", 10)
-                TOPN_COST_DEFECT    = topn(c5, "Cost Defects", 15)
-                TOPN_NCR_DEFECT     = topn(c6, "NCR Defects", 20, 50)
-                TOPN_CORRELATION    = topn(c7, "NCR vs CRM", 12)
+                TOPN_QUALITY_DEFECT = topn(c1, "Q Defects CM vs YTD", 7)
+                TOPN_QUALITY_CM     = topn(c2, "Q Defects CM", 7)
+                TOPN_SERVICE_REASON = topn(c3, "Svc Reasons CM vs YTD", 7)
+                TOPN_SERVICE_CM     = topn(c4, "Svc Reasons CM", 7)
+                TOPN_COST_DEFECT    = topn(c5, "Cost Defects", 7)
+                TOPN_NCR_DEFECT     = topn(c6, "NCR Defects", 7, 50)
+                TOPN_CORRELATION    = topn(c7, "NCR vs CRM", 7)
                 TOPN_CUSTOMER       = topn(c8, "Top Customers", 5, 20)
                 c9, c10 = st.columns([1,7])
                 TOPN_RC_REASONS     = topn(c9, "Root Cause Top Reasons", 4, 15)
 
             run = st.button("🔄 Generate Charts", type="primary", key="qm_run")
+            st.toggle("👁️ Also show charts on screen (slower — the PDF is built either way)",
+                      value=False, key="qm_show_charts")
 
             # ── Persistent data forms (outside run block so they survive rerun) ──
             _months_range_pre = list(range(1, selected_month + 1))
@@ -591,6 +608,7 @@ with tab2:
                             st.success("✅ WO data saved!"); st.rerun()
 
             if run:
+                _qm_progress = st.info("⏳ Building charts and PDF — this takes a moment…")
                 prev_year    = selected_year - 1
                 months_range = list(range(1, selected_month+1))
                 MONTH_LABELS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
@@ -615,7 +633,7 @@ with tab2:
                 st.session_state["qm_selected_month"] = selected_month
 
                 def donut_chart(ax, counts):
-                    labels = ["Service","Quality","Invalid","Commercial"]
+                    labels = ["Service","Quality","Invalid","Internal Return","Waste Order","Commercial"]
                     values = np.array([int(counts.get(l,0)) for l in labels], dtype=float)
                     if values.sum()==0:
                         ax.text(0.5,0.5,"No data",ha="center",va="center"); ax.axis("off"); return
@@ -629,7 +647,8 @@ with tab2:
                         ax.text(lr*np.cos(np.deg2rad(ang)),lr*np.sin(np.deg2rad(ang)),
                                 f"{int(v)}",ha="center",va="center",fontsize=11,color="white")
                     ax.axis("equal")
-                    ax.legend(handles=[plt.Rectangle((0,0),1,1,fc=COLORS[l]) for l in labels if values[labels.index(l)]>0], labels=[l for l in labels if values[labels.index(l)]>0], loc="upper center", bbox_to_anchor=(0.5, -0.05), ncol=len(labels),frameon=False, fontsize=10)
+                    _present=[l for l in labels if values[labels.index(l)]>0]
+                    ax.legend(handles=[plt.Rectangle((0,0),1,1,fc=COLORS[l]) for l in _present], labels=_present, loc="upper center", bbox_to_anchor=(0.5, -0.05), ncol=(len(_present) if len(_present)<=4 else 3),frameon=False, fontsize=10)
 
                 def add_simple_value_labels(ax, bars, fmt_fn, pad):
                     for b in bars:
@@ -673,7 +692,7 @@ with tab2:
                 st.divider()
 
                 # ── FINAL ──
-                st.header("FINAL (CRM Approved)")
+                _ui_head("FINAL (CRM Approved)")
 
                 # Warn about UNCLASSIFIED valid rows
                 _unc_final = final_pkg["unclassified_counts"]
@@ -684,21 +703,21 @@ with tab2:
                         st.caption("These rows pass Is_Valid=True but their reason is not in Quality or Service lists. They are NOT counted in any chart. Classify them in the prompt above.")
                         st.dataframe(_unc_final.reset_index().rename(columns={"index":"Reason", 0:"Count", "Reason":"Reason", _unc_final.name if hasattr(_unc_final,'name') else 0:"Count"}), use_container_width=True, hide_index=True)
 
-                st.subheader("Overview")
+                _ui_sub("Overview")
 
                 def slide_1_final_donuts_fig(year, month):
                     fig,axes=plt.subplots(1,2,figsize=(13.33,7.5),dpi=150)
-                    donut_chart(axes[0],df[(df["Year"]==year)&(df["Month"]==month)]["Complaint_Category"].value_counts())
-                    donut_chart(axes[1],df[(df["Year"]==year)&(df["Month"].between(1,month))]["Complaint_Category"].value_counts())
+                    donut_chart(axes[0],df[(df["Year"]==year)&(df["Month"]==month)]["Display_Category"].value_counts())
+                    donut_chart(axes[1],df[(df["Year"]==year)&(df["Month"].between(1,month))]["Display_Category"].value_counts())
                     m_lbl=pd.to_datetime(f"{year}-{month:02d}-01").strftime("%b-%y")
-                    axes[0].text(0.5,-0.10,m_lbl,transform=axes[0].transAxes,ha="center",va="top",fontsize=13,color="#4D4D4D")
-                    axes[1].text(0.5,-0.10,f"{year} YTD",transform=axes[1].transAxes,ha="center",va="top",fontsize=13,color="#4D4D4D")
-                    plt.tight_layout(rect=[0,0.14,1,1]); return fig
+                    axes[0].text(0.5,-0.22,m_lbl,transform=axes[0].transAxes,ha="center",va="top",fontsize=13,color="#4D4D4D")
+                    axes[1].text(0.5,-0.22,f"{year} YTD",transform=axes[1].transAxes,ha="center",va="top",fontsize=13,color="#4D4D4D")
+                    plt.tight_layout(rect=[0,0.20,1,1]); return fig
                 _pdf_png = show_fig(slide_1_final_donuts_fig(selected_year,selected_month))
                 _png_final_donuts = _pdf_png
 
                 # Lead Time
-                st.subheader("Lead Time")
+                _ui_sub("Lead Time")
                 def build_unique_crm_leadtime_table(df_in):
                     tmp=df_in.copy()
                     tmp["First_Approval_dt"]=pd.to_datetime(tmp["First Approval Date"],errors="coerce")
@@ -710,10 +729,11 @@ with tab2:
                     return g
                 df_lt=build_unique_crm_leadtime_table(df)
 
-                def slide_2_leadtime_fig(selected_year,selected_month):
-                    def mavg(yr): return df_lt[df_lt["Year"]==yr].groupby("Month")["LeadTime_days"].mean().reindex(months_range)
+                def slide_2_leadtime_fig(selected_year,selected_month,lt=None):
+                    lt = df_lt if lt is None else lt   # lt = lead time table (all CRMs, or one category)
+                    def mavg(yr): return lt[lt["Year"]==yr].groupby("Month")["LeadTime_days"].mean().reindex(months_range)
                     def ytda(yr):
-                        d=df_lt[(df_lt["Year"]==yr)&(df_lt["Month"].between(1,selected_month))]
+                        d=lt[(lt["Year"]==yr)&(lt["Month"].between(1,selected_month))]
                         return float(d["LeadTime_days"].mean()) if len(d) else np.nan
                     cats=MONTH_LABELS[:selected_month]+["AVG-YTD"]; x=np.arange(len(cats)); w=0.28
                     fig,ax=plt.subplots(figsize=(13.33,7.5),dpi=150)
@@ -728,8 +748,20 @@ with tab2:
                 _pdf_png = show_fig(slide_2_leadtime_fig(selected_year,selected_month))
                 _png_leadtime = _pdf_png
 
+                # Lead Time by complaint category — same chart, CRMs of that category only
+                # (a CRM with rows in two categories counts in both; Invalid/Unclassified CRMs
+                #  are in the total chart above but in none of these three)
+                _png_leadtime_cat = {}
+                for _lt_cat_name in ("Quality", "Service", "Commercial"):
+                    _ui_sub(f"Lead Time — {_lt_cat_name} Complaints")
+                    _lt_cat = build_unique_crm_leadtime_table(df[df["Complaint_Category"] == _lt_cat_name])
+                    if _lt_cat.empty:
+                        st.info(f"No {_lt_cat_name} CRMs with both approval dates — slide skipped.")
+                        continue
+                    _png_leadtime_cat[_lt_cat_name] = show_fig(slide_2_leadtime_fig(selected_year, selected_month, _lt_cat))
+
                 # Quality Count
-                st.subheader("Quality")
+                _ui_sub("Quality")
                 def slide_3_valid_quality_count_fig(selected_year,selected_month):
                     base=df[(df["Is_Valid"]==True)&(df["Complaint_Category"]=="Quality")]
                     def mc(yr): return base[base["Year"]==yr].groupby("Month").size().reindex(months_range,fill_value=0)
@@ -774,7 +806,7 @@ with tab2:
                     ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False); ax.grid(False)
                     ax.legend(loc="upper center",bbox_to_anchor=(0.5,-0.22),ncol=4,frameon=False,fontsize=10)
                     fig.subplots_adjust(bottom=0.35); return fig
-                st.subheader("Quality Defects (CM vs YTD)")
+                _ui_sub("Quality Defects (CM vs YTD)")
                 _pdf_png = show_fig(slide_4_quality_defect_cm_vs_ytd_fig(selected_year,selected_month,TOPN_QUALITY_DEFECT))
                 _png_quality_defects_ytd = _pdf_png
 
@@ -790,7 +822,7 @@ with tab2:
                     ax.set_ylim(0,max(1,counts.max())*1.15)
                     ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False); ax.grid(False)
                     plt.tight_layout(); return fig
-                st.subheader("Quality Defects (Current Month)")
+                _ui_sub("Quality Defects (Current Month)")
                 _pdf_png = show_fig(slide_5_quality_defect_current_month_fig(selected_year,selected_month,TOPN_QUALITY_CM))
                 _png_quality_defects_cm = _pdf_png
 
@@ -830,16 +862,16 @@ with tab2:
                     ax.legend(loc="upper center",bbox_to_anchor=(0.5,-0.22),ncol=4,frameon=False,fontsize=10)
                     fig.subplots_adjust(bottom=0.35); return fig
                 try:
-                    st.subheader("Quality Cost (Credit Note)")
+                    _ui_sub("Quality Cost (Credit Note)")
                     _pdf_png = show_fig(slide_6_quality_cost_cm_vs_ytd_fig(selected_year,selected_month,TOPN_COST_DEFECT))
                     _png_quality_cost = _pdf_png
                 except Exception as e:
                     st.warning(f"Cost slide skipped: {e}")
 
                 # Service
-                st.subheader("Service")
-                def slide_s1_valid_service_count_fig(selected_year,selected_month):
-                    base=df[(df["Is_Valid"]==True)&(df["Complaint_Category"]=="Service")]
+                _ui_sub("Service")
+                def slide_s1_valid_service_count_fig(selected_year,selected_month,base=None):
+                    if base is None: base=df[(df["Is_Valid"]==True)&(df["Complaint_Category"]=="Service")]
                     def mc(yr): return base[base["Year"]==yr].groupby("Month").size().reindex(months_range,fill_value=0)
                     def ytdc(yr): return int(base[(base["Year"]==yr)&(base["Month"].between(1,selected_month))].shape[0])
                     cats=MONTH_LABELS[:selected_month]+["YTD"]; x=np.arange(len(cats)); w=0.28
@@ -855,13 +887,13 @@ with tab2:
                     ax.legend(loc="upper center",bbox_to_anchor=(0.5,-0.08),ncol=3,frameon=False)
                     ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False); ax.grid(False)
                     plt.tight_layout(rect=[0,0.05,1,1]); return fig
-                st.subheader("Valid Service Count")
+                _ui_sub("Valid Service Count")
                 _pdf_png = show_fig(slide_s1_valid_service_count_fig(selected_year,selected_month))
                 _png_service_count = _pdf_png
 
-                def slide_s2_service_reason_cm_vs_ytd_fig(selected_year,selected_month,top_n=15):
-                    base=df[(df["Is_Valid"]==True)&(df["Complaint_Category"]=="Service")].copy()
-                    base["Reason_Svc"]=base["Reason"].astype(str).str.strip()
+                def slide_s2_service_reason_cm_vs_ytd_fig(selected_year,selected_month,top_n=15,base=None,col="Reason"):
+                    base=(df[(df["Is_Valid"]==True)&(df["Complaint_Category"]=="Service")] if base is None else base).copy()
+                    base["Reason_Svc"]=base[col].astype(str).str.strip()
                     cp=base[(base["Year"]==prev_year)&(base["Month"]==selected_month)]["Reason_Svc"].value_counts()
                     cs=base[(base["Year"]==selected_year)&(base["Month"]==selected_month)]["Reason_Svc"].value_counts()
                     yp=base[(base["Year"]==prev_year)&(base["Month"].between(1,selected_month))]["Reason_Svc"].value_counts()
@@ -883,7 +915,7 @@ with tab2:
                     ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False); ax.grid(False)
                     ax.legend(loc="upper center",bbox_to_anchor=(0.5,-0.22),ncol=4,frameon=False,fontsize=10)
                     fig.subplots_adjust(bottom=0.35); return fig
-                st.subheader("Service Reasons (CM vs YTD)")
+                _ui_sub("Service Reasons (CM vs YTD)")
                 _pdf_png = show_fig(slide_s2_service_reason_cm_vs_ytd_fig(selected_year,selected_month,TOPN_SERVICE_REASON))
                 _png_service_ytd = _pdf_png
 
@@ -899,27 +931,27 @@ with tab2:
                     ax.set_ylim(0,max(1,counts.max())*1.15)
                     ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False); ax.grid(False)
                     plt.tight_layout(); return fig
-                st.subheader("Service Reasons (Current Month)")
+                _ui_sub("Service Reasons (Current Month)")
                 _pdf_png = show_fig(slide_s3_service_reason_current_month_fig(selected_year,selected_month,TOPN_SERVICE_CM))
                 _png_service_cm = _pdf_png
 
-                st.divider()
+                _ui_div()
 
                 # ── ISSUED ──
-                st.header("ISSUED")
-                st.subheader("Overview")
+                _ui_head("ISSUED")
+                _ui_sub("Overview")
                 def slide_issued_1_donuts_fig(year,month):
                     fig,axes=plt.subplots(1,2,figsize=(13.33,7.5),dpi=150)
-                    donut_chart(axes[0],df_issued[(df_issued["Year"]==year)&(df_issued["Month"]==month)]["Complaint_Category"].value_counts())
-                    donut_chart(axes[1],df_issued[(df_issued["Year"]==year)&(df_issued["Month"].between(1,month))]["Complaint_Category"].value_counts())
+                    donut_chart(axes[0],df_issued[(df_issued["Year"]==year)&(df_issued["Month"]==month)]["Display_Category"].value_counts())
+                    donut_chart(axes[1],df_issued[(df_issued["Year"]==year)&(df_issued["Month"].between(1,month))]["Display_Category"].value_counts())
                     m_lbl=pd.to_datetime(f"{year}-{month:02d}-01").strftime("%b-%y")
-                    axes[0].text(0.5,-0.10,f"ISSUED – {m_lbl}",transform=axes[0].transAxes,ha="center",va="top",fontsize=13,color="#4D4D4D")
-                    axes[1].text(0.5,-0.10,f"ISSUED – {year} YTD",transform=axes[1].transAxes,ha="center",va="top",fontsize=13,color="#4D4D4D")
-                    plt.tight_layout(rect=[0,0.14,1,1]); return fig
+                    axes[0].text(0.5,-0.22,f"ISSUED – {m_lbl}",transform=axes[0].transAxes,ha="center",va="top",fontsize=13,color="#4D4D4D")
+                    axes[1].text(0.5,-0.22,f"ISSUED – {year} YTD",transform=axes[1].transAxes,ha="center",va="top",fontsize=13,color="#4D4D4D")
+                    plt.tight_layout(rect=[0,0.20,1,1]); return fig
                 _pdf_png = show_fig(slide_issued_1_donuts_fig(selected_year,selected_month))
                 _png_issued_donuts = _pdf_png
 
-                st.subheader("Valid Count")
+                _ui_sub("Valid Count")
                 def slide_issued_valid_count_fig(selected_year,selected_month):
                     base=df_issued[df_issued["Is_Valid"]==True]
                     def mc(yr): return base[base["Year"]==yr].groupby("Month").size().reindex(months_range,fill_value=0)
@@ -940,7 +972,7 @@ with tab2:
                 _pdf_png = show_fig(slide_issued_valid_count_fig(selected_year,selected_month))
                 _png_issued_valid = _pdf_png
 
-                st.subheader("Quality (Current Month)")
+                _ui_sub("Quality (Current Month)")
                 def slide_issued_quality_reason_current_month_fig(selected_year,selected_month,top_n=12):
                     base=df_issued[(df_issued["Is_Valid"]==True)&(df_issued["Complaint_Category"]=="Quality")].copy()
                     base["Reason_Q"]=base["Reason"].astype(str).str.strip()
@@ -957,7 +989,7 @@ with tab2:
                 _png_issued_quality_cm = _pdf_png
 
                 # ── Quality Root Cause Drill-Down ──
-                st.subheader("Quality — Root Cause by Reason (Current Month)")
+                _ui_sub("Quality — Root Cause by Reason (Current Month)")
                 def slide_rootcause_fig(category, selected_year, selected_month, top_n_reasons=4):
                     base = df_issued[
                         (df_issued["Is_Valid"] == True) &
@@ -1033,7 +1065,7 @@ with tab2:
                     _pdf_png = show_fig(fig_rc_q)
                     _png_quality_rootcause = _pdf_png
 
-                st.subheader("Service (Current Month)")
+                _ui_sub("Service (Current Month)")
                 def slide_issued_service_reason_current_month_fig(selected_year,selected_month,top_n=10):
                     base=df_issued[(df_issued["Is_Valid"]==True)&(df_issued["Complaint_Category"]=="Service")].copy()
                     base["Reason_S"]=base["Reason"].astype(str).str.strip()
@@ -1050,7 +1082,7 @@ with tab2:
                 _png_issued_service_cm = _pdf_png
 
                 # ── Service Root Cause Drill-Down ──
-                st.subheader("Service — Root Cause by Reason (Current Month)")
+                _ui_sub("Service — Root Cause by Reason (Current Month)")
                 fig_rc_s, err_rc_s = slide_rootcause_fig("Service", selected_year, selected_month, TOPN_RC_REASONS or 4)
                 if err_rc_s:
                     st.warning(f"Service root cause: {err_rc_s}")
@@ -1058,11 +1090,11 @@ with tab2:
                     _pdf_png = show_fig(fig_rc_s)
                     _png_service_rootcause = _pdf_png
 
-                st.divider()
+                _ui_div()
 
                 # ── NCR ──
-                st.header("NCR")
-                st.subheader("Quality (CM vs YTD)")
+                _ui_head("NCR")
+                _ui_sub("Quality (CM vs YTD)")
                 def slide_ncr_quality_defect_cm_vs_ytd_fig(selected_year,selected_month,top_n=20):
                     base=df_ncr_dash[(df_ncr_dash["Is_Valid"]==True)&(df_ncr_dash["Complaint_Category"]=="Quality")].copy()
                     base["Defect"]=base["Reason"].astype(str).str.strip()
@@ -1085,13 +1117,13 @@ with tab2:
                 _pdf_png = show_fig(slide_ncr_quality_defect_cm_vs_ytd_fig(selected_year,selected_month,TOPN_NCR_DEFECT))
                 _png_ncr_defects = _pdf_png
 
-                st.subheader("Valid NCR Count Table")
+                _ui_sub("Valid NCR Count Table")
                 base_tbl=df_ncr_dash[(df_ncr_dash["Year"]==selected_year)&(df_ncr_dash["Month"].between(1,selected_month))&(df_ncr_dash["Is_Valid"]==True)]
                 monthly_tbl=base_tbl.groupby("Month").size().reindex(months_range,fill_value=0).astype(int)
                 row={MONTH_LABELS[i-1]:int(monthly_tbl[i]) for i in months_range}; row["YTD"]=int(monthly_tbl.sum())
-                st.dataframe(pd.DataFrame([row],index=[str(selected_year)]),use_container_width=True)
+                if _qm_show(): st.dataframe(pd.DataFrame([row],index=[str(selected_year)]),use_container_width=True)
 
-                st.subheader("NCR vs CRM Correlation (YTD)")
+                _ui_sub("NCR vs CRM Correlation (YTD)")
                 def slide_ncr_vs_crm_correlation_ytd_fig(selected_year,selected_month,top_n=12):
                     from matplotlib.ticker import FuncFormatter
                     crm_c=df[(df["Is_Valid"]==True)&(df["Complaint_Category"]=="Quality")&(df["Year"]==selected_year)&(df["Month"]<=selected_month)]["Reason"].astype(str).str.strip().value_counts()
@@ -1120,7 +1152,7 @@ with tab2:
                 _pdf_png = show_fig(slide_ncr_vs_crm_correlation_ytd_fig(selected_year,selected_month,TOPN_CORRELATION))
                 _png_ncr_crm = _pdf_png
 
-                st.subheader("Top Customers (FINAL)")
+                _ui_sub("Top Customers (FINAL)")
                 def slide_valid_quality_by_customer_top5_cm_vs_ytd_fig(selected_year,selected_month,top_n=5):
                     base=df[(df["Is_Valid"]==True)&(df["Complaint_Category"]=="Quality")].copy()
                     CUST_COL="Customer"
@@ -1149,10 +1181,10 @@ with tab2:
                 except Exception as e:
                     st.warning(f"Customer slide skipped: {e}")
 
-                st.divider()
+                _ui_div()
 
                 # ── CC RATIO CHARTS ──
-                st.header("CC Ratio")
+                _ui_head("CC Ratio")
 
                 # Load FG Invoiced from Supabase
                 try:
@@ -1291,21 +1323,21 @@ with tab2:
                         plt.tight_layout(rect=[0, 0.05, 1, 1])
                         return fig
 
-                    st.subheader("Total Customer Complaints Ratio (Quality + Service)")
+                    _ui_sub("Total Customer Complaints Ratio (Quality + Service)")
                     _pdf_png = show_fig(slide_cc_ratio_fig(selected_year, category_filter=None, title_label="Total CC Ratio"))
                     _png_ratio_total = _pdf_png
 
-                    st.subheader("Quality Customer Complaints Ratio")
+                    _ui_sub("Quality Customer Complaints Ratio")
                     _pdf_png = show_fig(slide_cc_ratio_fig(selected_year, category_filter="Quality", title_label="Quality CC Ratio"))
                     _png_ratio_quality = _pdf_png
 
                 else:
                     st.info("Enter FG Invoiced values above to generate CC Ratio charts.")
 
-                st.divider()
+                _ui_div()
 
                 # ── COST OF QUALITY ──
-                st.header("Cost of Quality (COQ)")
+                _ui_head("Cost of Quality (COQ)")
 
                 REWORK_FIXED = 8250.0
 
@@ -1439,17 +1471,17 @@ with tab2:
                         fig.subplots_adjust(bottom=0.20)
                         return fig
 
-                    st.subheader("COQ Breakdown — CM vs YTD")
+                    _ui_sub("COQ Breakdown — CM vs YTD")
                     _pdf_png = show_fig(slide_coq_breakdown_fig(selected_year, selected_month))
                     _png_coq = _pdf_png
 
                 else:
                     st.info("Fill in missing COQ data above to generate COQ charts.")
 
-                st.divider()
+                _ui_div()
 
                 # ── NCR RATIO ──
-                st.header("NCR Ratio")
+                _ui_head("NCR Ratio")
 
                 # Load WO data from Supabase
                 try:
@@ -1583,7 +1615,7 @@ with tab2:
                         fig.subplots_adjust(bottom=0.15)
                         return fig
 
-                    st.subheader("NCR Ratio")
+                    _ui_sub("NCR Ratio")
                     _pdf_png = show_fig(slide_ncr_ratio_fig(selected_year))
                     _png_ncr_ratio = _pdf_png
                 else:
@@ -1594,7 +1626,7 @@ with tab2:
                     return slide_cc_ratio_fig(selected_year, category_filter="Service", title_label="Service CC Ratio")
 
                 if months_with_fg:
-                    st.subheader("Service Complaints Ratio")
+                    _ui_sub("Service Complaints Ratio")
                     _png_service_cc_ratio = show_fig(slide_service_cc_ratio_fig(selected_year))
                 else:
                     _png_service_cc_ratio = None
@@ -1674,23 +1706,74 @@ with tab2:
                 # ── Render NCR rootcause ──
                 _fig_ncr_rc, _err_ncr_rc = slide_ncr_rootcause_fig(selected_year, selected_month, TOPN_RC_REASONS or 4)
                 if _fig_ncr_rc:
-                    st.subheader("NCR Breakdown by Root Cause")
+                    _ui_sub("NCR Breakdown by Root Cause")
                     _png_ncr_rootcause = show_fig(_fig_ncr_rc)
                 else:
                     _png_ncr_rootcause = None
 
                 # ── Render service CN cost ──
                 try:
-                    st.subheader("Service Complaints Value (CN at Cost)")
+                    _ui_sub("Service Complaints Value (CN at Cost)")
                     _png_service_cost = show_fig(slide_service_cn_cost_fig(selected_year, selected_month, TOPN_COST_DEFECT))
                 except Exception:
                     _png_service_cost = None
 
+                # ── Internal Returns (monitoring only) ──
+                # Counted as Invalid in every KPI, ratio and lead time. These slides only make them visible.
+                def slide_ir_cost_fig(selected_year, selected_month, top_n=15):
+                    base = df_raw_flagged[df_raw_flagged["Display_Category"]=="Internal Return"].copy()
+                    base["Reason_IR"]   = base["Reason"].astype(str).str.strip()
+                    base["Cost Amount"] = pd.to_numeric(base["Cost Amount"], errors="coerce").fillna(0)
+                    cp = base[(base["Year"]==prev_year)&(base["Month"]==selected_month)].groupby("Reason_IR")["Cost Amount"].sum()
+                    cs = base[(base["Year"]==selected_year)&(base["Month"]==selected_month)].groupby("Reason_IR")["Cost Amount"].sum()
+                    yp = base[(base["Year"]==prev_year)&(base["Month"].between(1,selected_month))].groupby("Reason_IR")["Cost Amount"].sum()
+                    ys = base[(base["Year"]==selected_year)&(base["Month"].between(1,selected_month))].groupby("Reason_IR")["Cost Amount"].sum()
+                    summ = pd.DataFrame({"CM_prev":cp,"CM_sel":cs,"YTD_prev":yp,"YTD_sel":ys}).fillna(0)
+                    summ = summ.sort_values(["YTD_sel","CM_sel"],ascending=False)
+                    if top_n: summ = summ.head(int(top_n))
+                    if summ.empty: return None
+                    x = np.arange(len(summ)); w = 0.18
+                    fig,ax = plt.subplots(figsize=(13.33,7.5),dpi=150)
+                    b1=ax.bar(x-1.5*w,summ["CM_prev"],w,label=f"CM {prev_year}",color="#0F68B9")
+                    b2=ax.bar(x-0.5*w,summ["CM_sel"],w,label=f"CM {selected_year}",color="#D8C37D")
+                    b3=ax.bar(x+0.5*w,summ["YTD_prev"],w,label=f"YTD {prev_year}",color="#006394")
+                    b4=ax.bar(x+1.5*w,summ["YTD_sel"],w,label=f"YTD {selected_year}",color="#C1A02E")
+                    ymax = summ.to_numpy().max() if summ.to_numpy().max() > 0 else 1; pad = ymax*0.015
+                    def fmt(v): return f"SAR {int(v/1000)}K" if v>=1000 else f"SAR {int(v)}"
+                    for bars_g in [b1,b2,b3,b4]:
+                        for bar in bars_g:
+                            h = bar.get_height()
+                            if h>0: ax.text(bar.get_x()+bar.get_width()/2,h+pad,fmt(h),ha="center",va="bottom",fontsize=9,rotation=90,color="#333333",clip_on=False)
+                    ax.set_xticks(x); ax.set_xticklabels([fill(d,18) for d in summ.index],rotation=30,ha="right",fontsize=9)
+                    ax.set_ylabel("Cost Amount (SAR)")
+                    ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False); ax.grid(False)
+                    ax.legend(loc="upper center",bbox_to_anchor=(0.5,-0.22),ncol=4,frameon=False,fontsize=10)
+                    fig.subplots_adjust(bottom=0.35); return fig
+
+                _ir_base = df[df["Display_Category"]=="Internal Return"]
+                _png_ir_count = _png_ir_reason = _png_ir_customer = _png_ir_cost = None
+                if _ir_base.empty:
+                    _ui_sub("Internal Returns — none in the data")
+                else:
+                    try:
+                        _ui_sub("Internal Returns — Count (not counted in KPIs)")
+                        _png_ir_count = show_fig(slide_s1_valid_service_count_fig(selected_year, selected_month, base=_ir_base))
+                        _ui_sub("Internal Returns — by Reason (CM vs YTD)")
+                        _png_ir_reason = show_fig(slide_s2_service_reason_cm_vs_ytd_fig(selected_year, selected_month, TOPN_SERVICE_REASON, base=_ir_base))
+                        _ui_sub("Internal Returns — by Customer (CM vs YTD)")
+                        _png_ir_customer = show_fig(slide_s2_service_reason_cm_vs_ytd_fig(selected_year, selected_month, TOPN_SERVICE_REASON, base=_ir_base, col="Customer"))
+                        _fig_ir_cost = slide_ir_cost_fig(selected_year, selected_month, TOPN_COST_DEFECT)
+                        if _fig_ir_cost is not None:
+                            _ui_sub("Internal Returns — Value by Reason")
+                            _png_ir_cost = show_fig(_fig_ir_cost)
+                    except Exception as _e_ir:
+                        st.warning(f"Internal Return slides skipped: {_e_ir}")
+
                 month_name = pd.to_datetime(f"{selected_year}-{selected_month:02d}-01").strftime("%B %Y")
 
                 # ── Commercial / Returns / Classification slides ──
-                st.divider()
-                st.header("Commercial Reasons")
+                _ui_div()
+                _ui_head("Commercial Reasons")
 
                 def slide_commercial_count_fig(year, month):
                     comm = df_final[
@@ -1835,6 +1918,7 @@ with tab2:
                         {"label": "Service",    "color": "#C1A02E", "text_color": "white", "lines": ["Failures in delivery,", "invoicing, or admin.", "", "Wrong Item Delivered,", "Deviation from delivery", "Schedule, Incorrect", "Sales Contract Pricing,", "Wrong Unit Price."]},
                         {"label": "Commercial", "color": "#2E8449", "text_color": "white", "lines": ["Pre-agreed commercial", "arrangements — not a", "product or service", "failure.", "", "Root Cause:", "  Pre-Agreement", "Reasons: Sales Discount,", "  FOC, Tools reimb."]},
                         {"label": "Invalid",    "color": "#B8A040", "text_color": "white", "lines": ["Excluded from KPIs.", "", "• Reason Type = 0", "  or blank", "• Physical Status:", "  Baled / Plastic Waste", "• Gen. Category not", "  in allowed list", "• Reason = Invalid"]},
+                        {"label": "Internal Return", "color": "#7FA7C9", "text_color": "white", "lines": ["Invoice adjustments", "(Gen. Category =", "Internal Return).", "", "Counted as Invalid", "in all KPIs — shown", "separately in the pie", "and Service section", "for monitoring."]},
                     ]
                     fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=150)
                     ax.set_xlim(0, 1); ax.set_ylim(0, 1); ax.axis("off"); fig.patch.set_facecolor("white")
@@ -1851,13 +1935,13 @@ with tab2:
                             ax.text((x0+x1)/2, y_pos, line, transform=ax.transAxes, ha="center", va="center", fontsize=9, color="#333333", zorder=4)
                     plt.tight_layout(); return fig
 
-                st.subheader("Commercial CRMs — Count by Reason")
+                _ui_sub("Commercial CRMs — Count by Reason")
                 _png_comm_count = show_fig(slide_commercial_count_fig(selected_year, selected_month))
-                st.subheader("Commercial CRMs — Cost Amount by Reason")
+                _ui_sub("Commercial CRMs — Cost Amount by Reason")
                 _png_comm_cost = show_fig(slide_commercial_cost_fig(selected_year, selected_month))
-                st.subheader("Customer Returns — Estimated Cost by Reason")
+                _ui_sub("Customer Returns — Estimated Cost by Reason")
                 _png_customer_returns = show_fig(slide_customer_return_cost_fig(selected_year, selected_month, TOPN_SERVICE_CM))
-                st.subheader("CRM Classification Guide")
+                _ui_sub("CRM Classification Guide")
                 _png_classification = show_fig(slide_classification_guide_fig())
 
                 # ── Build ordered PDF — exact reference structure (32 slides) ──
@@ -1875,6 +1959,9 @@ with tab2:
                     _s("Total Complaints Issued",               _png_issued_donuts   if '_png_issued_donuts'   in dir() else None),
                     _s("Total Complaints Approved",             _png_final_donuts    if '_png_final_donuts'    in dir() else None),
                     _s("Complaints Lead Time — First Approval", _png_leadtime        if '_png_leadtime'        in dir() else None),
+                    _s("Quality Complaints Lead Time — First Approval",    _png_leadtime_cat.get("Quality")    if '_png_leadtime_cat' in dir() else None),
+                    _s("Service Complaints Lead Time — First Approval",    _png_leadtime_cat.get("Service")    if '_png_leadtime_cat' in dir() else None),
+                    _s("Commercial Complaints Lead Time — First Approval", _png_leadtime_cat.get("Commercial") if '_png_leadtime_cat' in dir() else None),
                     _s("Complaints Ratio",                      _png_ratio_total     if '_png_ratio_total'     in dir() else None),
                     _s("Quality Complaints Ratio",              _png_ratio_quality   if '_png_ratio_quality'   in dir() else None),
                     _s("Service Complaints Ratio",              _png_service_cc_ratio if '_png_service_cc_ratio' in dir() else None),
@@ -1896,6 +1983,10 @@ with tab2:
                     _s("Valid Service Complaints Count",                          _png_service_count      if '_png_service_count'      in dir() else None),
                     _s("Valid Service Complaints — CM vs YTD",                    _png_service_ytd        if '_png_service_ytd'        in dir() else None),
                     _s("Service Complaints Value (CN at Cost) by Defect — To Date", _png_service_cost    if '_png_service_cost'       in dir() else None),
+                    _s("Internal Returns Count — To Date (not counted in KPIs)",  _png_ir_count    if '_png_ir_count'    in dir() else None),
+                    _s("Internal Returns by Reason — CM vs YTD",                   _png_ir_reason   if '_png_ir_reason'   in dir() else None),
+                    _s("Internal Returns by Customer — CM vs YTD",                 _png_ir_customer if '_png_ir_customer' in dir() else None),
+                    _s("Internal Returns Value by Reason — To Date",               _png_ir_cost     if '_png_ir_cost'     in dir() else None),
                     _sec("Commercial Reasons"),
                     _s("Commercial CRMs — Count by Reason (CM vs YTD)",          _png_comm_count),
                     _s("Commercial CRMs — Cost Amount by Reason (CM vs YTD)",    _png_comm_cost),
@@ -1908,6 +1999,8 @@ with tab2:
                 _ordered_slides = [s for s in _ordered_slides if s is not None]
 
                 pdf_buf = build_ppt_pdf(_ordered_slides, dpi=300)
+                _qm_progress.empty()
+                st.success(f"✅ PDF ready — {len(_ordered_slides)} slides.")
                 st.download_button(
                     label="📥 Download PPT-style PDF",
                     data=pdf_buf,
