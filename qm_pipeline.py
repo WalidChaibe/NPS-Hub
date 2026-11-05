@@ -264,6 +264,31 @@ _CRM_DATE_OVERRIDE_DEFAULT = {
     "EPAK-CRM-10904": {FINAL_APPROVAL_COL: "2025-09-15"},
 }
 
+# ── CRM Lead Time Adjustment Map ─────────────────────────────────────────
+# Forces the lead time (days, Final Approval − First Approval) for specific CRMs,
+# e.g. when the system dates are wrong. The month the CRM falls in still comes
+# from its Final Approval Date. Applies to all 4 lead time slides.
+# Managed in the app: QM → Settings → ⏱️ Lead Time Map (Supabase table qm_crm_leadtime_map).
+# This code list is only a fallback; entries saved in the app take priority.
+# Format: "EPAK-CRM-xxxxx": days,   (whole or decimal days)
+_CRM_LEADTIME_OVERRIDE_DEFAULT = {
+}
+
+def load_crm_leadtime_overrides_from_supabase(supabase=None):
+    """Returns {crm_ref: days}. Code fallback + Supabase table qm_crm_leadtime_map (Supabase wins)."""
+    m = dict(_CRM_LEADTIME_OVERRIDE_DEFAULT)
+    if supabase is None:
+        return m
+    try:
+        rows = supabase.table("qm_crm_leadtime_map").select("crm_ref,leadtime_days").execute()
+        for r in (rows.data or []):
+            ref = str(r.get("crm_ref") or "").strip()
+            if ref and r.get("leadtime_days") is not None:
+                m[ref] = float(r["leadtime_days"])
+    except Exception:
+        pass   # table not created yet / not reachable -> no adjustments
+    return m
+
 def apply_crm_date_overrides(df, override_map, crm_col=CRM_COL):
     """Force-sets specific date columns for specific CRM refs (all rows of that ref)."""
     if not override_map or crm_col not in df.columns:

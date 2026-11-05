@@ -20,6 +20,7 @@ from qm_pipeline import (
     read_excel_from_upload, build_dataset_final_issued, build_dataset_ncr,
     FINAL_APPROVAL_COL, CREATION_DATETIME_COL,
     load_settings_from_supabase, make_classifier,
+    load_crm_leadtime_overrides_from_supabase,
 )
 from utils.supabase_client import get_supabase
 # ── Notifications (inlined) ──
@@ -224,7 +225,7 @@ with tab2:
     def _qm_show():
         return bool(st.session_state.get("qm_show_charts", False))
 
-    def show_fig(fig, dpi=150):
+    def show_fig(fig, dpi=250):   # 250 dpi: sharper text in the PDF
         """Renders the chart for the PDF; shows it on screen only if 'Show charts on screen' is on."""
         buf = fig_to_png_bytes(fig, dpi=dpi)
         if _qm_show():
@@ -718,16 +719,30 @@ with tab2:
 
                 # Lead Time
                 _ui_sub("Lead Time")
+                _lt_override_map = load_crm_leadtime_overrides_from_supabase(supabase)
                 def build_unique_crm_leadtime_table(df_in):
                     tmp=df_in.copy()
                     tmp["First_Approval_dt"]=pd.to_datetime(tmp["First Approval Date"],errors="coerce")
                     tmp["Final_Approval_dt"]=pd.to_datetime(tmp["Final Approval Date"],errors="coerce")
                     g=tmp.groupby("Ref NB",as_index=False).agg(First_Approval_dt=("First_Approval_dt","min"),Final_Approval_dt=("Final_Approval_dt","max"))
                     g["LeadTime_days"]=(g["Final_Approval_dt"]-g["First_Approval_dt"]).dt.total_seconds()/86400.0
+                    # Lead Time Adjustment Map: force the days for listed CRMs (month still from Final Approval Date)
+                    _lt_ref = g["Ref NB"].astype(str).str.strip()
+                    g["LT_Adjusted"] = _lt_ref.isin(_lt_override_map.keys())
+                    g.loc[g["LT_Adjusted"],"LeadTime_days"] = _lt_ref[g["LT_Adjusted"]].map(_lt_override_map).astype(float)
                     g["Year"]=g["Final_Approval_dt"].dt.year; g["Month"]=g["Final_Approval_dt"].dt.month
                     g=g.dropna(subset=["Year","Month","LeadTime_days"]); g=g[g["LeadTime_days"]>=0]
                     return g
                 df_lt=build_unique_crm_leadtime_table(df)
+                # Show which lead time adjustments were applied (always visible — not a chart)
+                _lt_adj = df_lt[df_lt["LT_Adjusted"]]
+                if not _lt_adj.empty:
+                    st.info("ℹ️ Lead time adjusted for " + str(len(_lt_adj)) + " CRM(s): " +
+                            ", ".join(f"{r['Ref NB']} → {r['LeadTime_days']:g} d" for _, r in _lt_adj.iterrows()))
+                _lt_missing = sorted(set(_lt_override_map) - set(df_lt["Ref NB"].astype(str).str.strip()))
+                if _lt_missing:
+                    st.warning("⚠️ Lead time adjustment map lists CRM(s) not found with a Final Approval Date in this FINAL file: "
+                               + ", ".join(_lt_missing))
 
                 def slide_2_leadtime_fig(selected_year,selected_month,lt=None):
                     lt = df_lt if lt is None else lt   # lt = lead time table (all CRMs, or one category)
@@ -1720,52 +1735,20 @@ with tab2:
 
                 # ── Internal Returns (monitoring only) ──
                 # Counted as Invalid in every KPI, ratio and lead time. These slides only make them visible.
-                def slide_ir_cost_fig(selected_year, selected_month, top_n=15):
-                    base = df_raw_flagged[df_raw_flagged["Display_Category"]=="Internal Return"].copy()
-                    base["Reason_IR"]   = base["Reason"].astype(str).str.strip()
-                    base["Cost Amount"] = pd.to_numeric(base["Cost Amount"], errors="coerce").fillna(0)
-                    cp = base[(base["Year"]==prev_year)&(base["Month"]==selected_month)].groupby("Reason_IR")["Cost Amount"].sum()
-                    cs = base[(base["Year"]==selected_year)&(base["Month"]==selected_month)].groupby("Reason_IR")["Cost Amount"].sum()
-                    yp = base[(base["Year"]==prev_year)&(base["Month"].between(1,selected_month))].groupby("Reason_IR")["Cost Amount"].sum()
-                    ys = base[(base["Year"]==selected_year)&(base["Month"].between(1,selected_month))].groupby("Reason_IR")["Cost Amount"].sum()
-                    summ = pd.DataFrame({"CM_prev":cp,"CM_sel":cs,"YTD_prev":yp,"YTD_sel":ys}).fillna(0)
-                    summ = summ.sort_values(["YTD_sel","CM_sel"],ascending=False)
-                    if top_n: summ = summ.head(int(top_n))
-                    if summ.empty: return None
-                    x = np.arange(len(summ)); w = 0.18
-                    fig,ax = plt.subplots(figsize=(13.33,7.5),dpi=150)
-                    b1=ax.bar(x-1.5*w,summ["CM_prev"],w,label=f"CM {prev_year}",color="#0F68B9")
-                    b2=ax.bar(x-0.5*w,summ["CM_sel"],w,label=f"CM {selected_year}",color="#D8C37D")
-                    b3=ax.bar(x+0.5*w,summ["YTD_prev"],w,label=f"YTD {prev_year}",color="#006394")
-                    b4=ax.bar(x+1.5*w,summ["YTD_sel"],w,label=f"YTD {selected_year}",color="#C1A02E")
-                    ymax = summ.to_numpy().max() if summ.to_numpy().max() > 0 else 1; pad = ymax*0.015
-                    def fmt(v): return f"SAR {int(v/1000)}K" if v>=1000 else f"SAR {int(v)}"
-                    for bars_g in [b1,b2,b3,b4]:
-                        for bar in bars_g:
-                            h = bar.get_height()
-                            if h>0: ax.text(bar.get_x()+bar.get_width()/2,h+pad,fmt(h),ha="center",va="bottom",fontsize=9,rotation=90,color="#333333",clip_on=False)
-                    ax.set_xticks(x); ax.set_xticklabels([fill(d,18) for d in summ.index],rotation=30,ha="right",fontsize=9)
-                    ax.set_ylabel("Cost Amount (SAR)")
-                    ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False); ax.grid(False)
-                    ax.legend(loc="upper center",bbox_to_anchor=(0.5,-0.22),ncol=4,frameon=False,fontsize=10)
-                    fig.subplots_adjust(bottom=0.35); return fig
-
                 _ir_base = df[df["Display_Category"]=="Internal Return"]
-                _png_ir_count = _png_ir_reason = _png_ir_customer = _png_ir_cost = None
+                _png_ir_count = _png_ir_reason = None
                 if _ir_base.empty:
                     _ui_sub("Internal Returns — none in the data")
                 else:
                     try:
-                        _ui_sub("Internal Returns — Count (not counted in KPIs)")
+                        _ui_sub("Internal Returns — Count")
                         _png_ir_count = show_fig(slide_s1_valid_service_count_fig(selected_year, selected_month, base=_ir_base))
                         _ui_sub("Internal Returns — by Reason (CM vs YTD)")
                         _png_ir_reason = show_fig(slide_s2_service_reason_cm_vs_ytd_fig(selected_year, selected_month, TOPN_SERVICE_REASON, base=_ir_base))
-                        _ui_sub("Internal Returns — by Customer (CM vs YTD)")
-                        _png_ir_customer = show_fig(slide_s2_service_reason_cm_vs_ytd_fig(selected_year, selected_month, TOPN_SERVICE_REASON, base=_ir_base, col="Customer"))
-                        _fig_ir_cost = slide_ir_cost_fig(selected_year, selected_month, TOPN_COST_DEFECT)
-                        if _fig_ir_cost is not None:
-                            _ui_sub("Internal Returns — Value by Reason")
-                            _png_ir_cost = show_fig(_fig_ir_cost)
+                        # By Customer: on screen only (when charts are shown) — not in the PDF
+                        if _qm_show():
+                            _ui_sub("Internal Returns — by Customer (CM vs YTD)")
+                            show_fig(slide_s2_service_reason_cm_vs_ytd_fig(selected_year, selected_month, TOPN_SERVICE_REASON, base=_ir_base, col="Customer"))
                     except Exception as _e_ir:
                         st.warning(f"Internal Return slides skipped: {_e_ir}")
 
@@ -1983,10 +1966,8 @@ with tab2:
                     _s("Valid Service Complaints Count",                          _png_service_count      if '_png_service_count'      in dir() else None),
                     _s("Valid Service Complaints — CM vs YTD",                    _png_service_ytd        if '_png_service_ytd'        in dir() else None),
                     _s("Service Complaints Value (CN at Cost) by Defect — To Date", _png_service_cost    if '_png_service_cost'       in dir() else None),
-                    _s("Internal Returns Count — To Date (not counted in KPIs)",  _png_ir_count    if '_png_ir_count'    in dir() else None),
-                    _s("Internal Returns by Reason — CM vs YTD",                   _png_ir_reason   if '_png_ir_reason'   in dir() else None),
-                    _s("Internal Returns by Customer — CM vs YTD",                 _png_ir_customer if '_png_ir_customer' in dir() else None),
-                    _s("Internal Returns Value by Reason — To Date",               _png_ir_cost     if '_png_ir_cost'     in dir() else None),
+                    _s("Internal Returns Count — To Date",          _png_ir_count    if '_png_ir_count'    in dir() else None),
+                    _s("Internal Returns by Reason — CM vs YTD",    _png_ir_reason   if '_png_ir_reason'   in dir() else None),
                     _sec("Commercial Reasons"),
                     _s("Commercial CRMs — Count by Reason (CM vs YTD)",          _png_comm_count),
                     _s("Commercial CRMs — Cost Amount by Reason (CM vs YTD)",    _png_comm_cost),
@@ -2291,7 +2272,7 @@ with tab5:
         st.warning("🔒 Only Pillar Leader or Plant Manager can manage settings.")
         st.stop()
 
-    set1, set2, set3 = st.tabs(["🗑️ CRM Delete Map", "📋 Reasons", "🔍 Preview"])
+    set1, set_lt, set2, set3 = st.tabs(["🗑️ CRM Delete Map", "⏱️ Lead Time Map", "📋 Reasons", "🔍 Preview"])
 
     # ── LOAD CURRENT SETTINGS ──
     try:
@@ -2380,6 +2361,92 @@ with tab5:
                 try:
                     supabase.table("qm_crm_delete_map").delete().eq("id", del_crm_map[sel_del_crm]).execute()
                     st.success(f"Removed {sel_del_crm}"); st.rerun()
+                except Exception as e:
+                    st.error(f"Error: {e}")
+
+    # ════════════════════════════════════
+    # SETTINGS TAB — LEAD TIME MAP
+    # ════════════════════════════════════
+    with set_lt:
+        st.markdown("#### ⏱️ CRM Lead Time Adjustment Map")
+        st.caption("For the CRMs listed here, lead time = the days you enter, instead of Final Approval − First Approval. "
+                   "The CRM still counts in the month of its Final Approval Date. Applies to all 4 lead time slides.")
+        try:
+            lt_rows_s = supabase.table("qm_crm_leadtime_map").select("*").order("added_at", desc=True).execute()
+            lt_list   = lt_rows_s.data or []
+            lt_table_ok = True
+        except Exception as e:
+            lt_list, lt_table_ok = [], False
+            st.error(f"Table qm_crm_leadtime_map not reachable — has it been created in Supabase? ({e})")
+
+        if lt_list:
+            lt_df = pd.DataFrame(lt_list)
+            for _c in ["crm_ref","customer_name","leadtime_days","reason","added_by","added_at"]:
+                if _c not in lt_df.columns: lt_df[_c] = ""
+            lt_df = lt_df[["crm_ref","customer_name","leadtime_days","reason","added_by","added_at"]].rename(columns={
+                "crm_ref": "CRM #", "customer_name": "Customer", "leadtime_days": "Lead Time (days)",
+                "reason": "Reason for adjustment", "added_by": "Added By", "added_at": "Added At"})
+            lt_df["Added At"] = pd.to_datetime(lt_df["Added At"], errors="coerce").dt.strftime("%d %b %Y")
+            st.dataframe(lt_df, use_container_width=True, hide_index=True)
+        elif lt_table_ok:
+            st.info("No lead time adjustments recorded yet.")
+
+        st.divider()
+        st.markdown("#### ➕ Add / Update Lead Time Adjustment")
+        st.caption("Upload a CRM file to look up the customer name. A reason is required so every adjustment can be justified.")
+
+        lt_lookup_file = st.file_uploader("Upload CRM file (for customer lookup)", type=["xlsx","xls"], key="lt_lookup")
+
+        with st.form("qm_lt_add_form"):
+            c1, c2 = st.columns(2)
+            new_lt_ref  = c1.text_input("CRM Reference #", placeholder="EPAK-CRM-XXXXX").strip()
+            new_lt_days = c2.number_input("Lead Time (days)", min_value=0.0, value=0.0, step=0.5, format="%.1f")
+
+            lt_customer_display = ""
+            if lt_lookup_file and new_lt_ref:
+                try:
+                    import io as _io
+                    _df_lt_lookup = pd.read_excel(_io.BytesIO(lt_lookup_file.getvalue()))
+                    _lt_match = _df_lt_lookup[_df_lt_lookup["Ref NB"].astype(str).str.strip() == new_lt_ref]
+                    if not _lt_match.empty and "Customer" in _df_lt_lookup.columns:
+                        lt_customer_display = str(_lt_match["Customer"].iloc[0]).strip()
+                except Exception:
+                    pass
+
+            new_lt_customer = st.text_input("Customer Name", value=lt_customer_display,
+                                            placeholder="Auto-filled from file or type manually", key="lt_cust")
+            new_lt_reason = st.text_input("Reason for adjustment",
+                                          placeholder="e.g. system kept CRM open; real approval took 12 days", key="lt_reason")
+
+            if st.form_submit_button("💾 Save Lead Time Entry", type="primary"):
+                if not new_lt_ref:
+                    st.error("Please enter a CRM reference number.")
+                elif not new_lt_reason.strip():
+                    st.error("Please enter the reason for this adjustment.")
+                else:
+                    try:
+                        supabase.table("qm_crm_leadtime_map").upsert({
+                            "crm_ref": new_lt_ref,
+                            "customer_name": new_lt_customer or "",
+                            "leadtime_days": float(new_lt_days),
+                            "reason": new_lt_reason.strip(),
+                            "added_by": name,
+                        }, on_conflict="crm_ref").execute()
+                        st.success(f"✅ {new_lt_ref} saved — lead time {new_lt_days:g} days.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+
+        if lt_list:
+            st.divider()
+            st.markdown("#### 🗑️ Remove from Lead Time Map")
+            st.caption("Removing a CRM here means its lead time goes back to Final Approval − First Approval.")
+            del_lt_map = {r["crm_ref"]: r["id"] for r in lt_list}
+            sel_del_lt = st.selectbox("Select CRM to remove", list(del_lt_map.keys()), key="del_lt_sel")
+            if st.button("🗑️ Remove Lead Time Entry", key="btn_del_lt"):
+                try:
+                    supabase.table("qm_crm_leadtime_map").delete().eq("id", del_lt_map[sel_del_lt]).execute()
+                    st.success(f"Removed {sel_del_lt}"); st.rerun()
                 except Exception as e:
                     st.error(f"Error: {e}")
 
